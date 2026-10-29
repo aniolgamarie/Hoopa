@@ -1,0 +1,2334 @@
+--- /dev/null
++++ b/component/corecontrol/corecontrol_test.go
+@@ -0,0 +1,461 @@
++package corecontrol
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"reflect"
++	"sort"
++	"strings"
++	"testing"
++)
++
++func fixtureSnapshot() Snapshot {
++	hash := strings.Repeat("a", 64)
++	snapshot := Snapshot{SchemaVersion: 1, ConfigSHA256: hash, Controller: "127.0.0.1:19000", Entries: []Entry{{"entry-a", "mixed", "127.0.0.1:19001", strings.Repeat("b", 64)}, {"entry-b", "mixed", "127.0.0.1:19002", strings.Repeat("c", 64)}}, Proxies: []Proxy{
++		{"DIRECT", "Direct", "", "", []string{}, ""}, {"REJECT", "Reject", "", "", []string{}, ""}, {"REJECT-DROP", "RejectDrop", "", "", []string{}, ""}, {"COMPATIBLE", "Compatible", "", "", []string{}, ""}, {"PASS", "Pass", "", "", []string{}, ""},
++		{"GLOBAL", "Selector", "", "", []string{"DIRECT", "REJECT", "node:direct", "node:http", "node:socks", "node:chained", "group:inner", "group:outer"}, "group:outer"},
++		{"node:direct", "Direct", "", "", []string{}, ""}, {"node:http", "Http", "127.0.0.1:19100", "", []string{}, ""}, {"node:socks", "Socks5", "127.0.0.1:19101", "", []string{}, ""}, {"node:chained", "Http", "127.0.0.1:19102", "group:inner", []string{}, ""},
++		{"group:inner", "Selector", "", "", []string{"node:http", "node:socks"}, "node:socks"}, {"group:outer", "Selector", "", "", []string{"group:inner", "node:chained"}, "node:chained"},
++	}, Rules: []Rule{{"Domain", "alpha.test", "group:outer"}, {"DomainSuffix", "test", "node:http"}, {"InName", "entry-b", "node:socks"}, {"IPCIDR", "127.0.0.0/8", "node:direct"}, {"AND", "((InName,entry-a),(Domain,alpha.test))", "group:inner"}, {"Match", "", "REJECT"}}}
++	sort.Slice(snapshot.Proxies, func(i, j int) bool { return snapshot.Proxies[i].Name < snapshot.Proxies[j].Name })
++	return snapshot
++}
++func fixtureMutation() Mutation {
++	return Mutation{1, "activate", "op:activate", "run:one", "gen:one", strings.Repeat("a", 64), strings.Repeat("b", 64), strings.Repeat("c", 64)}
++}
++func fixtureResult() Result {
++	return Result{1, "op:activate", strings.Repeat("d", 64), "run:one", "opened"}
++}
++func fixtureStatus() Status {
++	return Status{SchemaVersion: 1, RunID: "run:one", ConfigGeneration: "gen:one", ConfigSHA256: strings.Repeat("a", 64), BinaryVersion: "fixture-version", Mode: "basic", Capabilities: []string{"authenticated-activate-v1", "closed-start-v1", "immutable-snapshot-v1"}, State: "closed", SnapshotSHA256: strings.Repeat("b", 64)}
++}
++func wire(t *testing.T, value any) []byte {
++	t.Helper()
++	b, err := json.Marshal(value)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return b
++}
++func invalid(t *testing.T, err error) {
++	t.Helper()
++	if !errors.Is(err, ErrInvalid) || err.Error() != ErrInvalid.Error() {
++		t.Fatal("expected constant redacted error:", err)
++	}
++}
++func proxy(s *Snapshot, name string) *Proxy {
++	for i := range s.Proxies {
++		if s.Proxies[i].Name == name {
++			return &s.Proxies[i]
++		}
++	}
++	panic("unknown fixture proxy")
++}
++
++func TestCompleteSnapshotAndDigestEncoding(t *testing.T) {
++	snapshot := fixtureSnapshot()
++	raw := wire(t, snapshot)
++	decoded, err := DecodeSnapshot(raw)
++	if err != nil || !reflect.DeepEqual(decoded, snapshot) {
++		t.Fatal("complete snapshot rejected:", err)
++	}
++	digest, err := snapshot.Digest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	sum := sha256.Sum256(raw)
++	if digest != hex.EncodeToString(sum[:]) {
++		t.Fatal("digest not of compact wire")
++	}
++	// Independent hard-coded field ordering for mutation establishes the exact
++	// deterministic encoding used for request receipts (not map iteration order).
++	mutation := fixtureMutation()
++	golden := `{"schema_version":1,"operation":"activate","operation_id":"op:activate","run_id":"run:one","config_generation":"gen:one","config_sha256":"` + strings.Repeat("a", 64) + `","snapshot_sha256":"` + strings.Repeat("b", 64) + `","registration_sha256":"` + strings.Repeat("c", 64) + `"}`
++	if string(wire(t, mutation)) != golden {
++		t.Fatal("mutation wire order changed")
++	}
++	got, err := mutation.Digest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	sum = sha256.Sum256([]byte(golden))
++	if got != hex.EncodeToString(sum[:]) {
++		t.Fatal("mutation digest order changed")
++	}
++	for name, change := range map[string]func(*Snapshot){
++		"config": func(s *Snapshot) { s.ConfigSHA256 = strings.Repeat("d", 64) },
++		"member-order": func(s *Snapshot) {
++			p := proxy(s, "group:inner")
++			p.Members[0], p.Members[1] = p.Members[1], p.Members[0]
++		},
++		"rule-order": func(s *Snapshot) { s.Rules[0], s.Rules[1] = s.Rules[1], s.Rules[0] },
++		"selection":  func(s *Snapshot) { proxy(s, "group:inner").Selected = "node:http" },
++	} {
++		t.Run(name, func(t *testing.T) {
++			s := fixtureSnapshot()
++			change(&s)
++			hash, err := s.Digest()
++			if err != nil || hash == digest {
++				t.Fatal("snapshot binding omitted from digest:", err)
++			}
++		})
++	}
++	mutation.RunID = "run:other"
++	changed, err := mutation.Digest()
++	if err != nil || changed == got {
++		t.Fatal("run identity omitted from request digest")
++	}
++}
++
++func TestStrictWireAmbiguitiesAcrossMessages(t *testing.T) {
++	decoders := []struct {
++		name   string
++		raw    []byte
++		decode func([]byte) error
++	}{
++		{"snapshot", wire(t, fixtureSnapshot()), func(b []byte) error { _, e := DecodeSnapshot(b); return e }},
++		{"status", wire(t, fixtureStatus()), func(b []byte) error { _, e := DecodeStatus(b); return e }},
++		{"mutation", wire(t, fixtureMutation()), func(b []byte) error { _, e := DecodeMutation(b); return e }},
++		{"result", wire(t, fixtureResult()), func(b []byte) error { _, e := DecodeResult(b); return e }},
++	}
++	for _, d := range decoders {
++		t.Run(d.name, func(t *testing.T) {
++			for name, change := range map[string]func([]byte) []byte{
++				"duplicate": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":1,"schema_version":1`), 1)
++				},
++				"escaped-duplicate": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":1,"schema_\u0076ersion":1`), 1)
++				},
++				"unknown":   func(b []byte) []byte { return append([]byte(`{"secret-canary":1,`), b[1:]...) },
++				"null-root": func(b []byte) []byte { return []byte(`null`) },
++				"null-field": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":null`), 1)
++				},
++				"missing": func(b []byte) []byte { return bytes.Replace(b, []byte(`"schema_version":1,`), nil, 1) },
++				"float-one": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":1.0`), 1)
++				},
++				"exponent-one": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":1e0`), 1)
++				},
++				"string-one": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":"1"`), 1)
++				},
++				"version-two": func(b []byte) []byte {
++					return bytes.Replace(b, []byte(`"schema_version":1`), []byte(`"schema_version":2`), 1)
++				},
++				"trailing":  func(b []byte) []byte { return append(append([]byte(nil), b...), []byte(` {}`)...) },
++				"oversized": func(b []byte) []byte { return append(b, bytes.Repeat([]byte(" "), MaxJSONBytes)...) },
++			} {
++				t.Run(name, func(t *testing.T) {
++					err := d.decode(change(d.raw))
++					invalid(t, err)
++					if strings.Contains(err.Error(), "secret-canary") {
++						t.Fatal("input leaked")
++					}
++				})
++			}
++			// JSON whitespace/key escapes do not change meaning. No canonical input
++			// serialization requirement is invented; output and digest are canonical.
++			escaped := bytes.Replace(d.raw, []byte(`"schema_version"`), []byte(`"schema_\u0076ersion"`), 1)
++			if err := d.decode(append(append([]byte(" \n"), escaped...), []byte(" \t")...)); err != nil {
++				t.Fatal("valid JSON alias rejected:", err)
++			}
++		})
++	}
++}
++
++func TestUnicodeAndNestedRequiredFields(t *testing.T) {
++	raw := wire(t, fixtureSnapshot())
++	for name, data := range map[string][]byte{
++		"lone-high":              bytes.Replace(raw, []byte("alpha.test"), []byte(`\ud800`), 1),
++		"lone-low":               bytes.Replace(raw, []byte("alpha.test"), []byte(`\udfff`), 1),
++		"high-with-non-low":      bytes.Replace(raw, []byte("alpha.test"), []byte(`\ud800\u0041`), 1),
++		"malformed-UTF8":         bytes.Replace(raw, []byte("alpha.test"), []byte{0xff}, 1),
++		"nested-duplicate":       bytes.Replace(raw, []byte(`"type":"mixed"`), []byte(`"type":"mixed","type":"mixed"`), 1),
++		"nested-unknown":         bytes.Replace(raw, []byte(`"type":"mixed"`), []byte(`"type":"mixed","secret":1`), 1),
++		"missing-empty-selected": bytes.Replace(raw, []byte(`,"selected":""`), nil, 1),
++		"null-members":           bytes.Replace(raw, []byte(`"members":[]`), []byte(`"members":null`), 1),
++		"null-member":            bytes.Replace(raw, []byte(`"members":["DIRECT"`), []byte(`"members":[null`), 1),
++		"null-entry":             bytes.Replace(raw, []byte(`"entries":[`), []byte(`"entries":[null,`), 1),
++	} {
++		t.Run(name, func(t *testing.T) { _, err := DecodeSnapshot(data); invalid(t, err) })
++	}
++	for _, payload := range []string{`\ud83d\ude00`, `\\ud800`, `\ufffd`} {
++		data := bytes.Replace(raw, []byte("alpha.test"), []byte(payload), 1)
++		if _, err := DecodeSnapshot(data); err != nil {
++			t.Fatal("valid Unicode payload rejected:", err)
++		}
++	}
++	status := fixtureStatus()
++	r := fixtureResult()
++	status.Activation = &r
++	raw = wire(t, status)
++	for name, data := range map[string][]byte{
++		"receipt-null":     bytes.Replace(raw, wire(t, r), []byte("null"), 1),
++		"receipt-required": bytes.Replace(raw, []byte(`"request_sha256":"`+strings.Repeat("d", 64)+`",`), nil, 1),
++		"receipt-unknown":  bytes.Replace(raw, []byte(`"result":"opened"`), []byte(`"result":"opened","extra":true`), 1),
++	} {
++		t.Run(name, func(t *testing.T) { _, err := DecodeStatus(data); invalid(t, err) })
++	}
++}
++
++func TestSnapshotRejectsGraphAndProjectionErrors(t *testing.T) {
++	for name, change := range map[string]func(*Snapshot){
++		"missing-builtin":            func(s *Snapshot) { s.Proxies = s.Proxies[1:] },
++		"wrong-builtin-type":         func(s *Snapshot) { proxy(s, "PASS").Type = "Direct" },
++		"unknown-node-type":          func(s *Snapshot) { proxy(s, "node:http").Type = "Shadowsocks" },
++		"unscoped-name":              func(s *Snapshot) { proxy(s, "node:http").Name = "http" },
++		"duplicate-entry":            func(s *Snapshot) { s.Entries[1].Name = s.Entries[0].Name },
++		"unsorted-entry":             func(s *Snapshot) { s.Entries[0], s.Entries[1] = s.Entries[1], s.Entries[0] },
++		"duplicate-proxy":            func(s *Snapshot) { s.Proxies[1].Name = s.Proxies[0].Name },
++		"unsorted-proxy":             func(s *Snapshot) { s.Proxies[0], s.Proxies[1] = s.Proxies[1], s.Proxies[0] },
++		"controller-entry-collision": func(s *Snapshot) { s.Entries[0].Address = s.Controller },
++		"duplicate-address":          func(s *Snapshot) { s.Entries[1].Address = s.Entries[0].Address },
++		"IPv6":                       func(s *Snapshot) { s.Controller = "[::1]:19000" },
++		"hostname":                   func(s *Snapshot) { proxy(s, "node:http").Address = "localhost:19100" },
++		"noncanonical-port":          func(s *Snapshot) { s.Controller = "127.0.0.1:019000" },
++		"outside-loopback":           func(s *Snapshot) { s.Entries[0].Address = "127.0.0.2:19001" },
++		"zero-port":                  func(s *Snapshot) { s.Controller = "127.0.0.1:0" },
++		"direct-address":             func(s *Snapshot) { proxy(s, "node:direct").Address = "127.0.0.1:19103" },
++		"direct-dialer":              func(s *Snapshot) { proxy(s, "node:direct").DialerProxy = "node:http" },
++		"direct-members":             func(s *Snapshot) { proxy(s, "DIRECT").Members = []string{"node:http"} },
++		"group-address":              func(s *Snapshot) { proxy(s, "group:inner").Address = "127.0.0.1:19100" },
++		"nil-array":                  func(s *Snapshot) { s.Rules = nil },
++		"nil-members":                func(s *Snapshot) { proxy(s, "DIRECT").Members = nil },
++		"duplicate-member":           func(s *Snapshot) { p := proxy(s, "group:inner"); p.Members = append(p.Members, p.Members[0]) },
++		"unknown-member":             func(s *Snapshot) { proxy(s, "group:inner").Members[0] = "node:absent" },
++		"builtin-group-member":       func(s *Snapshot) { proxy(s, "group:inner").Members[0] = "DIRECT" },
++		"global-pass":                func(s *Snapshot) { proxy(s, "GLOBAL").Members[0] = "PASS" },
++		"unknown-selection":          func(s *Snapshot) { proxy(s, "group:inner").Selected = "node:direct" },
++		"unknown-dialer":             func(s *Snapshot) { proxy(s, "node:chained").DialerProxy = "node:absent" },
++		"builtin-dialer":             func(s *Snapshot) { proxy(s, "node:chained").DialerProxy = "DIRECT" },
++		"group-cycle": func(s *Snapshot) {
++			proxy(s, "group:inner").Members = []string{"group:outer"}
++			proxy(s, "group:inner").Selected = "group:outer"
++		},
++		"mixed-dialer-cycle": func(s *Snapshot) { proxy(s, "node:http").DialerProxy = "group:outer" },
++		"unknown-rule":       func(s *Snapshot) { s.Rules[0].Type = "ProcessName" },
++		"unknown-target":     func(s *Snapshot) { s.Rules[0].Target = "node:absent" },
++		"builtin-target":     func(s *Snapshot) { s.Rules[0].Target = "DIRECT" },
++		"unknown-entry-rule": func(s *Snapshot) { s.Rules[2].Payload = "entry-absent" },
++		"empty-rule-payload": func(s *Snapshot) { s.Rules[0].Payload = "" },
++		"duplicate-Match":    func(s *Snapshot) { s.Rules[0] = Rule{"Match", "", "REJECT"} },
++		"nonempty-Match":     func(s *Snapshot) { s.Rules[len(s.Rules)-1].Payload = "anything" },
++		"missing-Match":      func(s *Snapshot) { s.Rules = s.Rules[:len(s.Rules)-1] },
++		"uppercase-hash":     func(s *Snapshot) { s.ConfigSHA256 = strings.Repeat("A", 64) },
++		"non-ASCII-ID":       func(s *Snapshot) { s.Entries[0].Name = "入口" },
++		"NUL-payload":        func(s *Snapshot) { s.Rules[0].Payload = "a\x00b" },
++	} {
++		t.Run(name, func(t *testing.T) {
++			s := fixtureSnapshot()
++			change(&s)
++			invalid(t, s.Validate())
++			if hash, err := s.Digest(); hash != "" || !errors.Is(err, ErrInvalid) {
++				t.Fatal("invalid snapshot got digest")
++			}
++			_, err := DecodeSnapshot(wire(t, s))
++			invalid(t, err)
++		})
++	}
++}
++
++func TestStatusReceiptsAreHistoricalAndRunBound(t *testing.T) {
++	activation := fixtureResult()
++	drain := Result{1, "op:drain", strings.Repeat("e", 64), activation.RunID, "draining"}
++	// This table enumerates protocol transitions, independently of Validate's
++	// predicates. Historical opened survives drain, but closed cannot reappear.
++	reachable := map[string]bool{
++		"closed/none/none": true, "open/opened/none": true,
++		"draining/none/draining": true, "draining/opened/draining": true,
++		"degraded/failed/none": true, "degraded/opened/none": true,
++		"degraded/opened/failed": true, "degraded/none/failed": true,
++	}
++	for _, state := range []string{"closed", "open", "draining", "degraded"} {
++		for _, a := range []string{"none", "opened", "failed"} {
++			for _, d := range []string{"none", "draining", "failed"} {
++				name := state + "/" + a + "/" + d
++				t.Run(name, func(t *testing.T) {
++					status := fixtureStatus()
++					status.State = state
++					if a != "none" {
++						r := activation
++						r.Result = a
++						status.Activation = &r
++					}
++					if d != "none" {
++						r := drain
++						r.Result = d
++						status.Drain = &r
++					}
++					err := status.Validate()
++					_, decodeErr := DecodeStatus(wire(t, status))
++					if reachable[name] {
++						if err != nil || decodeErr != nil {
++							t.Fatal("reachable history rejected", err, decodeErr)
++						}
++					} else {
++						invalid(t, err)
++						invalid(t, decodeErr)
++					}
++				})
++			}
++		}
++	}
++	for name, change := range map[string]func(*Status){
++		"unknown-state": func(s *Status) { s.State = "running" }, "wrong-mode": func(s *Status) { s.Mode = "identity" },
++		"capability-order":        func(s *Status) { s.Capabilities[0], s.Capabilities[1] = s.Capabilities[1], s.Capabilities[0] },
++		"capability-missing":      func(s *Status) { s.Capabilities = s.Capabilities[:2] },
++		"capability-extra":        func(s *Status) { s.Capabilities = append(s.Capabilities, "extra") },
++		"other-run":               func(s *Status) { r := activation; r.RunID = "run:other"; s.Activation = &r },
++		"wrong-activation-result": func(s *Status) { r := drain; s.Activation = &r },
++		"wrong-drain-result":      func(s *Status) { r := activation; s.Drain = &r },
++		"reused-operation": func(s *Status) {
++			r := drain
++			r.OperationID = activation.OperationID
++			s.Activation = &activation
++			s.Drain = &r
++		},
++		"bad-receipt": func(s *Status) { r := activation; r.RequestSHA256 = "bad"; s.Activation = &r },
++	} {
++		t.Run(name, func(t *testing.T) { s := fixtureStatus(); change(&s); invalid(t, s.Validate()) })
++	}
++	status := fixtureStatus()
++	raw := wire(t, status)
++	if bytes.Contains(raw, []byte("activation")) || bytes.Contains(raw, []byte("drain")) {
++		t.Fatal("absent receipt must be omitted")
++	}
++	activation.Result = "failed"
++	drain.Result = "failed"
++	status.Activation = &activation
++	status.Drain = &drain
++	invalid(t, status.Validate())
++}
++
++func TestFiniteSizeAndIdentityBounds(t *testing.T) {
++	s := fixtureSnapshot()
++	s.Rules[0].Payload = strings.Repeat("x", MaxPayloadBytes)
++	s.Entries[0].Name = strings.Repeat("A", 128)
++	if err := s.Validate(); err != nil {
++		t.Fatal("exact text/ID bounds rejected:", err)
++	}
++	s.Rules[0].Payload += "x"
++	invalid(t, s.Validate())
++	status := fixtureStatus()
++	status.BinaryVersion = strings.Repeat("é", 64)
++	if err := status.Validate(); err != nil {
++		t.Fatal(err)
++	}
++	status.BinaryVersion += "é"
++	invalid(t, status.Validate())
++	mutation := fixtureMutation()
++	mutation.RunID = strings.Repeat("r", 128)
++	if err := mutation.Validate(); err != nil {
++		t.Fatal(err)
++	}
++	mutation.RunID += "r"
++	invalid(t, mutation.Validate())
++	for _, operation := range []string{"activate", "drain"} {
++		m := fixtureMutation()
++		m.Operation = operation
++		if err := m.Validate(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	for _, outcome := range []string{"opened", "draining", "failed"} {
++		r := fixtureResult()
++		r.Result = outcome
++		if err := r.Validate(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	mutation = fixtureMutation()
++	mutation.Operation = "stop"
++	invalid(t, mutation.Validate())
++	if hash, err := mutation.Digest(); hash != "" || err == nil {
++		t.Fatal("invalid mutation digest")
++	}
++	r := fixtureResult()
++	r.Result = "success"
++	invalid(t, r.Validate())
++	// Small individual payloads can still exceed the whole-message byte bound.
++	s = fixtureSnapshot()
++	s.Rules = nil
++	for i := 0; i < 63; i++ {
++		s.Rules = append(s.Rules, Rule{"Domain", strings.Repeat("x", 1024), "REJECT"})
++	}
++	s.Rules = append(s.Rules, Rule{"Match", "", "REJECT"})
++	invalid(t, s.Validate())
++	// A valid >8-level dependency chain is legal; only cycles are forbidden.
++	s = fixtureSnapshot()
++	last := "node:http"
++	for i := 0; i < 12; i++ {
++		name := "group:depth" + strings.Repeat("x", i)
++		s.Proxies = append(s.Proxies, Proxy{name, "Selector", "", "", []string{last}, last})
++		last = name
++	}
++	sort.Slice(s.Proxies, func(i, j int) bool { return s.Proxies[i].Name < s.Proxies[j].Name })
++	if err := s.Validate(); err != nil {
++		t.Fatal("invented depth cap:", err)
++	}
++}
++
++func TestProjectionCollectionCapacity(t *testing.T) {
++	s := fixtureSnapshot()
++	s.Entries = append(s.Entries, Entry{"entry-c", "mixed", "127.0.0.1:19003", strings.Repeat("a", 64)}, Entry{"entry-d", "mixed", "127.0.0.1:19004", strings.Repeat("a", 64)})
++	// Exactly 64 declared nodes plus six required builtins and 66 GLOBAL members.
++	var builtins []Proxy
++	for _, p := range s.Proxies {
++		if !strings.Contains(p.Name, ":") {
++			builtins = append(builtins, p)
++		}
++	}
++	s.Proxies = builtins
++	global := proxy(&s, "GLOBAL")
++	global.Members = []string{"DIRECT", "REJECT"}
++	global.Selected = "DIRECT"
++	for i := 0; i < 64; i++ {
++		name := "node:" + string(rune('A'+i/26)) + string(rune('a'+i%26))
++		s.Proxies = append(s.Proxies, Proxy{name, "Direct", "", "", []string{}, ""})
++	}
++	global = proxy(&s, "GLOBAL") // append may have moved the backing array
++	for _, p := range s.Proxies {
++		if strings.HasPrefix(p.Name, "node:") {
++			global.Members = append(global.Members, p.Name)
++		}
++	}
++	sort.Slice(s.Proxies, func(i, j int) bool { return s.Proxies[i].Name < s.Proxies[j].Name })
++	s.Rules = nil
++	for i := 0; i < 63; i++ {
++		s.Rules = append(s.Rules, Rule{"Domain", "alpha.test", "REJECT"})
++	}
++	s.Rules = append(s.Rules, Rule{"Match", "", "REJECT"})
++	if err := s.Validate(); err != nil {
++		t.Fatal("exact finite collection capacity rejected:", err)
++	}
++	if _, err := DecodeSnapshot(wire(t, s)); err != nil {
++		t.Fatal(err)
++	}
++	for _, collection := range []string{"entries", "proxies", "rules"} {
++		t.Run(collection, func(t *testing.T) {
++			raw := wire(t, s)
++			var copy Snapshot
++			if err := json.Unmarshal(raw, &copy); err != nil {
++				t.Fatal(err)
++			}
++			switch collection {
++			case "entries":
++				copy.Entries = append(copy.Entries, Entry{"entry-e", "mixed", "127.0.0.1:19005", strings.Repeat("a", 64)})
++			case "proxies":
++				copy.Proxies = append(copy.Proxies, Proxy{"node:extra", "Direct", "", "", []string{}, ""})
++			case "rules":
++				copy.Rules = append(copy.Rules[:63], Rule{"Domain", "beta.test", "REJECT"}, Rule{"Match", "", "REJECT"})
++			}
++			invalid(t, copy.Validate())
++		})
++	}
++}
+--- /dev/null
++++ b/component/corecontrol/decode.go
+@@ -0,0 +1,202 @@
++package corecontrol
++
++import (
++	"bytes"
++	"encoding/json"
++	"io"
++	"reflect"
++	"strings"
++	"unicode/utf8"
++)
++
++// validUnicode rejects encoding/json's replacement of malformed UTF-8 or lone
++// UTF-16 surrogate escapes. Valid escaped keys are allowed; duplicate detection
++// below compares decoded key values, including equivalent escape spellings.
++func validUnicode(raw []byte) bool {
++	if !utf8.Valid(raw) {
++		return false
++	}
++	hex4 := func(value []byte) (uint16, bool) {
++		if len(value) < 4 {
++			return 0, false
++		}
++		var result uint16
++		for _, c := range value[:4] {
++			result <<= 4
++			switch {
++			case c >= '0' && c <= '9':
++				result |= uint16(c - '0')
++			case c >= 'a' && c <= 'f':
++				result |= uint16(c - 'a' + 10)
++			case c >= 'A' && c <= 'F':
++				result |= uint16(c - 'A' + 10)
++			default:
++				return 0, false
++			}
++		}
++		return result, true
++	}
++	for i := 0; i < len(raw); i++ {
++		if raw[i] != '"' {
++			continue
++		}
++		i++
++		for ; i < len(raw) && raw[i] != '"'; i++ {
++			if raw[i] != '\\' {
++				continue
++			}
++			i++
++			if i >= len(raw) {
++				return false
++			}
++			if raw[i] != 'u' {
++				continue
++			}
++			code, ok := hex4(raw[i+1:])
++			if !ok {
++				return false
++			}
++			i += 4
++			if code >= 0xdc00 && code <= 0xdfff {
++				return false
++			}
++			if code >= 0xd800 && code <= 0xdbff {
++				if i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
++					return false
++				}
++				low, ok := hex4(raw[i+3:])
++				if !ok || low < 0xdc00 || low > 0xdfff {
++					return false
++				}
++				i += 6
++			}
++		}
++		if i >= len(raw) {
++			return false
++		}
++	}
++	return true
++}
++
++// wireShape is confined to these wire structs: every field is required except
++// the two explicitly omitempty receipt pointers. It never infers requiredness
++// from zero values and rejects ambiguity before encoding/json populates values.
++func wireShape(raw []byte, t reflect.Type) error {
++	raw = bytes.TrimSpace(raw)
++	if bytes.Equal(raw, []byte("null")) {
++		return ErrInvalid
++	}
++	if t.Kind() == reflect.Pointer {
++		t = t.Elem()
++	}
++	switch t.Kind() {
++	case reflect.Int:
++		if string(raw) != "1" {
++			return ErrInvalid
++		}
++		return nil
++	case reflect.String:
++		var value string
++		if json.Unmarshal(raw, &value) != nil {
++			return ErrInvalid
++		}
++		return nil
++	case reflect.Struct:
++		fields := map[string]reflect.StructField{}
++		required := map[string]bool{}
++		for i := 0; i < t.NumField(); i++ {
++			field := t.Field(i)
++			tag := strings.Split(field.Tag.Get("json"), ",")
++			fields[tag[0]] = field
++			if len(tag) == 1 {
++				required[tag[0]] = true
++			}
++		}
++		d := json.NewDecoder(bytes.NewReader(raw))
++		token, err := d.Token()
++		if err != nil || token != json.Delim('{') {
++			return ErrInvalid
++		}
++		seen := map[string]bool{}
++		for d.More() {
++			token, err := d.Token()
++			key, ok := token.(string)
++			field, known := fields[key]
++			if err != nil || !ok || !known || seen[key] {
++				return ErrInvalid
++			}
++			seen[key] = true
++			var value json.RawMessage
++			if d.Decode(&value) != nil || wireShape(value, field.Type) != nil {
++				return ErrInvalid
++			}
++		}
++		if token, err = d.Token(); err != nil || token != json.Delim('}') {
++			return ErrInvalid
++		}
++		if _, err = d.Token(); err != io.EOF {
++			return ErrInvalid
++		}
++		for key := range required {
++			if !seen[key] {
++				return ErrInvalid
++			}
++		}
++		return nil
++	case reflect.Slice:
++		d := json.NewDecoder(bytes.NewReader(raw))
++		token, err := d.Token()
++		if err != nil || token != json.Delim('[') {
++			return ErrInvalid
++		}
++		for d.More() {
++			var value json.RawMessage
++			if d.Decode(&value) != nil || wireShape(value, t.Elem()) != nil {
++				return ErrInvalid
++			}
++		}
++		if token, err = d.Token(); err != nil || token != json.Delim(']') {
++			return ErrInvalid
++		}
++		if _, err = d.Token(); err != io.EOF {
++			return ErrInvalid
++		}
++		return nil
++	default:
++		return ErrInvalid
++	}
++}
++func strict(raw []byte, out any) error {
++	if len(raw) == 0 || len(raw) > MaxJSONBytes || !validUnicode(raw) || wireShape(raw, reflect.TypeOf(out).Elem()) != nil || json.Unmarshal(raw, out) != nil {
++		return ErrInvalid
++	}
++	return nil
++}
++func DecodeSnapshot(raw []byte) (Snapshot, error) {
++	var value Snapshot
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Snapshot{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeStatus(raw []byte) (Status, error) {
++	var value Status
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Status{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeMutation(raw []byte) (Mutation, error) {
++	var value Mutation
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Mutation{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeResult(raw []byte) (Result, error) {
++	var value Result
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Result{}, ErrInvalid
++	}
++	return value, nil
++}
+--- /dev/null
++++ b/component/corecontrol/types.go
+@@ -0,0 +1,340 @@
++// Package corecontrol defines the bounded basic-v1 control wire, not process
++// ownership, HTTP authentication, a state machine, or a configuration compiler.
++package corecontrol
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"net/netip"
++	"strings"
++	"unicode/utf8"
++)
++
++const SchemaVersion = 1
++const MaxJSONBytes = 64 << 10
++const MaxPayloadBytes = 4096
++const MaxBinaryVersionBytes = 128
++
++// ErrInvalid never incorporates untrusted configuration or request contents.
++var ErrInvalid = errors.New("invalid basic core control v1 message")
++
++type Snapshot struct {
++	SchemaVersion int     `json:"schema_version"`
++	ConfigSHA256  string  `json:"config_sha256"`
++	Controller    string  `json:"controller"`
++	Entries       []Entry `json:"entries"`
++	Proxies       []Proxy `json:"proxies"`
++	Rules         []Rule  `json:"rules"`
++}
++type Entry struct {
++	Name       string `json:"name"`
++	Type       string `json:"type"`
++	Address    string `json:"address"`
++	AuthSHA256 string `json:"auth_sha256"`
++}
++type Proxy struct {
++	Name        string   `json:"name"`
++	Type        string   `json:"type"`
++	Address     string   `json:"address"`
++	DialerProxy string   `json:"dialer_proxy"`
++	Members     []string `json:"members"`
++	Selected    string   `json:"selected"`
++}
++type Rule struct {
++	Type    string `json:"type"`
++	Payload string `json:"payload"`
++	Target  string `json:"target"`
++}
++type Status struct {
++	SchemaVersion    int      `json:"schema_version"`
++	RunID            string   `json:"run_id"`
++	ConfigGeneration string   `json:"config_generation"`
++	ConfigSHA256     string   `json:"config_sha256"`
++	BinaryVersion    string   `json:"binary_version"`
++	Mode             string   `json:"mode"`
++	Capabilities     []string `json:"capabilities"`
++	State            string   `json:"state"`
++	SnapshotSHA256   string   `json:"snapshot_sha256"`
++	Activation       *Result  `json:"activation,omitempty"`
++	Drain            *Result  `json:"drain,omitempty"`
++}
++type Mutation struct {
++	SchemaVersion      int    `json:"schema_version"`
++	Operation          string `json:"operation"`
++	OperationID        string `json:"operation_id"`
++	RunID              string `json:"run_id"`
++	ConfigGeneration   string `json:"config_generation"`
++	ConfigSHA256       string `json:"config_sha256"`
++	SnapshotSHA256     string `json:"snapshot_sha256"`
++	RegistrationSHA256 string `json:"registration_sha256"`
++}
++type Result struct {
++	SchemaVersion int    `json:"schema_version"`
++	OperationID   string `json:"operation_id"`
++	RequestSHA256 string `json:"request_sha256"`
++	RunID         string `json:"run_id"`
++	Result        string `json:"result"`
++}
++
++// IDs use [A-Za-z0-9][A-Za-z0-9._:-]{0,127}, measured in ASCII bytes.
++func validID(value string) bool {
++	if len(value) < 1 || len(value) > 128 {
++		return false
++	}
++	for i, c := range []byte(value) {
++		alnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alnum && (i == 0 || c != '.' && c != '_' && c != ':' && c != '-') {
++			return false
++		}
++	}
++	return true
++}
++func declared(value, prefix string) bool {
++	return strings.HasPrefix(value, prefix) && validID(value) && validID(strings.TrimPrefix(value, prefix))
++}
++func digestShape(value string) bool {
++	b, err := hex.DecodeString(value)
++	return err == nil && len(b) == 32 && hex.EncodeToString(b) == value
++}
++func endpoint(value string) bool {
++	address, err := netip.ParseAddrPort(value)
++	return err == nil && address.Port() != 0 && address.Addr() == netip.MustParseAddr("127.0.0.1") && address.String() == value
++}
++
++// All free text is bounded UTF-8 without NUL. IDs, enum strings, addresses and
++// digests have stricter shapes; rule payload is a projection, not reparsed AND.
++func text(value string, min, max int) bool {
++	return len(value) >= min && len(value) <= max && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
++}
++func encodedSize(value any) error {
++	raw, err := json.Marshal(value)
++	if err != nil || len(raw) > MaxJSONBytes {
++		return ErrInvalid
++	}
++	return nil
++}
++func hash(value any) (string, error) {
++	raw, err := json.Marshal(value)
++	if err != nil || len(raw) > MaxJSONBytes {
++		return "", ErrInvalid
++	}
++	sum := sha256.Sum256(raw)
++	return hex.EncodeToString(sum[:]), nil
++}
++
++func (s Snapshot) Validate() error {
++	if s.SchemaVersion != SchemaVersion || !digestShape(s.ConfigSHA256) || !endpoint(s.Controller) || s.Entries == nil || len(s.Entries) < 1 || len(s.Entries) > 4 || s.Proxies == nil || len(s.Proxies) < 6 || len(s.Proxies) > 70 || s.Rules == nil || len(s.Rules) < 1 || len(s.Rules) > 64 {
++		return ErrInvalid
++	}
++	entries := map[string]bool{}
++	addresses := map[string]bool{s.Controller: true}
++	for i, e := range s.Entries {
++		if !validID(e.Name) || i > 0 && s.Entries[i-1].Name >= e.Name || e.Type != "mixed" || !endpoint(e.Address) || addresses[e.Address] || !digestShape(e.AuthSHA256) {
++			return ErrInvalid
++		}
++		entries[e.Name] = true
++		addresses[e.Address] = true
++	}
++	builtins := map[string]string{"DIRECT": "Direct", "REJECT": "Reject", "REJECT-DROP": "RejectDrop", "COMPATIBLE": "Compatible", "PASS": "Pass", "GLOBAL": "Selector"}
++	proxies := map[string]Proxy{}
++	custom := map[string]bool{}
++	for i, p := range s.Proxies {
++		if !validID(p.Name) || i > 0 && s.Proxies[i-1].Name >= p.Name || p.Members == nil {
++			return ErrInvalid
++		}
++		if kind, ok := builtins[p.Name]; ok {
++			if p.Type != kind {
++				return ErrInvalid
++			}
++		} else {
++			if !(declared(p.Name, "node:") && (p.Type == "Direct" || p.Type == "Http" || p.Type == "Socks5") || declared(p.Name, "group:") && p.Type == "Selector") {
++				return ErrInvalid
++			}
++			custom[p.Name] = true
++		}
++		switch p.Type {
++		case "Http", "Socks5":
++			if !endpoint(p.Address) || p.DialerProxy != "" && !validID(p.DialerProxy) {
++				return ErrInvalid
++			}
++		default:
++			if p.Address != "" || p.DialerProxy != "" {
++				return ErrInvalid
++			}
++		}
++		if p.Type != "Selector" && (len(p.Members) != 0 || p.Selected != "") {
++			return ErrInvalid
++		}
++		proxies[p.Name] = p
++	}
++	for name := range builtins {
++		if _, ok := proxies[name]; !ok {
++			return ErrInvalid
++		}
++	}
++	if len(custom) > 64 {
++		return ErrInvalid
++	}
++	edges := map[string][]string{}
++	for _, p := range s.Proxies {
++		if p.DialerProxy != "" {
++			if !custom[p.DialerProxy] {
++				return ErrInvalid
++			}
++			edges[p.Name] = append(edges[p.Name], p.DialerProxy)
++		}
++		if p.Type != "Selector" {
++			continue
++		}
++		limit := 64
++		if p.Name == "GLOBAL" {
++			limit = 66
++		}
++		if len(p.Members) < 1 || len(p.Members) > limit {
++			return ErrInvalid
++		}
++		seen := map[string]bool{}
++		selected := false
++		for _, member := range p.Members {
++			allowed := custom[member] || p.Name == "GLOBAL" && (member == "DIRECT" || member == "REJECT")
++			if !allowed || seen[member] {
++				return ErrInvalid
++			}
++			seen[member] = true
++			selected = selected || member == p.Selected
++			edges[p.Name] = append(edges[p.Name], member)
++		}
++		if !selected {
++			return ErrInvalid
++		}
++	}
++	// At most 70 bounded nodes; no artificial depth cap beyond cycle rejection.
++	visited := map[string]uint8{}
++	var visit func(string) bool
++	visit = func(name string) bool {
++		if visited[name] == 1 {
++			return false
++		}
++		if visited[name] == 2 {
++			return true
++		}
++		visited[name] = 1
++		for _, next := range edges[name] {
++			if !visit(next) {
++				return false
++			}
++		}
++		visited[name] = 2
++		return true
++	}
++	for name := range proxies {
++		if !visit(name) {
++			return ErrInvalid
++		}
++	}
++	for i, r := range s.Rules {
++		if !(r.Target == "REJECT" || custom[r.Target]) || !text(r.Payload, 0, MaxPayloadBytes) {
++			return ErrInvalid
++		}
++		switch r.Type {
++		case "Match":
++			if r.Payload != "" || i != len(s.Rules)-1 {
++				return ErrInvalid
++			}
++		case "Domain", "DomainSuffix", "IPCIDR", "AND":
++			if r.Payload == "" {
++				return ErrInvalid
++			}
++		case "InName":
++			if !entries[r.Payload] {
++				return ErrInvalid
++			}
++		default:
++			return ErrInvalid
++		}
++	}
++	if s.Rules[len(s.Rules)-1].Type != "Match" {
++		return ErrInvalid
++	}
++	return encodedSize(s)
++}
++func (s Snapshot) Digest() (string, error) {
++	if s.Validate() != nil {
++		return "", ErrInvalid
++	}
++	return hash(s)
++}
++
++func (s Status) Validate() error {
++	if s.SchemaVersion != SchemaVersion || !validID(s.RunID) || !validID(s.ConfigGeneration) || !digestShape(s.ConfigSHA256) || !text(s.BinaryVersion, 1, MaxBinaryVersionBytes) || s.Mode != "basic" || !digestShape(s.SnapshotSHA256) {
++		return ErrInvalid
++	}
++	expected := []string{"authenticated-activate-v1", "closed-start-v1", "immutable-snapshot-v1"}
++	if len(s.Capabilities) != len(expected) {
++		return ErrInvalid
++	}
++	for i, c := range s.Capabilities {
++		if c != expected[i] {
++			return ErrInvalid
++		}
++	}
++	if s.State != "closed" && s.State != "open" && s.State != "draining" && s.State != "degraded" {
++		return ErrInvalid
++	}
++	if s.Activation != nil {
++		if s.Activation.Validate() != nil || s.Activation.RunID != s.RunID || s.Activation.Result != "opened" && s.Activation.Result != "failed" {
++			return ErrInvalid
++		}
++	}
++	if s.Drain != nil {
++		if s.Drain.Validate() != nil || s.Drain.RunID != s.RunID || s.Drain.Result != "draining" && s.Drain.Result != "failed" {
++			return ErrInvalid
++		}
++	}
++	if s.Activation != nil && s.Drain != nil && s.Activation.OperationID == s.Drain.OperationID {
++		return ErrInvalid
++	}
++	// Historical receipts must still describe a reachable single-RunID history.
++	activation, drain := "", ""
++	if s.Activation != nil {
++		activation = s.Activation.Result
++	}
++	if s.Drain != nil {
++		drain = s.Drain.Result
++	}
++	valid := false
++	switch s.State {
++	case "closed":
++		valid = activation == "" && drain == ""
++	case "open":
++		valid = activation == "opened" && drain == ""
++	case "draining":
++		valid = (activation == "" || activation == "opened") && drain == "draining"
++	case "degraded":
++		valid = activation == "failed" && drain == "" || activation == "opened" && (drain == "" || drain == "failed") || activation == "" && drain == "failed"
++	}
++	if !valid {
++		return ErrInvalid
++	}
++	return encodedSize(s)
++}
++func (m Mutation) Validate() error {
++	if m.SchemaVersion != SchemaVersion || m.Operation != "activate" && m.Operation != "drain" || !validID(m.OperationID) || !validID(m.RunID) || !validID(m.ConfigGeneration) || !digestShape(m.ConfigSHA256) || !digestShape(m.SnapshotSHA256) || !digestShape(m.RegistrationSHA256) {
++		return ErrInvalid
++	}
++	return encodedSize(m)
++}
++func (m Mutation) Digest() (string, error) {
++	if m.Validate() != nil {
++		return "", ErrInvalid
++	}
++	return hash(m)
++}
++func (r Result) Validate() error {
++	if r.SchemaVersion != SchemaVersion || !validID(r.OperationID) || !validID(r.RunID) || !digestShape(r.RequestSHA256) || r.Result != "opened" && r.Result != "draining" && r.Result != "failed" {
++		return ErrInvalid
++	}
++	return encodedSize(r)
++}
+--- /dev/null
++++ b/hoopa_control_v1_linux.go
+@@ -0,0 +1,455 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"crypto/sha256"
++	"crypto/subtle"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"flag"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"os/signal"
++	"sort"
++	"strconv"
++	"strings"
++	"sync"
++	"syscall"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/inbound"
++	"github.com/metacubex/mihomo/adapter/outboundgroup"
++	"github.com/metacubex/mihomo/component/auth"
++	wire "github.com/metacubex/mihomo/component/corecontrol"
++	"github.com/metacubex/mihomo/component/hoopaguard"
++	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/hub/executor"
++	authStore "github.com/metacubex/mihomo/listener/auth"
++	listenerInbound "github.com/metacubex/mihomo/listener/inbound"
++	"github.com/metacubex/mihomo/listener/mixed"
++	"github.com/metacubex/mihomo/log"
++	"github.com/metacubex/mihomo/tunnel"
++)
++
++func hoopaControlV1Requested() bool {
++	for _, key := range []string{"HOOPA_CONTROL_PROTOCOL", "HOOPA_RUN_ID", "HOOPA_RUN_NONCE"} {
++		if _, exists := os.LookupEnv(key); exists {
++			return true
++		}
++	}
++	return false
++}
++
++func hoopaControlCapabilities() []string {
++	return []string{"authenticated-activate-v1", "closed-start-v1", "immutable-snapshot-v1"}
++}
++
++func runHoopaControlV1() error {
++	log.SetLevel(log.SILENT)
++	if os.Getenv("HOOPA_CONTROL_PROTOCOL") != "1" || version || testConfig || configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
++		return errHoopaGuard
++	}
++	nonce := os.Getenv("HOOPA_RUN_NONCE")
++	nonceBytes, err := hex.DecodeString(nonce)
++	if err != nil || len(nonceBytes) != 32 || hex.EncodeToString(nonceBytes) != nonce {
++		return errHoopaGuard
++	}
++	for _, kv := range os.Environ() {
++		pair := strings.SplitN(kv, "=", 2)
++		if pair[0] == "HOOPA_IDENTITY_HANDOFF" || pair[0] == "HOOPA_IDENTITY_HANDOFF_SET" || strings.HasPrefix(pair[0], "HOOPA_TRACE_") && pair[1] != "" {
++			return errHoopaGuard
++		}
++	}
++	raw, err := guardReadConfig(configFile)
++	if err != nil {
++		return errHoopaGuard
++	}
++	hash := controlDigest(raw)
++	if hash != os.Getenv("HOOPA_GUARD_CONFIG_SHA256") {
++		return errHoopaGuard
++	}
++	generation, runID := os.Getenv("HOOPA_GUARD_GENERATION"), os.Getenv("HOOPA_RUN_ID")
++	p, err := profile.Validate(raw, generation)
++	if err != nil {
++		return errHoopaGuard
++	}
++	status := wire.Status{SchemaVersion: 1, RunID: runID, ConfigGeneration: generation, ConfigSHA256: hash, BinaryVersion: C.Version, Mode: "basic", Capabilities: hoopaControlCapabilities(), State: "closed", SnapshotSHA256: hash}
++	if status.Validate() != nil {
++		return errHoopaGuard
++	}
++	C.SetHomeDir(homeDir)
++	C.SetConfig(configFile)
++	cfg, err := executor.ParseWithBytes(raw)
++	if err != nil {
++		return errHoopaGuard
++	}
++	g := cfg.General
++	if g.Port != 0 || g.SocksPort != 0 || g.RedirPort != 0 || g.TProxyPort != 0 || g.MixedPort != 0 || g.Tun.Enable || g.TuicServer.Enable || len(cfg.Tunnels) != 0 || len(cfg.RuleProviders) != 0 || g.GeoAutoUpdate || len(cfg.Listeners) != len(p.Listeners) {
++		return errHoopaGuard
++	}
++	// Check the parsed listener objects before deliberately disabling stock I/O.
++	for _, entry := range p.Listeners {
++		ln := cfg.Listeners[entry.Name]
++		if ln == nil || ln.Name() != entry.Name || ln.RawAddress() != net.JoinHostPort(entry.Listen, strconv.Itoa(int(entry.Port))) {
++			return errHoopaGuard
++		}
++		options, ok := ln.Config().(*listenerInbound.MixedOption)
++		if !ok || options.UDP || options.SpecialProxy != "" || options.SpecialRules != "" || len(options.Users) != 1 || options.Users[0].Username != entry.Users[0].Username || options.Users[0].Password != entry.Users[0].Password {
++			return errHoopaGuard
++		}
++	}
++	cfg.Listeners = nil
++	C.HoopaProtected = true
++	executor.ApplyConfig(cfg, true)
++	defer executor.Shutdown()
++	r := &hoopaControlRuntime{state: "closed", runID: runID, generation: generation, hash: hash, secret: p.Secret, controllerAddress: p.Controller, declaredEntries: p.Listeners, conns: map[net.Conn]bool{}}
++	defer r.stop()
++	r.snapshot, err = r.readSnapshot()
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.snapshotSHA, err = r.snapshot.Digest()
++	if err != nil {
++		return errHoopaGuard
++	}
++	// App reservations remain bound but NOT listening until authenticated activate.
++	for _, entry := range p.Listeners {
++		f, err := hoopaguard.Reserve(net.JoinHostPort(entry.Listen, strconv.Itoa(int(entry.Port))))
++		if err != nil {
++			return errHoopaGuard
++		}
++		r.reserved = append(r.reserved, f)
++	}
++	f, err := hoopaguard.Reserve(p.Controller)
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.controller, err = hoopaguard.Listen(f)
++	_ = f.Close()
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 8192}
++	terms, hups := make(chan os.Signal, 1), make(chan os.Signal, 1)
++	signal.Notify(terms, syscall.SIGINT, syscall.SIGTERM)
++	signal.Notify(hups, syscall.SIGHUP)
++	defer signal.Stop(terms)
++	defer signal.Stop(hups)
++	served := make(chan error, 1)
++	go func() { served <- r.server.Serve(r.controller) }()
++	for {
++		select {
++		case <-terms:
++			return nil
++		case <-hups: // Immutable process replacement only; never reload in place.
++		case <-served:
++			return errHoopaGuard
++		}
++	}
++}
++
++type hoopaControlRuntime struct {
++	mu                                                  sync.Mutex
++	state, runID, generation, hash, secret, snapshotSHA string
++	controllerAddress                                   string
++	declaredEntries                                     []profile.Entry
++	snapshot                                            wire.Snapshot
++	activation, drainReceipt                            *wire.Result
++	activationRequest, drainRequest                     *wire.Mutation
++	reserved                                            []*os.File
++	entries                                             []net.Listener
++	controller                                          net.Listener
++	server                                              *http.Server
++	conns                                               map[net.Conn]bool
++	accept, workers                                     sync.WaitGroup
++}
++
++func controlDigest(raw []byte) string {
++	h := sha256.Sum256(raw)
++	return hex.EncodeToString(h[:])
++}
++
++// Only the new basic protected path uses these immutable globals. It exposes no
++// reload, group mutation or provider refresh; shutdown runs after r.stop joins.
++func (r *hoopaControlRuntime) readSnapshot() (wire.Snapshot, error) {
++	s := wire.Snapshot{SchemaVersion: 1, ConfigSHA256: r.hash, Controller: r.controllerAddress, Entries: []wire.Entry{}, Proxies: []wire.Proxy{}, Rules: []wire.Rule{}}
++	for _, e := range r.declaredEntries {
++		users, err := json.Marshal(e.Users)
++		if err != nil {
++			return s, errHoopaGuard
++		}
++		s.Entries = append(s.Entries, wire.Entry{Name: e.Name, Type: e.Type, Address: net.JoinHostPort(e.Listen, strconv.Itoa(int(e.Port))), AuthSHA256: controlDigest(users)})
++	}
++	for name, proxy := range tunnel.Proxies() {
++		if proxy == nil || name != proxy.Name() {
++			return s, errHoopaGuard
++		}
++		x := wire.Proxy{Name: name, Type: proxy.Type().String(), Address: proxy.Addr(), DialerProxy: proxy.ProxyInfo().DialerProxy, Members: []string{}}
++		if proxy.Type() == C.Selector {
++			selector, ok := proxy.Adapter().(*outboundgroup.Selector)
++			if !ok {
++				return s, errHoopaGuard
++			}
++			for _, member := range selector.Proxies() {
++				x.Members = append(x.Members, member.Name())
++			}
++			x.Selected = selector.Now()
++		}
++		s.Proxies = append(s.Proxies, x)
++	}
++	for _, rule := range tunnel.Rules() {
++		if rule == nil {
++			return s, errHoopaGuard
++		}
++		s.Rules = append(s.Rules, wire.Rule{Type: rule.RuleType().String(), Payload: rule.Payload(), Target: rule.Adapter()})
++	}
++	sort.Slice(s.Entries, func(i, j int) bool { return s.Entries[i].Name < s.Entries[j].Name })
++	sort.Slice(s.Proxies, func(i, j int) bool { return s.Proxies[i].Name < s.Proxies[j].Name })
++	return s, s.Validate()
++}
++
++// Caller holds mu. Query checks the ACTUAL current projection against the
++// frozen startup projection; it does not publish a new expected configuration.
++func (r *hoopaControlRuntime) verifiedSnapshot() (wire.Snapshot, error) {
++	s, err := r.readSnapshot()
++	if err != nil {
++		return s, err
++	}
++	hash, err := s.Digest()
++	if err != nil || hash != r.snapshotSHA {
++		return s, errHoopaGuard
++	}
++	if r.state == "open" {
++		if len(r.entries) != len(r.declaredEntries) {
++			return s, errHoopaGuard
++		}
++		for i, ln := range r.entries {
++			e := r.declaredEntries[i]
++			if ln.Addr().String() != net.JoinHostPort(e.Listen, strconv.Itoa(int(e.Port))) {
++				return s, errHoopaGuard
++			}
++		}
++	}
++	return s, nil
++}
++
++func (r *hoopaControlRuntime) ServeHTTP(w http.ResponseWriter, q *http.Request) {
++	host, _, err := net.SplitHostPort(q.RemoteAddr)
++	headers := q.Header.Values("Authorization")
++	if err != nil || host != "127.0.0.1" || len(headers) != 1 || subtle.ConstantTimeCompare([]byte(headers[0]), []byte("Bearer "+r.secret)) != 1 {
++		http.Error(w, "unauthorized", 401)
++		return
++	}
++	read := q.Method == "GET" && (q.URL.Path == "/hoopa/v1/status" || q.URL.Path == "/hoopa/v1/snapshot")
++	write := q.Method == "POST" && (q.URL.Path == "/hoopa/v1/activate" || q.URL.Path == "/hoopa/v1/drain")
++	if !read && !write {
++		http.Error(w, "unsupported operation", 409)
++		return
++	}
++	if q.URL.RawQuery != "" || q.URL.ForceQuery || q.URL.RawPath != "" || q.URL.Fragment != "" || q.URL.IsAbs() || q.RequestURI != q.URL.Path || len(q.TransferEncoding) != 0 || len(q.Trailer) != 0 || read && q.ContentLength != 0 {
++		http.Error(w, "invalid request", 400)
++		return
++	}
++	if read {
++		r.mu.Lock()
++		defer r.mu.Unlock()
++		if r.state == "stopped" {
++			http.Error(w, "observation unavailable", 503)
++			return
++		}
++		snapshot, err := r.verifiedSnapshot()
++		if err != nil {
++			http.Error(w, "observation unavailable", 503)
++			return
++		}
++		if q.URL.Path == "/hoopa/v1/snapshot" {
++			controlWriteJSON(w, 200, snapshot)
++			return
++		}
++		status := wire.Status{SchemaVersion: 1, RunID: r.runID, ConfigGeneration: r.generation, ConfigSHA256: r.hash, BinaryVersion: C.Version, Mode: "basic", Capabilities: hoopaControlCapabilities(), State: r.state, SnapshotSHA256: r.snapshotSHA, Activation: r.activation, Drain: r.drainReceipt}
++		if status.Validate() != nil {
++			http.Error(w, "observation unavailable", 503)
++			return
++		}
++		controlWriteJSON(w, 200, status)
++		return
++	}
++	contentType := q.Header.Values("Content-Type")
++	if q.ContentLength <= 0 || q.ContentLength > 4096 || len(contentType) != 1 || contentType[0] != "application/json" {
++		http.Error(w, "invalid request", 400)
++		return
++	}
++	raw, err := io.ReadAll(io.LimitReader(q.Body, 4097))
++	if err != nil || int64(len(raw)) != q.ContentLength || len(raw) > 4096 {
++		http.Error(w, "invalid request", 400)
++		return
++	}
++	request, err := wire.DecodeMutation(raw)
++	if err != nil || q.URL.Path != "/hoopa/v1/"+request.Operation {
++		http.Error(w, "invalid request", 400)
++		return
++	}
++	result, code := r.mutate(request)
++	if result == nil {
++		http.Error(w, "operation conflict", code)
++		return
++	}
++	controlWriteJSON(w, code, result)
++}
++
++func controlWriteJSON(w http.ResponseWriter, code int, v any) {
++	raw, err := json.Marshal(v)
++	if err != nil || len(raw) > 65536 {
++		http.Error(w, "observation unavailable", 503)
++		return
++	}
++	w.Header().Set("Content-Type", "application/json")
++	w.Header().Set("Cache-Control", "no-store")
++	w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
++	w.WriteHeader(code)
++	_, _ = w.Write(raw)
++}
++
++// All FD transitions, receipts, state and Accept Add operations share mu. No
++// application goroutine exists until EVERY Listen succeeded. Kernel handshakes
++// during the partial Listen window are possible, application forwarding is not.
++func (r *hoopaControlRuntime) mutate(q wire.Mutation) (*wire.Result, int) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	digest, err := q.Digest()
++	if err != nil || r.state == "stopped" || q.RunID != r.runID || q.ConfigGeneration != r.generation || q.ConfigSHA256 != r.hash || q.SnapshotSHA256 != r.snapshotSHA {
++		return nil, 409
++	}
++	request, receipt, other := r.activationRequest, r.activation, r.drainRequest
++	if q.Operation == "drain" {
++		request, receipt, other = r.drainRequest, r.drainReceipt, r.activationRequest
++	}
++	if other != nil && other.OperationID == q.OperationID {
++		return nil, 409
++	}
++	if request != nil {
++		if *request != q || receipt == nil || receipt.RequestSHA256 != digest {
++			return nil, 409
++		}
++		copy := *receipt
++		if copy.Result == "failed" {
++			return &copy, 503
++		}
++		return &copy, 200 // Historical receipt, never changes today's state.
++	}
++	if _, err := r.verifiedSnapshot(); err != nil {
++		return nil, 409
++	}
++	if q.Operation == "activate" && r.state != "closed" || q.Operation == "drain" && r.state != "closed" && r.state != "open" {
++		return nil, 409
++	}
++	result := &wire.Result{SchemaVersion: 1, OperationID: q.OperationID, RequestSHA256: digest, RunID: q.RunID, Result: "failed"}
++	if q.Operation == "activate" {
++		r.activationRequest, r.activation = &q, result
++		for _, f := range r.reserved {
++			ln, err := hoopaguard.Listen(f)
++			if err != nil {
++				r.state = "degraded"
++				r.closeEntries()
++				copy := *result
++				return &copy, 503
++			}
++			r.entries = append(r.entries, ln)
++		}
++		r.reserved = nil // Listen consumed every original reservation FD.
++		r.state, result.Result = "open", "opened"
++		for i, e := range r.declaredEntries {
++			store := authStore.NewAuthStore(auth.NewAuthenticator([]auth.AuthUser{{User: e.Users[0].Username, Pass: e.Users[0].Password}}))
++			r.accept.Add(1)
++			go r.serveEntry(r.entries[i], e.Name, store)
++		}
++	} else {
++		r.drainRequest, r.drainReceipt = &q, result
++		r.state = "draining"
++		if r.closeEntries() {
++			result.Result = "draining"
++		} else {
++			r.state = "degraded"
++		}
++	}
++	copy := *result
++	if copy.Result == "failed" {
++		return &copy, 503
++	}
++	return &copy, 200
++}
++
++// Caller holds mu. Only our descriptors are closed, never an external owner.
++func (r *hoopaControlRuntime) closeEntries() bool {
++	ok := true
++	for _, ln := range r.entries {
++		if err := ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
++			ok = false
++		}
++	}
++	for _, f := range r.reserved {
++		if err := f.Close(); err != nil && !errors.Is(err, os.ErrClosed) {
++			ok = false
++		}
++	}
++	r.entries, r.reserved = nil, nil
++	return ok
++}
++
++func (r *hoopaControlRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore) {
++	defer r.accept.Done()
++	for {
++		c, err := ln.Accept()
++		r.mu.Lock()
++		if err != nil {
++			if r.state == "open" {
++				r.state = "degraded"
++				r.closeEntries()
++			}
++			r.mu.Unlock()
++			return
++		}
++		if r.state != "open" {
++			r.mu.Unlock()
++			_ = c.Close()
++			continue
++		}
++		r.conns[c] = true
++		r.workers.Add(1)
++		r.mu.Unlock()
++		go func(c net.Conn) {
++			defer r.workers.Done()
++			defer func() { c.Close(); r.mu.Lock(); delete(r.conns, c); r.mu.Unlock() }()
++			mixed.HandleHoopaConn(c, tunnel.Tunnel, store, inbound.WithInName(name), inbound.WithSpecialRules(""), inbound.WithSpecialProxy(""))
++		}(c)
++	}
++}
++
++func (r *hoopaControlRuntime) stop() {
++	r.mu.Lock()
++	r.state = "stopped" // Prevent any later activate/Add before waiting.
++	r.closeEntries()
++	r.mu.Unlock()
++	if r.server != nil {
++		_ = r.server.Close()
++	} else if r.controller != nil {
++		_ = r.controller.Close()
++	}
++	r.accept.Wait()
++	r.mu.Lock()
++	for c := range r.conns {
++		_ = c.Close()
++	}
++	r.mu.Unlock()
++	done := make(chan struct{})
++	go func() { r.workers.Wait(); close(done) }()
++	select {
++	case <-done:
++	case <-time.After(2 * time.Second):
++	}
++}
+--- /dev/null
++++ b/hoopa_control_v1_test.go
+@@ -0,0 +1,822 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"bytes"
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strconv"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"syscall"
++	"testing"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/outboundgroup"
++	wire "github.com/metacubex/mihomo/component/corecontrol"
++	"github.com/metacubex/mihomo/component/hoopaguard"
++	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	"github.com/metacubex/mihomo/config"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/hub/executor"
++	"github.com/metacubex/mihomo/log"
++	"github.com/metacubex/mihomo/tunnel"
++)
++
++func controlTestJSON(t *testing.T, value any) []byte {
++	t.Helper()
++	raw, err := json.Marshal(value)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return raw
++}
++func controlTestReserve(t *testing.T) (*os.File, string) {
++	t.Helper()
++	ln, err := net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	address := ln.Addr().String()
++	ln.Close()
++	file, err := hoopaguard.Reserve(address)
++	if err != nil {
++		t.Fatal("fixture reservation:", err)
++	}
++	t.Cleanup(func() { file.Close() })
++	return file, address
++}
++func controlTestPort(t *testing.T, address string) uint16 {
++	t.Helper()
++	_, port, err := net.SplitHostPort(address)
++	if err != nil {
++		t.Fatal(err)
++	}
++	n, err := strconv.Atoi(port)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return uint16(n)
++}
++func controlTestProfile(t *testing.T, addresses []string, controller string) profile.Config {
++	t.Helper()
++	p := profile.Config{Mode: "rule", LogLevel: "silent", FindProcessMode: "off", Controller: controller, Secret: strings.Repeat("s", 32), Hosts: map[string]string{}, Proxies: []profile.Node{{Name: "node:a", Type: "direct"}, {Name: "node:b", Type: "direct"}}, Groups: []profile.Group{{Name: "group:route", Type: "select", Proxies: []string{"node:a", "node:b"}}}, Rules: []string{"DOMAIN,alpha.test,group:route", "MATCH,node:a"}}
++	for i, address := range addresses {
++		p.Listeners = append(p.Listeners, profile.Entry{Name: fmt.Sprintf("entry-%c", 'a'+i), Type: "mixed", Listen: "127.0.0.1", Port: controlTestPort(t, address), Users: []profile.User{{Username: strings.Repeat(string(rune('u'+i)), 32), Password: strings.Repeat(string(rune('p'+i)), 32)}}})
++	}
++	return p
++}
++
++type controlTestFixture struct {
++	r         *hoopaControlRuntime
++	cfg       *config.Config
++	addresses []string
++	files     []*os.File
++	client    *http.Client
++	transport *http.Transport
++	url       string
++}
++
++func newControlTestFixture(t *testing.T) *controlTestFixture {
++	t.Helper()
++	oldProxies, oldProviders, oldRules, oldRP := tunnel.Proxies(), tunnel.Providers(), tunnel.Rules(), tunnel.RuleProviders()
++	// This serial main-package basic context has never installed SubRules and
++	// has no getter for that hidden global. Root approved restoring nil only here.
++	if len(oldRules) != 0 {
++		t.Fatal("unknown nonempty old rules; cannot snapshot hidden SubRules")
++	}
++	oldHome, oldConfig := C.Path.HomeDir(), C.Path.Config()
++	oldLevel := log.Level()
++	oldProtected := C.HoopaProtected
++	t.Cleanup(func() {
++		tunnel.UpdateProxies(oldProxies, oldProviders)
++		tunnel.UpdateRules(oldRules, nil, oldRP)
++		C.SetHomeDir(oldHome)
++		C.SetConfig(oldConfig)
++		C.HoopaProtected = oldProtected
++		log.SetLevel(oldLevel)
++	})
++	fixture := &controlTestFixture{}
++	for i := 0; i < 2; i++ {
++		file, address := controlTestReserve(t)
++		fixture.files = append(fixture.files, file)
++		fixture.addresses = append(fixture.addresses, address)
++	}
++	controller, address := controlTestReserve(t)
++	p := controlTestProfile(t, fixture.addresses, address)
++	raw := controlTestJSON(t, p)
++	if _, err := profile.Validate(raw, "generation:gate-test"); err != nil {
++		t.Fatal("fixture profile:", err)
++	}
++	directory := filepath.Join(t.TempDir(), "home")
++	if err := os.Mkdir(directory, 0700); err != nil {
++		t.Fatal(err)
++	}
++	C.SetHomeDir(directory)
++	cfg, err := executor.ParseWithBytes(raw)
++	if err != nil {
++		t.Fatal("real parser:", err)
++	}
++	fixture.cfg = cfg
++	tunnel.UpdateProxies(cfg.Proxies, cfg.Providers)
++	tunnel.UpdateRules(cfg.Rules, nil, cfg.RuleProviders)
++	r := &hoopaControlRuntime{state: "closed", runID: "run:gate-test", generation: "generation:gate-test", hash: controlDigest(raw), secret: p.Secret, controllerAddress: p.Controller, declaredEntries: p.Listeners, reserved: append([]*os.File(nil), fixture.files...), conns: map[net.Conn]bool{}}
++	fixture.r = r
++	r.snapshot, err = r.readSnapshot()
++	if err != nil {
++		t.Fatal("actual snapshot:", err)
++	}
++	r.snapshotSHA, err = r.snapshot.Digest()
++	if err != nil {
++		t.Fatal(err)
++	}
++	r.controller, err = hoopaguard.Listen(controller)
++	if err != nil {
++		t.Fatal(err)
++	}
++	r.server = &http.Server{Handler: r, ReadHeaderTimeout: time.Second, ReadTimeout: 2 * time.Second, WriteTimeout: 2 * time.Second, IdleTimeout: time.Second}
++	served := make(chan error, 1)
++	go func() { served <- r.server.Serve(r.controller) }()
++	transport := &http.Transport{Proxy: nil, DisableKeepAlives: true}
++	fixture.transport = transport
++	fixture.client = &http.Client{Transport: transport, Timeout: 3 * time.Second}
++	fixture.url = "http://" + address
++	t.Cleanup(func() {
++		r.stop()
++		transport.CloseIdleConnections()
++		select {
++		case err := <-served:
++			if !errors.Is(err, http.ErrServerClosed) {
++				t.Error("controller server exit:", err)
++			}
++		case <-time.After(3 * time.Second):
++			t.Error("controller server not collected")
++		}
++	})
++	return fixture
++}
++func (f *controlTestFixture) mutation(operation string) wire.Mutation {
++	return wire.Mutation{SchemaVersion: 1, Operation: operation, OperationID: "operation:" + operation, RunID: f.r.runID, ConfigGeneration: f.r.generation, ConfigSHA256: f.r.hash, SnapshotSHA256: f.r.snapshotSHA, RegistrationSHA256: strings.Repeat("d", 64)}
++}
++func (f *controlTestFixture) request(t *testing.T, method, path string, body []byte) (int, []byte) {
++	t.Helper()
++	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
++	defer cancel()
++	q, err := http.NewRequestWithContext(ctx, method, f.url+path, bytes.NewReader(body))
++	if err != nil {
++		t.Fatal(err)
++	}
++	q.Header.Set("Authorization", "Bearer "+f.r.secret)
++	if method == "POST" {
++		q.Header.Set("Content-Type", "application/json")
++	}
++	response, err := f.client.Do(q)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer response.Body.Close()
++	raw, err := io.ReadAll(io.LimitReader(response.Body, 65537))
++	if err != nil || len(raw) > 65536 {
++		t.Fatal("controller response bounds:", err)
++	}
++	return response.StatusCode, raw
++}
++func controlTestRefused(t *testing.T, address string) {
++	t.Helper()
++	conn, err := net.DialTimeout("tcp4", address, 200*time.Millisecond)
++	if conn != nil {
++		conn.Close()
++		t.Fatal("unexpected application listener")
++	}
++	if !errors.Is(err, syscall.ECONNREFUSED) {
++		t.Fatal("connect was not refused:", err)
++	}
++}
++func controlTestSocksGreeting(t *testing.T, address string) net.Conn {
++	t.Helper()
++	conn, err := net.DialTimeout("tcp4", address, time.Second)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { conn.Close() })
++	conn.SetDeadline(time.Now().Add(3 * time.Second))
++	if _, err := conn.Write([]byte{5, 1, 2}); err != nil {
++		t.Fatal(err)
++	}
++	reply := make([]byte, 2)
++	if _, err := io.ReadFull(conn, reply); err != nil || !bytes.Equal(reply, []byte{5, 2}) {
++		t.Fatal("actual SOCKS auth greeting:", reply, err)
++	}
++	return conn
++}
++func controlTestSocksAuth(t *testing.T, conn net.Conn, user profile.User) {
++	t.Helper()
++	packet := []byte{1, byte(len(user.Username))}
++	packet = append(packet, user.Username...)
++	packet = append(packet, byte(len(user.Password)))
++	packet = append(packet, user.Password...)
++	if _, err := conn.Write(packet); err != nil {
++		t.Fatal(err)
++	}
++	reply := make([]byte, 2)
++	if _, err := io.ReadFull(conn, reply); err != nil || !bytes.Equal(reply, []byte{1, 0}) {
++		t.Fatal("existing connection lost across drain:", reply, err)
++	}
++}
++
++func TestControlV1PresenceAndStartupRejection(t *testing.T) {
++	oldLevel := log.Level()
++	t.Cleanup(func() { log.SetLevel(oldLevel) })
++	for _, key := range []string{"HOOPA_CONTROL_PROTOCOL", "HOOPA_RUN_ID", "HOOPA_RUN_NONCE"} {
++		t.Run("presence-"+key, func(t *testing.T) {
++			for _, item := range os.Environ() {
++				name := strings.SplitN(item, "=", 2)[0]
++				if strings.HasPrefix(name, "HOOPA_") {
++					identityUnsetEnv(t, name)
++				}
++			}
++			if hoopaControlV1Requested() {
++				t.Fatal("fixture inherited protected presence")
++			}
++			t.Setenv(key, "")
++			if !hoopaControlV1Requested() || !hoopaGuardRequested() {
++				t.Fatal("empty present field fell through stock path")
++			}
++			if err := runHoopaControlV1(); !errors.Is(err, errHoopaGuard) {
++				t.Fatal("empty protocol environment accepted:", err)
++			}
++		})
++	}
++	// Each rejection has an otherwise valid private profile, but returns before
++	// ApplyConfig/reservations. The test never invokes the valid blocking run loop.
++	for _, name := range []string{"protocol", "run-id", "nonce", "generation", "hash", "identity", "identity-set", "trace", "version", "test-config", "inline-config", "stdin-config", "geodata", "post-up", "post-down", "ui", "controller", "unix", "pipe", "secret"} {
++		t.Run(name, func(t *testing.T) {
++			for _, item := range os.Environ() {
++				key := strings.SplitN(item, "=", 2)[0]
++				if strings.HasPrefix(key, "HOOPA_") {
++					identityUnsetEnv(t, key)
++				}
++			}
++			oldV, oldT, oldG := version, testConfig, geodataMode
++			oldHome, oldFile, oldInline := homeDir, configFile, configString
++			oldUI, oldCtl, oldUnix, oldPipe, oldSecret, oldUp, oldDown := externalUI, externalController, externalControllerUnix, externalControllerPipe, secret, postUp, postDown
++			oldLevel := log.Level()
++			t.Cleanup(func() {
++				version, testConfig, geodataMode = oldV, oldT, oldG
++				homeDir, configFile, configString = oldHome, oldFile, oldInline
++				externalUI, externalController, externalControllerUnix, externalControllerPipe, secret, postUp, postDown = oldUI, oldCtl, oldUnix, oldPipe, oldSecret, oldUp, oldDown
++				log.SetLevel(oldLevel)
++			})
++			version, testConfig, geodataMode = false, false, false
++			configString = ""
++			externalUI, externalController, externalControllerUnix, externalControllerPipe, secret, postUp, postDown = "", "", "", "", "", "", ""
++			homeDir = filepath.Join(t.TempDir(), "private")
++			if err := os.Mkdir(homeDir, 0700); err != nil {
++				t.Fatal(err)
++			}
++			configFile = filepath.Join(homeDir, "config.json")
++			raw := controlTestJSON(t, controlTestProfile(t, []string{"127.0.0.1:31001", "127.0.0.1:31002"}, "127.0.0.1:31003"))
++			if err := os.WriteFile(configFile, raw, 0600); err != nil {
++				t.Fatal(err)
++			}
++			for key, value := range map[string]string{"HOOPA_CONTROL_PROTOCOL": "1", "HOOPA_RUN_ID": "run:valid", "HOOPA_RUN_NONCE": strings.Repeat("a", 64), "HOOPA_GUARD_GENERATION": "generation:gate-test", "HOOPA_GUARD_CONFIG_SHA256": controlDigest(raw)} {
++				t.Setenv(key, value)
++			}
++			switch name {
++			case "protocol":
++				t.Setenv("HOOPA_CONTROL_PROTOCOL", "2")
++			case "run-id":
++				t.Setenv("HOOPA_RUN_ID", "")
++			case "nonce":
++				t.Setenv("HOOPA_RUN_NONCE", "bad")
++			case "generation":
++				t.Setenv("HOOPA_GUARD_GENERATION", "")
++			case "hash":
++				t.Setenv("HOOPA_GUARD_CONFIG_SHA256", strings.Repeat("b", 64))
++			case "identity":
++				t.Setenv("HOOPA_IDENTITY_HANDOFF", "")
++			case "identity-set":
++				t.Setenv("HOOPA_IDENTITY_HANDOFF_SET", "")
++			case "trace":
++				t.Setenv("HOOPA_TRACE_PROFILE", "5")
++			case "version":
++				version = true
++			case "test-config":
++				testConfig = true
++			case "inline-config":
++				configString = "anything"
++			case "stdin-config":
++				configFile = "-"
++			case "geodata":
++				geodataMode = true
++			case "post-up":
++				postUp = "not-executed"
++			case "post-down":
++				postDown = "not-executed"
++			case "ui":
++				externalUI = "x"
++			case "controller":
++				externalController = "x"
++			case "unix":
++				externalControllerUnix = "x"
++			case "pipe":
++				externalControllerPipe = "x"
++			case "secret":
++				secret = "x"
++			}
++			if err := runHoopaControlV1(); !errors.Is(err, errHoopaGuard) {
++				t.Fatal("startup option admitted:", err)
++			}
++		})
++	}
++}
++
++func TestControlV1HTTPRejectsBeforeMutation(t *testing.T) {
++	f := newControlTestFixture(t)
++	r := f.r
++	valid := controlTestJSON(t, f.mutation("activate"))
++	cases := []struct {
++		name  string
++		code  int
++		alter func(*http.Request)
++	}{
++		{"missing-auth", 401, func(q *http.Request) { q.Header.Del("Authorization") }},
++		{"duplicate-auth", 401, func(q *http.Request) { q.Header.Add("Authorization", "Bearer "+r.secret) }},
++		{"wrong-auth", 401, func(q *http.Request) { q.Header.Set("Authorization", "Bearer not-a-credential") }},
++		{"nonloopback", 401, func(q *http.Request) { q.RemoteAddr = "127.0.0.2:1234" }},
++		{"unknown-path", 409, func(q *http.Request) { q.URL.Path = "/configs"; q.RequestURI = q.URL.Path }},
++		{"wrong-method", 409, func(q *http.Request) { q.Method = "PUT" }},
++		{"query", 400, func(q *http.Request) { q.URL.RawQuery = "refresh=1"; q.RequestURI += "?refresh=1" }},
++		{"empty-query", 400, func(q *http.Request) { q.URL.ForceQuery = true; q.RequestURI += "?" }},
++		{"raw-path", 400, func(q *http.Request) { q.URL.RawPath = "/hoopa/v1/%61ctivate"; q.RequestURI = q.URL.RawPath }},
++		{"fragment", 400, func(q *http.Request) { q.URL.Fragment = "fragment" }},
++		{"absolute", 400, func(q *http.Request) {
++			q.URL.Scheme = "http"
++			q.URL.Host = "127.0.0.1:9999"
++			q.RequestURI = q.URL.String()
++		}},
++		{"transfer-encoding", 400, func(q *http.Request) { q.TransferEncoding = []string{"chunked"} }},
++		{"trailer", 400, func(q *http.Request) { q.Trailer = http.Header{"X-End": []string{"value"}} }},
++		{"missing-length", 400, func(q *http.Request) { q.ContentLength = -1 }},
++		{"empty-length", 400, func(q *http.Request) { q.ContentLength = 0 }},
++		{"oversized-length", 400, func(q *http.Request) { q.ContentLength = 4097 }},
++		{"wrong-length", 400, func(q *http.Request) { q.ContentLength++ }},
++		{"missing-content-type", 400, func(q *http.Request) { q.Header.Del("Content-Type") }},
++		{"duplicate-content-type", 400, func(q *http.Request) { q.Header.Add("Content-Type", "application/json") }},
++		{"content-type-parameters", 400, func(q *http.Request) { q.Header.Set("Content-Type", "application/json; charset=utf-8") }},
++		{"GET-body", 400, func(q *http.Request) { q.Method = "GET"; q.URL.Path = "/hoopa/v1/status"; q.RequestURI = q.URL.Path }},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			q := httptest.NewRequest("POST", "/hoopa/v1/activate", bytes.NewReader(valid))
++			q.RemoteAddr = "127.0.0.1:1234"
++			q.Header.Set("Authorization", "Bearer "+r.secret)
++			q.Header.Set("Content-Type", "application/json")
++			tc.alter(q)
++			w := httptest.NewRecorder()
++			r.ServeHTTP(w, q)
++			if w.Code != tc.code {
++				t.Fatal("wrong rejection:", w.Code, w.Body.String())
++			}
++			r.mu.Lock()
++			unchanged := r.state == "closed" && r.activationRequest == nil && r.drainRequest == nil && len(r.entries) == 0 && len(r.reserved) == 2
++			r.mu.Unlock()
++			if !unchanged {
++				t.Fatal("rejected request changed state/resources")
++			}
++			for _, address := range f.addresses {
++				controlTestRefused(t, address)
++			}
++		})
++	}
++	for name, change := range map[string]func(*wire.Mutation){"run": func(q *wire.Mutation) { q.RunID = "run:other" }, "generation": func(q *wire.Mutation) { q.ConfigGeneration = "generation:other" }, "config": func(q *wire.Mutation) { q.ConfigSHA256 = strings.Repeat("a", 64) }, "snapshot": func(q *wire.Mutation) { q.SnapshotSHA256 = strings.Repeat("b", 64) }} {
++		t.Run("binding-"+name, func(t *testing.T) {
++			q := f.mutation("activate")
++			change(&q)
++			if code, _ := f.request(t, "POST", "/hoopa/v1/activate", controlTestJSON(t, q)); code != 409 {
++				t.Fatal("bad binding consumed:", code)
++			}
++		})
++	}
++	for _, body := range [][]byte{bytes.Replace(valid, []byte(`"schema_version":1`), []byte(`"schema_version":1,"schema_version":1`), 1), append(append([]byte(nil), valid...), []byte(` {}`)...), []byte(`null`), controlTestJSON(t, f.mutation("drain"))} {
++		if code, _ := f.request(t, "POST", "/hoopa/v1/activate", body); code != 400 {
++			t.Fatal("wire/path ambiguity admitted:", code)
++		}
++	}
++	if r.state != "closed" || r.activation != nil || r.drainReceipt != nil {
++		t.Fatal("rejections consumed operation slots")
++	}
++}
++
++func TestControlV1NativeActivationDrainAndHistoricalRetry(t *testing.T) {
++	f := newControlTestFixture(t)
++	r := f.r
++	for i, file := range f.files {
++		listening, err := syscall.GetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, syscall.SO_ACCEPTCONN)
++		if err != nil || listening != 0 {
++			t.Fatal("initial app socket listening:", i, err)
++		}
++		controlTestRefused(t, f.addresses[i])
++	}
++	code, raw := f.request(t, "GET", "/hoopa/v1/snapshot", nil)
++	if code != 200 {
++		t.Fatal(code, string(raw))
++	}
++	snapshot, err := wire.DecodeSnapshot(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !reflect.DeepEqual(snapshot, r.snapshot) {
++		t.Fatal("actual snapshot mismatch")
++	}
++	activation := f.mutation("activate")
++	code, original := f.request(t, "POST", "/hoopa/v1/activate", controlTestJSON(t, activation))
++	if code != 200 {
++		t.Fatal(code, string(original))
++	}
++	result, err := wire.DecodeResult(original)
++	if err != nil || result.Result != "opened" {
++		t.Fatal(err)
++	}
++	for _, file := range f.files {
++		if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
++			t.Fatal("Listen left original reservation FD open")
++		}
++	}
++	for _, address := range f.addresses {
++		conn := controlTestSocksGreeting(t, address)
++		conn.Close()
++	}
++	existing := controlTestSocksGreeting(t, f.addresses[0])
++	if code, retry := f.request(t, "POST", "/hoopa/v1/activate", controlTestJSON(t, activation)); code != 200 || !bytes.Equal(retry, original) {
++		t.Fatal("identical activate not historical")
++	}
++	for _, different := range []wire.Mutation{func() wire.Mutation { q := activation; q.OperationID = "operation:another"; return q }(), func() wire.Mutation { q := activation; q.RegistrationSHA256 = strings.Repeat("e", 64); return q }()} {
++		if code, _ := f.request(t, "POST", "/hoopa/v1/activate", controlTestJSON(t, different)); code != 409 {
++			t.Fatal("occupied activation slot replaced:", code)
++		}
++	}
++	drain := f.mutation("drain")
++	bad := drain
++	bad.OperationID = activation.OperationID
++	if code, _ := f.request(t, "POST", "/hoopa/v1/drain", controlTestJSON(t, bad)); code != 409 {
++		t.Fatal("activate/drain reused ID")
++	}
++	code, drained := f.request(t, "POST", "/hoopa/v1/drain", controlTestJSON(t, drain))
++	if code != 200 {
++		t.Fatal(code, string(drained))
++	}
++	for _, address := range f.addresses {
++		controlTestRefused(t, address)
++	}
++	controlTestSocksAuth(t, existing, r.declaredEntries[0].Users[0])
++	existing.Close()
++	if code, retry := f.request(t, "POST", "/hoopa/v1/drain", controlTestJSON(t, drain)); code != 200 || !bytes.Equal(retry, drained) {
++		t.Fatal("identical drain not historical")
++	}
++	if code, retry := f.request(t, "POST", "/hoopa/v1/activate", controlTestJSON(t, activation)); code != 200 || !bytes.Equal(retry, original) {
++		t.Fatal("post-drain activate receipt lost")
++	}
++	for _, address := range f.addresses {
++		controlTestRefused(t, address)
++	}
++	code, raw = f.request(t, "GET", "/hoopa/v1/status", nil)
++	status, err := wire.DecodeStatus(raw)
++	if code != 200 || err != nil || status.State != "draining" || status.Activation == nil || status.Activation.Result != "opened" || status.Drain == nil {
++		t.Fatal("current state replaced by historical receipt:", code, err)
++	}
++}
++
++func controlTestAppSocketLinks(t *testing.T, files []*os.File) []string {
++	t.Helper()
++	var links []string
++	for _, file := range files {
++		info, err := file.Stat()
++		if err != nil {
++			t.Fatal(err)
++		}
++		links = append(links, fmt.Sprintf("socket:[%d]", info.Sys().(*syscall.Stat_t).Ino))
++	}
++	return links
++}
++func controlTestNoAppSocketFDs(t *testing.T, links []string) {
++	t.Helper()
++	names, err := os.ReadDir("/proc/self/fd")
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, entry := range names {
++		link, err := os.Readlink("/proc/self/fd/" + entry.Name())
++		if errors.Is(err, os.ErrNotExist) {
++			continue
++		}
++		if err != nil {
++			t.Fatal(err)
++		}
++		for _, owned := range links {
++			if link == owned {
++				t.Fatal("owned app socket FD leaked:", entry.Name())
++			}
++		}
++	}
++}
++
++func TestControlV1PartialListenFailureClosesOnlyOwnedSockets(t *testing.T) {
++	f := newControlTestFixture(t)
++	ownedLinks := controlTestAppSocketLinks(t, f.files)
++	r := f.r
++	competitorFile, err := hoopaguard.Reserve(f.addresses[1])
++	if err != nil {
++		t.Fatal(err)
++	}
++	competitor, err := hoopaguard.Listen(competitorFile)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer competitor.Close()
++	competitorDone := make(chan error, 1)
++	go func() {
++		for {
++			conn, err := competitor.Accept()
++			if err != nil {
++				competitorDone <- err
++				return
++			}
++			conn.SetDeadline(time.Now().Add(time.Second))
++			_, err = conn.Write([]byte("external-owner"))
++			conn.Close()
++			if err != nil {
++				competitorDone <- err
++				return
++			}
++		}
++	}()
++	t.Cleanup(func() {
++		competitor.Close()
++		select {
++		case err := <-competitorDone:
++			if !errors.Is(err, net.ErrClosed) {
++				t.Error("competitor:", err)
++			}
++		case <-time.After(2 * time.Second):
++			t.Error("competitor not collected")
++		}
++	})
++	began := make(chan struct{})
++	stop := make(chan struct{})
++	probeDone := make(chan struct{})
++	var connected, received atomic.Int32
++	go func() {
++		defer close(probeDone)
++		close(began)
++		for {
++			select {
++			case <-stop:
++				return
++			default:
++			}
++			conn, err := net.DialTimeout("tcp4", f.addresses[0], 30*time.Millisecond)
++			if err != nil {
++				continue
++			}
++			connected.Add(1)
++			conn.SetDeadline(time.Now().Add(30 * time.Millisecond))
++			conn.Write([]byte{5, 1, 2})
++			var b [16]byte
++			n, _ := conn.Read(b[:])
++			received.Add(int32(n))
++			conn.Close()
++		}
++	}()
++	<-began
++	result, code := r.mutate(f.mutation("activate"))
++	close(stop)
++	<-probeDone
++	if code != 503 || result == nil || result.Result != "failed" || r.state != "degraded" {
++		t.Fatal("native second-listen failure was not terminal:", code, result, r.state)
++	}
++	if len(r.entries) != 0 || len(r.reserved) != 0 || len(r.conns) != 0 {
++		t.Fatal("partially opened resources retained")
++	}
++	for _, file := range f.files {
++		if _, err := file.Stat(); !errors.Is(err, os.ErrClosed) {
++			t.Fatal("owned reservation still open")
++		}
++	}
++	controlTestNoAppSocketFDs(t, ownedLinks)
++	controlTestRefused(t, f.addresses[0])
++	if received.Load() != 0 {
++		t.Fatal("partial listener emitted application protocol bytes")
++	}
++	t.Logf("partial-window successful TCP handshakes=%d; application bytes=%d; zero handshakes means narrow window not observed", connected.Load(), received.Load())
++	conn, err := net.DialTimeout("tcp4", f.addresses[1], time.Second)
++	if err != nil {
++		t.Fatal("competitor was stopped:", err)
++	}
++	conn.SetDeadline(time.Now().Add(time.Second))
++	b := make([]byte, len("external-owner"))
++	_, err = io.ReadFull(conn, b)
++	conn.Close()
++	if err != nil || string(b) != "external-owner" {
++		t.Fatal("competitor did not remain live:", err)
++	}
++	retry, retryCode := r.mutate(f.mutation("activate"))
++	if retryCode != 503 || retry == nil || *retry != *result {
++		t.Fatal("failed operation retried Listen")
++	}
++}
++
++func TestControlV1ConcurrentStateTransitions(t *testing.T) {
++	for _, kind := range []string{"identical-activate", "activate-drain", "activate-stop", "identical-activate-drain-stop"} {
++		t.Run(kind, func(t *testing.T) {
++			f := newControlTestFixture(t)
++			r := f.r
++			gate := make(chan struct{})
++			type answer struct {
++				operation string
++				result    *wire.Result
++				code      int
++			}
++			results := make(chan answer, 12)
++			var wg sync.WaitGroup
++			count := 1
++			if strings.HasPrefix(kind, "identical") {
++				count = 8
++			}
++			for i := 0; i < count; i++ {
++				wg.Add(1)
++				go func() {
++					defer wg.Done()
++					<-gate
++					result, code := r.mutate(f.mutation("activate"))
++					results <- answer{"activate", result, code}
++				}()
++			}
++			if strings.Contains(kind, "drain") {
++				wg.Add(1)
++				go func() {
++					defer wg.Done()
++					<-gate
++					result, code := r.mutate(f.mutation("drain"))
++					results <- answer{"drain", result, code}
++				}()
++			}
++			if strings.Contains(kind, "stop") {
++				wg.Add(1)
++				go func() { defer wg.Done(); <-gate; r.stop() }()
++			}
++			close(gate)
++			finished := make(chan struct{})
++			go func() { wg.Wait(); close(finished) }()
++			select {
++			case <-finished:
++			case <-time.After(5 * time.Second):
++				t.Fatal("transition/WaitGroup race hung")
++			}
++			close(results)
++			for a := range results {
++				if kind == "identical-activate" && a.code != 200 {
++					t.Fatal("identical activation not idempotent")
++				}
++				if a.code != 200 && a.code != 409 {
++					t.Fatal("nonlinear transition outcome:", a.code)
++				}
++				if a.code == 200 && (a.result == nil || a.operation == "activate" && a.result.Result != "opened" || a.operation == "drain" && a.result.Result != "draining") {
++					t.Fatal("successful result mismatch")
++				}
++				if a.code == 409 && a.result != nil {
++					t.Fatal("rejected transition consumed receipt")
++				}
++			}
++			r.mu.Lock()
++			state := r.state
++			entries, reserved := len(r.entries), len(r.reserved)
++			r.mu.Unlock()
++			if strings.Contains(kind, "stop") {
++				if state != "stopped" || entries != 0 || reserved != 0 {
++					t.Fatal("stop lost race:", state, entries, reserved)
++				}
++			} else if strings.Contains(kind, "drain") {
++				if state != "draining" {
++					t.Fatal("drain lost race:", state)
++				}
++			} else if state != "open" {
++				t.Fatal("activation lost:", state)
++			}
++		})
++	}
++}
++
++type controlTestCloseError struct {
++	net.Listener
++	failure error
++}
++
++func (l *controlTestCloseError) Close() error { l.Listener.Close(); return l.failure }
++func TestControlV1SyntheticCloseFailureIsDegraded(t *testing.T) {
++	// Only this wrapper injects a synthetic error; the underlying socket is real.
++	f := newControlTestFixture(t)
++	r := f.r
++	if result, code := r.mutate(f.mutation("activate")); code != 200 || result == nil {
++		t.Fatal(code)
++	}
++	injected := errors.New("synthetic close failure")
++	r.mu.Lock()
++	r.entries[0] = &controlTestCloseError{r.entries[0], injected}
++	r.mu.Unlock()
++	result, code := r.mutate(f.mutation("drain"))
++	if code != 503 || result == nil || result.Result != "failed" || r.state != "degraded" {
++		t.Fatal("close failure hidden")
++	}
++	for _, address := range f.addresses {
++		controlTestRefused(t, address)
++	}
++}
++
++func TestControlV1ActualProjectionAndReadonlyDrift(t *testing.T) {
++	for _, kind := range []string{"selector", "rules"} {
++		t.Run(kind, func(t *testing.T) {
++			f := newControlTestFixture(t)
++			r := f.r
++			actual, err := r.readSnapshot()
++			if err != nil {
++				t.Fatal(err)
++			}
++			for _, entry := range actual.Entries {
++				var expected profile.Entry
++				for _, e := range r.declaredEntries {
++					if e.Name == entry.Name {
++						expected = e
++					}
++				}
++				if entry.AuthSHA256 != controlDigest(controlTestJSON(t, expected.Users)) {
++					t.Fatal("auth projection not actual user-array encoding")
++				}
++			}
++			selector := f.cfg.Proxies["group:route"].Adapter().(*outboundgroup.Selector)
++			initial := selector.Now()
++			found := false
++			for _, p := range actual.Proxies {
++				if p.Name == "group:route" {
++					found = true
++					if p.Selected != initial || !reflect.DeepEqual(p.Members, []string{"node:a", "node:b"}) {
++						t.Fatal("selector expected values substituted for actual")
++					}
++				}
++			}
++			if !found || actual.Rules[0].Type != "Domain" || actual.Rules[0].Payload != "alpha.test" || actual.Rules[0].Target != "group:route" {
++				t.Fatal("actual routing projection incomplete")
++			}
++			r.mu.Lock()
++			if kind == "selector" {
++				if err := selector.Set("node:b"); err != nil {
++					t.Fatal(err)
++				}
++			} else {
++				tunnel.UpdateRules(f.cfg.Rules[1:], nil, f.cfg.RuleProviders)
++			}
++			r.mu.Unlock()
++			changed, err := r.readSnapshot()
++			if err != nil {
++				t.Fatal("drift fixture must remain valid:", err)
++			}
++			hash, err := changed.Digest()
++			if err != nil || hash == r.snapshotSHA {
++				t.Fatal("actual mutation not observed")
++			}
++			for _, path := range []string{"/hoopa/v1/status", "/hoopa/v1/snapshot"} {
++				if code, _ := f.request(t, "GET", path, nil); code != 503 {
++					t.Fatal("query accepted drift:", code)
++				}
++			}
++			if result, code := r.mutate(f.mutation("activate")); result != nil || code != 409 {
++				t.Fatal("activation accepted drift")
++			}
++			after, err := r.readSnapshot()
++			if err != nil || !reflect.DeepEqual(after, changed) || r.state != "closed" || r.activation != nil || r.drainReceipt != nil {
++				t.Fatal("readonly drift rejection repaired/mutated state")
++			}
++			r.mu.Lock()
++			if kind == "selector" {
++				selector.Set(initial)
++			} else {
++				tunnel.UpdateRules(f.cfg.Rules, nil, f.cfg.RuleProviders)
++			}
++			r.mu.Unlock()
++			if code, _ := f.request(t, "GET", "/hoopa/v1/snapshot", nil); code != 200 {
++				t.Fatal("original projection not recoverable by fixture restore")
++			}
++		})
++	}
++}
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -42,7 +42,7 @@
+ 	_, g := os.LookupEnv("HOOPA_GUARD_GENERATION")
+ 	_, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
+ 	_, set := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET")
+-	return h || g || identity || set
++	return h || g || identity || set || hoopaControlV1Requested()
+ }
+ 
+ func guardPrivateDir(path string) bool {
+@@ -138,6 +138,9 @@
+ }
+ 
+ func runHoopaGuard() (result error) {
++	if hoopaControlV1Requested() {
++		return runHoopaControlV1()
++	}
+ 	// Protected startup does not enter stock init, CLI override, reload or shell paths.
+ 	log.SetLevel(log.SILENT)
+ 	_, legacyHandoff := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
+--- a/main.go
++++ b/main.go
+@@ -84,6 +84,15 @@
+ 
+ 	_, _ = maxprocs.Set(maxprocs.Logger(func(string, ...any) {}))
+ 
++	// Basic control mode must reject conflicting CLI modes before any early exit.
++	if hoopaControlV1Requested() {
++		if err := runHoopaControlV1(); err != nil {
++			fmt.Fprintln(os.Stderr, "Hoopa protected configuration rejected")
++			os.Exit(1)
++		}
++		return
++	}
++
+ 	if len(os.Args) > 1 && os.Args[1] == "convert-ruleset" {
+ 		provider.ConvertMain(os.Args[2:])
+ 		return

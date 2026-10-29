@@ -1,0 +1,76 @@
+{
+  "schema": "hoopa-approved-basic-core-v1",
+  "approved_on": "2026-10-27",
+  "status": "accepted_bounded_basic_profile",
+  "binary": {
+    "version": "1.10.0",
+    "sha256": "2921c2468cf1e62099ac40a1872fbb58cc0048696a91c9dd920dc9790f27fabb",
+    "bytes": 51458731,
+    "upstream_commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041"
+  },
+  "goos": "linux",
+  "goarch": "amd64",
+  "protocol": 1,
+  "mode": "basic",
+  "capabilities": [
+    "authenticated-activate-v1",
+    "closed-start-v1",
+    "immutable-snapshot-v1"
+  ],
+  "installation_path": "supplied locally; revalidated by pinned-FD launcher and original process ownership proof",
+  "scope": [
+    "Restricted complete basic configuration and fixed core only",
+    "Private authenticated controller, closed app sockets, registered activation, irreversible drain with historical receipts",
+    "Independent complete app-first and domain-first configurations, HTTP CONNECT and SOCKS5 finite routing calibration",
+    "One actual module-combination launch/birth/same-PID exec/registration/activate/reopen/drain sample"
+  ],
+  "not_granted": [
+    "Source process identity or process routing",
+    "Durable telemetry or quality measurements (G01-G03 require current full-mode evidence)",
+    "Product operation recovery, manager-death matrix, T034 or P1 completion",
+    "BPF deployment, other platforms, arbitrary core versions/configurations, hot reload or dynamic selection",
+    "Resource budgets or system installation"
+  ],
+  "references": [
+    {
+      "path": "experiments/mihomo-events/core-basic-control-candidate-manifest.json",
+      "bytes": 8662,
+      "sha256": "0dbdd44ef66ea5042abe064dde513a7585fbeff6648fdd51ac91fb882d2a13bc"
+    },
+    {
+      "path": "experiments/gost-mihomo/p1-controller-validation.json",
+      "bytes": 3454,
+      "sha256": "2e085e811ac95f6b7d81b2dbad2cf13142266b2904f30737a05226132a914e16"
+    },
+    {
+      "path": "private/p1-basic-launcher-validation/receipt.json",
+      "bytes": 56790,
+      "sha256": "80759eb0595903d5a859965a2b8d849b452c733eaf7a42e5215cb384bb80b1ab"
+    },
+    {
+      "path": "private/p1-basic-launcher-validation/launcher-final-review.json",
+      "bytes": 5712,
+      "sha256": "0a26f9fde20563c14fab7e2728c0093988114cf64887cd24867f19cadb5bdeec"
+    },
+    {
+      "path": "private/p1-basic-fixture-validation/acceptance.json",
+      "bytes": 3960,
+      "sha256": "b71a1e75f812a6d8a4666ab1a0a00a230f6848fd09d9d85d79dc2c1cc13bad2f"
+    },
+    {
+      "path": "private/p1-basic-fixture-validation/freeze.json",
+      "bytes": 3173,
+      "sha256": "ab9d3d00bca9e9e468efdeea1a8278d8baa917bfd16ca66819bb230ef8751c63"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/basic-fixture-review.json",
+      "bytes": 4053,
+      "sha256": "0b3c0b292931756a22fe2c029579f5917c177350ee47128c8ad45703d6b43842"
+    },
+    {
+      "path": "testdata/runtime/basic-verified-bundle.json",
+      "bytes": 4755,
+      "sha256": "823680e294e43f10dede3c7cd772700b1a82db5360b6aa1e0b545be2a4f789bc"
+    }
+  ]
+}

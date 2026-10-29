@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "scope": "T132 fixed-kernel Fast Open child admission restriction; not T137",
+  "status": "fresh build and package checks recorded; core VM validation pending at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-tfo-core-guard/artifact/mihomo-identity-tfo-guard",
+    "bytes": 51176680,
+    "sha256": "e9dd96f3816bcc050bfcc472f8cd578bd4bf9a26f09923790df5481ebdadd9be"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-connector-candidate-manifest.json",
+    "bytes": 13390,
+    "sha256": "7e8040bea0538e6ee373d01154d44823d3846577b71316d6b0e016399cc9a24e"
+  },
+  "source": {
+    "fresh_applied": "private/t132-tfo-core-guard/artifact/source",
+    "reviewed_target": "private/t132-tfo-core-guard/reviewed-source",
+    "tree_sha256": "5477df44a455ddc7b2c2f33ab277356bcd02cfdc0d9a050e579a8bca46ed22af",
+    "tree_sha256_algorithm": "SHA256 of sorted relative entries as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1157,
+    "file_count": 963,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-tfo-core-guard/build-result.json",
+      "bytes": 173878,
+      "sha256": "059dd37ad6ca7dfa13ee2cb1c9f0e36d5a6e0e5b62f1c8617299e9732672342b"
+    }
+  },
+  "version_probe": {
+    "argv": [
+      "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-tfo-core-guard/artifact/mihomo-identity-tfo-guard",
+      "-v"
+    ],
+    "exit_code": 0,
+    "stdout": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time\n",
+    "stderr": ""
+  },
+  "version_interpretation": "No version ldflags: printed default1.10.0 is not source version; fixed source v1.19.26.",
+  "public_core_files": [
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/native_linux_amd64.go",
+        "bytes": 10173,
+        "sha256": "72d2baae3b5c8058cc2f030e72f53a9911ac85fd7f273b3bf1960c380fe7a35c"
+      },
+      "core": {
+        "path": "private/t132-tfo-core-guard/artifact/source/component/hoopaid/native_linux_amd64.go",
+        "bytes": 10173,
+        "sha256": "72d2baae3b5c8058cc2f030e72f53a9911ac85fd7f273b3bf1960c380fe7a35c"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/tcp_info_linux_amd64.go",
+        "bytes": 1578,
+        "sha256": "efbca2bd8bc8ee0e6520d8353b0204b70df4a15072c4213571d637966ea2e103"
+      },
+      "core": {
+        "path": "private/t132-tfo-core-guard/artifact/source/component/hoopaid/tcp_info_linux_amd64.go",
+        "bytes": 1578,
+        "sha256": "efbca2bd8bc8ee0e6520d8353b0204b70df4a15072c4213571d637966ea2e103"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/tcp_info_linux_amd64_test.go",
+        "bytes": 1316,
+        "sha256": "1d7b81fd02ff132604d7462a3f05a4148d1b3feb030ac98fb12320516095182b"
+      },
+      "core": {
+        "path": "private/t132-tfo-core-guard/artifact/source/component/hoopaid/tcp_info_linux_amd64_test.go",
+        "bytes": 1316,
+        "sha256": "1d7b81fd02ff132604d7462a3f05a4148d1b3feb030ac98fb12320516095182b"
+      },
+      "identical": true
+    }
+  ],
+  "tests": {
+    "kind": "public admission package race",
+    "passed_top_level": 20,
+    "passed_subtests": 101,
+    "skipped": 0,
+    "run": {
+      "path": "private/t132-tfo-core-guard/package-tests-v2-run.json",
+      "bytes": 284,
+      "sha256": "2784a1b7ac6bc05afe3ae7fe087749fd1c4de3c9b3ba9b9a88fbf7e7d929dadb"
+    },
+    "evidence": {
+      "path": "private/t132-tfo-core-guard/package-tests-v2.jsonl",
+      "bytes": 108846,
+      "sha256": "0e493a77640d9b804402d80787c725066ef734eef80fe1f75770138ccf244473"
+    },
+    "original_failure": {
+      "path": "private/t132-tfo-core-guard/package-tests.jsonl",
+      "bytes": 109180,
+      "sha256": "71942fe4faa8d9185d6abb622935fb27e7c054c790c12cf24d7e367369167f35"
+    },
+    "failure_correction": "Initial test expected EBADF; sandbox returned EPERM before resolving the invalid FD. Both raw errors now required to propagate; original failure preserved."
+  },
+  "kernel_profile": {
+    "release": "6.18.54.1-microsoft-standard-WSL2",
+    "image_sha256": "b3dc3a9c3774fda2b9d7bceac7495248df50a6e0cd4ba9596ef98933f384d495",
+    "tcp_info_options_offset": 5,
+    "tfo_child_mask": 128,
+    "release_is_not_integrity_attestation": true
+  },
+  "identity_capability": "unverified",
+  "formal_g01_new_samples": 0,
+  "core_runtime_validation": "pending; observer-only tfo-info-validation is separate",
+  "old_binary_unchanged": true
+}

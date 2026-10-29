@@ -1,0 +1,75 @@
+{
+  "schema": "hoopa-approved-app-core-v2",
+  "approved_on": "2026-10-28",
+  "status": "accepted_bounded_app_routing_profile",
+  "binary": {
+    "version": "1.10.0",
+    "sha256": "6ec6a329801a49e69ead6c093955a07c4d1098bdfb26b0b611eae0b5205f745b",
+    "bytes": 51636035,
+    "upstream_commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041"
+  },
+  "goos": "linux",
+  "goarch": "amd64",
+  "protocol": 2,
+  "mode": "basic-app-routing",
+  "capabilities": [
+    "authenticated-activate-v1",
+    "closed-start-v1",
+    "immutable-source-snapshot-v2",
+    "ordered-app-rules-v1",
+    "probe-qualified-groups-v1",
+    "unknown-ip-reject-v1"
+  ],
+  "installation_path": "supplied locally; exact binary and original process independently checked",
+  "scope": [
+    "Distinct v2 app profile; protected ordered rule matching without requiring telemetry FlowID",
+    "Unavailable destination IP stays unknown; ordered rejection and AND false dominance; original boolean path remains separate",
+    "Final isolated VM eight cases, four terminal502 with zero authenticated CONNECT/GET after handler shutdown; controlled NXDOMAIN and valid inside/outside DNS witnesses",
+    "Existing finite source/controller projection, probe/follow runtime and basic-v1 compatibility regressions on this exact static binary",
+    "1028-file frozen source, applied incremental patch, identical rebuild, actual private-FD static ELF preflight"
+  ],
+  "not_granted": [
+    "Original-process identity, process predicates, accounting, measured business ready latency or quality telemetry",
+    "Full T048 or T051 product application binding/Plan/Apply/rollback/manager-death acceptance; those remain subsequent integration tasks",
+    "Every DNS failure mode; real matrix uses controlled NXDOMAIN plus positive addresses",
+    "Every remote protocol handshake, arbitrary hot reload, TUN/system proxy, other platforms or resource budgets"
+  ],
+  "references": [
+    {
+      "path": "experiments/mihomo-events/core-app-ordered-v2-manifest.json",
+      "bytes": 12220,
+      "sha256": "60d0860b204b443b3a0cb3b44b087b2b576f16a3118638028f95eefb63d1c746"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0021-app-ordered-ip-unknown.patch",
+      "bytes": 10570,
+      "sha256": "aaf08626a6e732c4c61eff51a7a316b767d17dcfed12bbeb1963f6655396cc05"
+    },
+    {
+      "path": "private/us4-preparation/t048-core/vm-03/final-review.md",
+      "bytes": 4622,
+      "sha256": "991541740256256c5bcc271cb83533bfc38e6d8bb7de8efde25e9ef90a9ca91d"
+    },
+    {
+      "path": "private/us4-preparation/t048-core/reproduction/result.json",
+      "bytes": 1051,
+      "sha256": "9a9c216560c8154c4f61c2f2b81a744777416e7d7e23d931e1a9e96551fb5f3d"
+    },
+    {
+      "path": "private/us4-preparation/t048-core/elf-preflight-result.json",
+      "bytes": 300,
+      "sha256": "799f88185cad46e0c2e2631c6e22bb88b1bb48b1fa75d5dd93e634a783ca4b24"
+    },
+    {
+      "path": "private/us4-preparation/t048-core/root-core-acceptance.md",
+      "bytes": 2959,
+      "sha256": "5c990d0faa8e9047bfd825013e5274be9ce636b234c319993eae2fcd12af332e"
+    }
+  ],
+  "build_environment": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux",
+    "GOARCH": "amd64",
+    "GOAMD64": "v1"
+  }
+}

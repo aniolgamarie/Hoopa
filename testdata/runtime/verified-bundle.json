@@ -1,0 +1,167 @@
+{
+  "schema": "hoopa-p1-verified-bundle-reference-v2",
+  "status": "test_definition_reference_only",
+  "core_sha256": "5e934bdc28dd07e7b7f8cf372d1d4f7a553a3aa3bd835de24f982dfed011a388",
+  "baseline_bundle": "app-first",
+  "apply_target_bundle": "domain-first",
+  "bundles": {
+    "app-first": {
+      "source_envelope": {
+        "path": "private/t016-ordered-routing-vm-preparation/inputs/app-first.json",
+        "bytes": 8408,
+        "sha256": "a09e2b4903ea262eaa5fcbbcb919ed45f49f0ebdbc1d9c2b1240e177f3ef2bb7"
+      },
+      "copied_run_envelope": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/inputs/app-first.json",
+        "bytes": 8408,
+        "sha256": "a09e2b4903ea262eaa5fcbbcb919ed45f49f0ebdbc1d9c2b1240e177f3ef2bb7"
+      },
+      "registration": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/evidence/registration.json",
+        "bytes": 95119,
+        "sha256": "2068ef0c3397ad9bdf238af7bce0b14b2b230a99f6cc87c264422df0cea95abb"
+      },
+      "guest_image": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/guest-image.json",
+        "bytes": 245804,
+        "sha256": "d37f0cfefdbadd03e68bba09b544dd9aaa9a3d632579fe6aa66909e5ee38fe48"
+      },
+      "canonical": {
+        "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-app-first-i8diex10/canonical-output/canonical.json",
+        "bytes": 1233,
+        "sha256": "b74fc7915be6df491535ad9103d776e190ab320e44488e3a5f45c783b8cc898c"
+      },
+      "actual_runtime_route": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/evidence/runtime-route-map.json",
+        "bytes": 733,
+        "sha256": "89d95d8b79ff658ec0d43b72c81188c98c965fd6aa397aa607c2616f5326d2f9"
+      },
+      "original_run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10",
+      "spec_json_pointer": "/spec",
+      "bundle_json_pointer": "/bundle",
+      "config_json_pointer": "/bundle/config",
+      "config_encoding": "base64",
+      "decoded_config_bytes": 1685,
+      "decoded_config_sha256": "f4b4d08a0e27cad4a60d3277b4df0c51e651039200328fad65dfa52cc0a9867b",
+      "compiler_bundle_digest": "6560340382f580faf19383d037db384bfd3511e8a7aca6d3d2282cf20f5e376c",
+      "application_entries": [
+        "entry-a",
+        "entry-b"
+      ],
+      "expected_node_by_entry": {
+        "entry-a": "node:3e5a0f4e5e8113199486853fc7e7fa181b4025e6a4a08c2e6503560a8c0d8ac1",
+        "entry-b": "node:3e5a0f4e5e8113199486853fc7e7fa181b4025e6a4a08c2e6503560a8c0d8ac1"
+      },
+      "matched_rule_by_entry": {
+        "entry-a": "app-a",
+        "entry-b": "app-b"
+      },
+      "traffic_target_domain": "alpha.test",
+      "source_requirements": {
+        "profile_id": "linux_amd64_loopback_connect_v1",
+        "source_schema_version": 5,
+        "required_fields": [
+          "instance",
+          "program_name",
+          "program_path"
+        ]
+      },
+      "contains_program_rules": true,
+      "complete_bundle_required": true,
+      "rules_may_be_removed": false,
+      "production_format_conversion_executed": false,
+      "product_runtime_executed": false
+    },
+    "domain-first": {
+      "source_envelope": {
+        "path": "private/t016-ordered-routing-vm-preparation/inputs/domain-first.json",
+        "bytes": 8411,
+        "sha256": "8b65905d5fcb5aa2e8c2405924b79cf9f46f2781b566c37178ce8cd9c616f1b3"
+      },
+      "copied_run_envelope": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/inputs/domain-first.json",
+        "bytes": 8411,
+        "sha256": "8b65905d5fcb5aa2e8c2405924b79cf9f46f2781b566c37178ce8cd9c616f1b3"
+      },
+      "registration": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/evidence/registration.json",
+        "bytes": 95127,
+        "sha256": "a99f0f2b5239b61583fb385f80864605d05c69b4ef668d979222f5903ce11751"
+      },
+      "guest_image": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/guest-image.json",
+        "bytes": 245804,
+        "sha256": "d37f0cfefdbadd03e68bba09b544dd9aaa9a3d632579fe6aa66909e5ee38fe48"
+      },
+      "canonical": {
+        "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-domain-first-f3x1_ryu/canonical-output/canonical.json",
+        "bytes": 1236,
+        "sha256": "c429702a14c171e1448b4276e3c50e8b95688a61f3840122df199e63d710dd4f"
+      },
+      "actual_runtime_route": {
+        "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/evidence/runtime-route-map.json",
+        "bytes": 733,
+        "sha256": "cd97cf9327bdf0bf1ef97d95c2c66a82d849d235e7fcee68ce947914845540a3"
+      },
+      "original_run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu",
+      "spec_json_pointer": "/spec",
+      "bundle_json_pointer": "/bundle",
+      "config_json_pointer": "/bundle/config",
+      "config_encoding": "base64",
+      "decoded_config_bytes": 1685,
+      "decoded_config_sha256": "fa1137eb98a7f224677c294405d59d5e99a42f1f599e9c71d667ed892ab31bbc",
+      "compiler_bundle_digest": "7e85640193e2ee406c4f20586140c46e6aa58aebbc39ad62256e84d1f2085540",
+      "application_entries": [
+        "entry-a",
+        "entry-b"
+      ],
+      "expected_node_by_entry": {
+        "entry-a": "node:74bff067390830a4c99704d09caaa6ba4ecd0f5e3deb826837b72d1d8b62a02b",
+        "entry-b": "node:74bff067390830a4c99704d09caaa6ba4ecd0f5e3deb826837b72d1d8b62a02b"
+      },
+      "matched_rule_by_entry": {
+        "entry-a": "domain",
+        "entry-b": "domain"
+      },
+      "traffic_target_domain": "alpha.test",
+      "source_requirements": {
+        "profile_id": "linux_amd64_loopback_connect_v1",
+        "source_schema_version": 5,
+        "required_fields": [
+          "instance",
+          "program_name",
+          "program_path"
+        ]
+      },
+      "contains_program_rules": true,
+      "complete_bundle_required": true,
+      "rules_may_be_removed": false,
+      "production_format_conversion_executed": false,
+      "product_runtime_executed": false
+    }
+  },
+  "public_acceptance": {
+    "path": "experiments/mihomo-events/source5-ordered-routing-validation.json",
+    "bytes": 41981,
+    "sha256": "ae251460f24898eec8a9c94304647b1d34da3df06f1e0515ca413da28ea972ba",
+    "schema": "hoopa-t016-ordered-routing-validation-v1",
+    "status": "finite_nine_row_ordered_route_and_unknown_matrix_accepted"
+  },
+  "root_acceptance": {
+    "path": "private/t016-multi-entry-preparation/root-ordered-routing-runtime-acceptance.json",
+    "bytes": 318313,
+    "sha256": "08ddac0c50674046387ef8ea421fa166b084ee5816c893e3aaea40d84407405e",
+    "schema": "hoopa-t016-ordered-routing-runtime-root-acceptance-v1",
+    "status": "finite_nine_row_ordered_route_and_unknown_matrix_accepted"
+  },
+  "final_routing_acceptance": {
+    "path": "experiments/mihomo-events/source5-routing-acceptance.json",
+    "bytes": 130439,
+    "sha256": "acb2c953a71d63b02ac1c11ac0e94008ebfcef7bee065d28b6b9be4f09274a24"
+  },
+  "controlled_environment": "P0 candidate source profile and privileges must be available; this is not default privilege deployment evidence",
+  "credentials_copied": false,
+  "binaries_copied": false,
+  "production_format_conversion_executed": false,
+  "product_runtime_executed": false
+}

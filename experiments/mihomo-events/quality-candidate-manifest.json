@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "scope": "T134_quality_ready_actual_route_and_segment_bytes_local_not_T137",
+  "status": "built_from_clean_fixed_upstream_plus_001_to_006; local_T134_passed; formal_gates_not_passed",
+  "date": "2026-10-23",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "pristine_checkout": "/tmp/hoopa-mihomo-v1.19.26-audit/source",
+    "status_short": "",
+    "provenance": {
+      "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/upstream-provenance.json",
+      "bytes": 433,
+      "sha256": "182ae95264a569a4e79d07b007c7081ca34010115589040b8a992c57a7bb02db"
+    },
+    "source_lock_sha256": "d074c0c12f09a9e5e0780061f5bc20bb0b9ecaa59bff748f5555ce1886af37e7"
+  },
+  "source": {
+    "reviewed_target": "/tmp/hoopa-t134-m3_248tu/source",
+    "fresh_applied": "/tmp/hoopa-t134-artifact-ul72y63w/source",
+    "tree_sha256": "72643eed0da30d773cbd439e9fcbfb05fd9fe8e827504ddaa5d337a22ebe7384",
+    "tree_sha256_algorithm": "SHA256 of sorted relative path entries encoded as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; root/.git excluded",
+    "full_file_contents_paths_symlinks_and_modes_equal": true,
+    "apply_evidence": {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/apply-evidence.json",
+      "bytes": 5831,
+      "sha256": "92cdce391fe8f79041ec51ff438ee7621cc9e07044459d4571e09a12f5bab9af"
+    }
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    }
+  ],
+  "changed_files_since_005": [
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/base.go",
+      "bytes": 9791,
+      "sha256": "ef0c57b70607c30c30498da9a0945632d62091a21ec2427d14554ab9182e974e"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/direct.go",
+      "bytes": 2862,
+      "sha256": "3a2d9527c97c4a14a6a1c4d181fa8ec5569329791e09c358a63786de4d648dc8"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/hoopa_quality.go",
+      "bytes": 761,
+      "sha256": "67798714d620d6fd6fe78b45c379857cf9135fed20aa59b07b90fe4cf67f1028"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/hoopa_quality_test.go",
+      "bytes": 8476,
+      "sha256": "33f6f31fb6a70d8cab2981d1c66700617cd17b35e364ef3960b9a54dd14eb508"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/http.go",
+      "bytes": 4911,
+      "sha256": "f6fae20e309c9bf2156cc352959395862a811d1dc58c5ec1ca54a05d92e1543c"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/adapter/outbound/socks5.go",
+      "bytes": 6531,
+      "sha256": "7cdcfc973edcc463e122f13a26108758ff73e75522ffac598c98b507f33b091f"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/common/callback/callback.go",
+      "bytes": 1175,
+      "sha256": "922c65899a55d1c895004f432761b11ce6b8bfd5b6960f29f26f27d4092474a9"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/common/callback/close_callback.go",
+      "bytes": 1288,
+      "sha256": "4bcff1304b659fefcea5d51f9c34b5033c109c01fc554fd27395b534f43377cb"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/lifecycle_linux.go",
+      "bytes": 3644,
+      "sha256": "fc004242f49a5d53619845726b49128b128331b625e0648730fca3b8a0862e86"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/quality_linux.go",
+      "bytes": 9923,
+      "sha256": "c94748be3b61c0db01bdc279f460245fcf50be76d74561da88aef8513d3fbf37"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/quality_linux_test.go",
+      "bytes": 6473,
+      "sha256": "cfc2f345f4e3cc8f5c11eb947099937121ea2bdc990fe9651aafeaa010f14132"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/telemetrywire/quality_state.go",
+      "bytes": 3561,
+      "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/telemetrywire/quality_v2.go",
+      "bytes": 9494,
+      "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/telemetrywire/source_event.go",
+      "bytes": 11954,
+      "sha256": "97e47b4d1c09a78c58705bdf2145e3e6b1ac8d8b48e1aea2c52a68fd857c1b9a"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/telemetrywire/state.go",
+      "bytes": 5868,
+      "sha256": "b524b089d20d4227d4a0dff9296b58c264dc6e661f3b4e0be3c1ae36813aa273"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/component/hoopatrace/trace_linux.go",
+      "bytes": 22634,
+      "sha256": "862a7f19de8e17bf6478c4403b85806a778398f7ff21640432892c72d02b26d2"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/constant/hoopa_quality.go",
+      "bytes": 981,
+      "sha256": "b5669e7d378b586ab6f73949b835c18af29231dde6798b0e838a6645d2704e19"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/tunnel/hoopa_quality_dns_test.go",
+      "bytes": 5381,
+      "sha256": "645afd21951108aa93121a3d3a1f7f9c74dc941003f11212d98d15f8b03452c6"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/tunnel/statistic/tracker.go",
+      "bytes": 6818,
+      "sha256": "68c25c74196ab6e94a09ec884c9b4d4816a690f457816b17d7b15f98d9a9ae70"
+    },
+    {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/tunnel/tunnel.go",
+      "bytes": 23367,
+      "sha256": "4115f9a766002ec320bcca42a0dc545c6d540d3ed4aa3e10f52d3cc0474a3b7a"
+    }
+  ],
+  "shared_pure_production_files": [
+    {
+      "hoopa_path": "protocol/telemetrywire/counter_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/counter_event.go",
+      "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/manifest.go",
+      "core_path": "component/hoopatrace/telemetrywire/manifest.go",
+      "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/quality_state.go",
+      "core_path": "component/hoopatrace/telemetrywire/quality_state.go",
+      "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/quality_v2.go",
+      "core_path": "component/hoopatrace/telemetrywire/quality_v2.go",
+      "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/recovery.go",
+      "core_path": "component/hoopatrace/telemetrywire/recovery.go",
+      "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/scalars.go",
+      "core_path": "component/hoopatrace/telemetrywire/scalars.go",
+      "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/source_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/source_event.go",
+      "sha256": "97e47b4d1c09a78c58705bdf2145e3e6b1ac8d8b48e1aea2c52a68fd857c1b9a",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/state.go",
+      "core_path": "component/hoopatrace/telemetrywire/state.go",
+      "sha256": "b524b089d20d4227d4a0dff9296b58c264dc6e661f3b4e0be3c1ae36813aa273",
+      "byte_identical": true
+    }
+  ],
+  "dependencies": {
+    "unchanged_from_001_to_005": true,
+    "compared_to": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/source",
+    "files": [
+      {
+        "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/go.mod",
+        "bytes": 6961,
+        "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+      },
+      {
+        "path": "/tmp/hoopa-t134-artifact-ul72y63w/source/go.sum",
+        "bytes": 29819,
+        "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+      }
+    ],
+    "downloads_this_turn": false
+  },
+  "build": {
+    "toolchain": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+    "version": "go1.27.3 linux/amd64",
+    "cwd": "/tmp/hoopa-t134-artifact-ul72y63w/source",
+    "env": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/tmp/hoopa-mihomo-events-buildcache"
+    },
+    "argv": [
+      "go",
+      "build",
+      "-p=2",
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-X github.com/metacubex/mihomo/constant.Version=hoopa-t134-quality-final -X github.com/metacubex/mihomo/constant.BuildTime=2026-10-23",
+      "-o",
+      "/tmp/hoopa-t134-artifact-ul72y63w/mihomo-quality",
+      "."
+    ],
+    "exit_code": 0,
+    "log": {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build_info": {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/build-info.log",
+      "bytes": 10474,
+      "sha256": "2db39f848dec859e8f056bcc4a1307396565610fa05df8c0e35286468240264b"
+    },
+    "version_log": {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/version.log",
+      "bytes": 74,
+      "sha256": "fc9c38dfb9cf7b8b27479f01bbce34293408c082ade6f0ab878bd85c3a7a2d0c"
+    },
+    "binary": {
+      "path": "/tmp/hoopa-t134-artifact-ul72y63w/mihomo-quality",
+      "bytes": 50630932,
+      "sha256": "9d52edee280d7e4893911e3c4a6ae43150cf4914421431f7ee19567505459b29"
+    },
+    "core_binary_race_instrumented": false,
+    "binary_in_git": false
+  },
+  "event_contract": {
+    "path": "specs/001-hoopa-proxy-manager/contracts/telemetry-quality-v2.md",
+    "bytes": 8081,
+    "sha256": "13afd85564fd2ff1a0c87c6b1025cf887f470da9e3423a0e70090dc428f49bda"
+  },
+  "enabled_by": {
+    "HOOPA_TRACE_PROFILE": "2",
+    "HOOPA_TRACE_ROUTE_MAP": "absolute path to verified bundle route map"
+  },
+  "validated_local_scope": [
+    "strict v2 and retained v1 exact raw decode/reopen",
+    "DIRECT ordinary TCP, HTTP CONNECT 200 and complete accepted SOCKS5 proof",
+    "actual Conn route frozen before first measured I/O, inline stable node/group IDs",
+    "old long connection retained across group switch, rename/new generation leaves old raw intact",
+    "flow cumulative equals original segments plus unallocated at same cutoff",
+    "real five success flows and three same-flow failure/retry cases",
+    "separate targeted slow DNS, partial-write, timeout, cancellation and unknown/lazy wrapper tests"
+  ],
+  "not_validated": [
+    "connect_initiator_v1 identity backend T132",
+    "named subscription provider production mapping",
+    "whole-binary DNS E2E",
+    "TLS/HTTPS proxy authentication, other SOCKS address families and untested protocols/TFO/lazy network protocols",
+    "formal T127/T128/T129/T137/T018 gates, P1 production functionality",
+    "UDP/QUIC, SQL ledger, host power-loss/disk-full, SSH/suspend, other platforms and product performance budgets"
+  ],
+  "old_artifacts_preserved": true
+}

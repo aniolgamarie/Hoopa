@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "format_note": "Valid YAML envelope; raw_yaml contains deliberately malformed or ambiguous candidate payloads for future parser tests.",
+  "cases": [
+    {
+      "id": "malformed-yaml",
+      "raw_yaml": "proxies: [\n",
+      "expected_reason": "invalid_yaml"
+    },
+    {
+      "id": "duplicate-identity",
+      "raw_yaml": "proxies:\n  - {name: US first, type: socks5, server: 127.0.0.1, port: 24001}\n  - {name: US second, type: socks5, server: 127.0.0.1, port: 24001}\n",
+      "expected_reason": "ambiguous_node_identity"
+    }
+  ]
+}

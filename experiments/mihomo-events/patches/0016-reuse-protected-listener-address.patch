@@ -1,0 +1,209 @@
+--- a/component/hoopaguard/socket_linux.go
++++ b/component/hoopaguard/socket_linux.go
+@@ -12,8 +12,9 @@
+ 
+ var errReservation = errors.New("protected socket reservation unavailable")
+ 
+-// Reserve binds without listen: a conflicting later endpoint cannot briefly
+-// open an earlier entry. All reservations belong to this private core instance.
++// Reserve binds without listening. Reusable reservations may share an endpoint
++// until Listen; an existing listener still prevents a new reservation. Startup
++// must close all owned sockets if any reservation or Listen fails.
+ func Reserve(address string) (*os.File, error) {
+ 	host, portText, err := net.SplitHostPort(address)
+ 	port, parseErr := strconv.Atoi(portText)
+@@ -25,6 +26,10 @@
+ 		return nil, errReservation
+ 	}
+ 	f := os.NewFile(uintptr(fd), "hoopa-reserved-tcp")
++	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
++		f.Close()
++		return nil, errReservation
++	}
+ 	if err := syscall.Bind(fd, &syscall.SockaddrInet4{Port: port, Addr: [4]byte{127, 0, 0, 1}}); err != nil {
+ 		f.Close()
+ 		return nil, errReservation
+--- a/component/hoopaguard/socket_linux_test.go
++++ b/component/hoopaguard/socket_linux_test.go
+@@ -3,6 +3,7 @@
+ package hoopaguard
+ 
+ import (
++	"io"
+ 	"net"
+ 	"os"
+ 	"syscall"
+@@ -10,59 +11,143 @@
+ 	"time"
+ )
+ 
+-func TestHoopaGuardReservationNoListen(t *testing.T) {
++// Linux amd64 SO_REUSEPORT. It must remain disabled on protected sockets.
++const guardTestReusePort = 15
++
++func guardNetworkTest(t *testing.T) {
++	t.Helper()
+ 	if os.Getenv("HOOPA_GUARD_NETWORK_TEST") != "1" {
+-		t.Skip("explicit local socket permission required")
++		t.Skip("explicit owned guest socket permission required")
+ 	}
++}
++
++func guardFreeAddress(t *testing.T) string {
++	t.Helper()
+ 	pick, err := net.Listen("tcp4", "127.0.0.1:0")
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	t.Cleanup(func() { _ = pick.Close() })
+ 	address := pick.Addr().String()
+-	pick.Close()
+-	reserved, err := Reserve(address)
++	if err := pick.Close(); err != nil {
++		t.Fatal(err)
++	}
++	return address
++}
++
++func guardReserve(t *testing.T, address string) *os.File {
++	t.Helper()
++	file, err := Reserve(address)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	defer reserved.Close()
+-	for option, want := range map[int]int{syscall.SO_ACCEPTCONN: 0, syscall.SO_REUSEADDR: 0} {
+-		got, err := syscall.GetsockoptInt(int(reserved.Fd()), syscall.SOL_SOCKET, option)
++	t.Cleanup(func() { _ = file.Close() })
++	for option, want := range map[int]int{syscall.SO_ACCEPTCONN: 0, syscall.SO_REUSEADDR: 1, guardTestReusePort: 0} {
++		got, err := syscall.GetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, option)
+ 		if err != nil || got != want {
+-			t.Fatalf("socket option %d got=%d err=%v", option, got, err)
++			t.Fatalf("socket option %d got=%d want=%d err=%v", option, got, want, err)
+ 		}
+ 	}
+-	if conn, err := net.DialTimeout("tcp4", address, 100*time.Millisecond); err == nil {
+-		conn.Close()
+-		t.Fatal("reserved socket was listening")
+-	}
+-	if duplicate, err := Reserve(address); err == nil {
+-		duplicate.Close()
+-		t.Fatal("duplicate bind admitted")
+-	}
+-	// Failed later reservations did not start this earlier one.
+-	if conn, err := net.DialTimeout("tcp4", address, 100*time.Millisecond); err == nil {
+-		conn.Close()
+-		t.Fatal("failed reservation opened earlier socket")
+-	}
+-	ln, err := Listen(reserved)
++	return file
++}
++
++func guardListen(t *testing.T, file *os.File) *net.TCPListener {
++	t.Helper()
++	ln, err := Listen(file)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
++	t.Cleanup(func() { _ = ln.Close() })
++	tcp, ok := ln.(*net.TCPListener)
++	if !ok {
++		t.Fatal("protected listener is not TCP")
++	}
++	if err := tcp.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	return tcp
++}
++
++func guardConnect(t *testing.T, address string) net.Conn {
++	t.Helper()
+ 	conn, err := net.DialTimeout("tcp4", address, time.Second)
+ 	if err != nil {
+-		ln.Close()
+ 		t.Fatal(err)
+ 	}
++	t.Cleanup(func() { _ = conn.Close() })
++	if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	return conn
++}
++
++func guardAccept(t *testing.T, ln net.Listener) net.Conn {
++	t.Helper()
+ 	peer, err := ln.Accept()
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	conn.Close()
+-	peer.Close()
+-	ln.Close()
+-	retry, err := Reserve(address)
+-	if err != nil {
+-		t.Fatal("reservation not released", err)
++	t.Cleanup(func() { _ = peer.Close() })
++	if err := peer.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
++		t.Fatal(err)
+ 	}
+-	retry.Close()
++	return peer
+ }
++
++func TestHoopaGuardReservationNoListen(t *testing.T) {
++	guardNetworkTest(t)
++	address := guardFreeAddress(t)
++	first := guardReserve(t, address)
++	second := guardReserve(t, address)
++	if conn, err := net.DialTimeout("tcp4", address, 100*time.Millisecond); err == nil {
++		_ = conn.Close()
++		t.Fatal("reusable reservations were listening")
++	}
++	_ = guardListen(t, first)
++	if duplicate, err := Listen(second); err == nil {
++		_ = duplicate.Close()
++		t.Fatal("second reservation displaced live listener")
++	}
++	if duplicate, err := Reserve(address); err == nil {
++		_ = duplicate.Close()
++		t.Fatal("new reservation displaced live listener")
++	}
++}
++
++func TestHoopaGuardImmediateRebindWithOldClientOpen(t *testing.T) {
++	guardNetworkTest(t)
++	address := guardFreeAddress(t)
++	oldListener := guardListen(t, guardReserve(t, address))
++	oldClient := guardConnect(t, address)
++	oldPeer := guardAccept(t, oldListener)
++	// Server initiates close while the client retains its socket after EOF.
++	if err := oldPeer.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := oldListener.Close(); err != nil {
++		t.Fatal(err)
++	}
++	var byteBuffer [1]byte
++	if n, err := oldClient.Read(byteBuffer[:]); n != 0 || err != io.EOF {
++		t.Fatalf("old client expected EOF, n=%d err=%v", n, err)
++	}
++
++	// No TIME_WAIT delay, client close, SO_LINGER or system setting change.
++	newListener := guardListen(t, guardReserve(t, address))
++	newClient := guardConnect(t, address)
++	newPeer := guardAccept(t, newListener)
++	request := []byte("new-core")
++	if n, err := newClient.Write(request); n != len(request) || err != nil {
++		t.Fatalf("new client write n=%d err=%v", n, err)
++	}
++	got := make([]byte, len(request))
++	if _, err := io.ReadFull(newPeer, got); err != nil || string(got) != string(request) {
++		t.Fatalf("new peer read %q err=%v", got, err)
++	}
++	if n, err := newPeer.Write(got); n != len(got) || err != nil {
++		t.Fatalf("new peer write n=%d err=%v", n, err)
++	}
++	if _, err := io.ReadFull(newClient, got); err != nil || string(got) != string(request) {
++		t.Fatalf("new client echo %q err=%v", got, err)
++	}
++}

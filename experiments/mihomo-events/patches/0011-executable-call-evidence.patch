@@ -1,0 +1,3696 @@
+diff --git a/component/hoopaid/abi.go b/component/hoopaid/abi.go
+--- a/component/hoopaid/abi.go
++++ b/component/hoopaid/abi.go
+@@ -1,4 +1,4 @@
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"encoding/binary"
+@@ -31,6 +31,10 @@
+ 
+ // Identity contains values only: subsequent rejection cannot mutate a previous grant.
+ type Identity struct {
++	// Experimental v4 payload is emitted explicitly by its writer, never by
++	// legacy JSON marshaling. Both fields contain values only.
++	Executable            Executable  `json:"-"`
++	HasExecutable         bool        `json:"-"`
+ 	Schema                string      `json:"schema"`
+ 	IdentityCapability    string      `json:"identity_capability"`
+ 	ProcessPath           string      `json:"process_path"`
+diff --git a/component/hoopaid/executable.go b/component/hoopaid/executable.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaid/executable.go
+@@ -0,0 +1,69 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/hex"
++	"errors"
++	"strconv"
++	"unicode/utf8"
++)
++
++// Executable is an immutable value snapshot of the executable observed during a
++// connect call. It does not authenticate identity or enable process rules.
++type Executable struct {
++	Schema               string `json:"schema"`
++	Status               string `json:"status"`
++	Source               string `json:"source"`
++	NameSource           string `json:"name_source"`
++	CallToken            string `json:"call_token"`
++	ObservedBootNS       string `json:"observed_boot_ns"`
++	PathRawHex           string `json:"path_raw_hex"`
++	PathText             string `json:"path_text"`
++	PathTextValid        bool   `json:"path_text_valid"`
++	ProgramNameRawHex    string `json:"program_name_raw_hex"`
++	ProgramName          string `json:"program_name"`
++	ProgramNameTextValid bool   `json:"program_name_text_valid"`
++	RawRecord            string `json:"raw_record"`
++}
++
++func executableIdentity(raw []byte, id Identity) (Executable, error) {
++	invalid := func() (Executable, error) {
++		return Executable{}, errors.New("invalid executable ABI/connector binding")
++	}
++	if len(raw) != 296 {
++		return invalid()
++	}
++	cookie, err := u64(id.ClientCookie)
++	if err != nil {
++		return invalid()
++	}
++	start, err := u64(id.LeaderStartBoottimeNS)
++	if err != nil {
++		return invalid()
++	}
++	end, err := u64(id.ObservedBootNS)
++	if err != nil {
++		return invalid()
++	}
++	observed, token := le.Uint64(raw[24:]), le.Uint64(raw[32:])
++	n := le.Uint32(raw[16:])
++	if cookie == 0 || id.TGID == 0 || id.CallerTID == 0 || start == 0 || observed == 0 || token == 0 || le.Uint64(raw) != cookie || le.Uint32(raw[8:]) != id.TGID || le.Uint32(raw[12:]) != id.CallerTID || le.Uint32(raw[20:]) != 1 || observed < start || observed > end || n < 2 || n > 256 {
++		return invalid()
++	}
++	path := raw[40 : 40+int(n)-1]
++	if path[0] != '/' || raw[40+int(n)-1] != 0 || bytes.IndexByte(path, 0) >= 0 {
++		return invalid()
++	}
++	name := path[bytes.LastIndexByte(path, '/')+1:]
++	if len(name) == 0 {
++		return invalid()
++	}
++	out := Executable{Schema: "sourceidentity-executable-call-v1", Status: "unverified", Source: "task_exe_file_d_path_v1", NameSource: "executable_path_basename_v1", CallToken: strconv.FormatUint(token, 10), ObservedBootNS: strconv.FormatUint(observed, 10), PathRawHex: hex.EncodeToString(path), PathTextValid: utf8.Valid(path), ProgramNameRawHex: hex.EncodeToString(name), ProgramNameTextValid: utf8.Valid(name), RawRecord: hex.EncodeToString(raw)}
++	if out.PathTextValid {
++		out.PathText = string(path)
++	}
++	if out.ProgramNameTextValid {
++		out.ProgramName = string(name)
++	}
++	return out, nil
++}
+diff --git a/component/hoopaid/executable_native_linux_amd64.go b/component/hoopaid/executable_native_linux_amd64.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaid/executable_native_linux_amd64.go
+@@ -0,0 +1,81 @@
++//go:build linux && amd64
++
++package hoopaid
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"errors"
++	"fmt"
++	"runtime"
++	"syscall"
++	"unsafe"
++)
++
++func (b *nativeBackend) linkTarget(fd int) ([]byte, string, error) {
++	first, err := b.info(fd)
++	if err != nil || len(first) < 28 {
++		return nil, "", errors.Join(err, errors.New("short link info"))
++	}
++	if le.Uint32(first) != 1 {
++		return first, "", nil
++	}
++	name := make([]byte, 32)
++	unpin := pinBuffers(name)
++	defer unpin()
++	buf := make([]byte, 256)
++	le.PutUint64(buf[16:], ptr(name))
++	le.PutUint32(buf[24:], uint32(len(name)))
++	second, err := b.readInfo(fd, buf)
++	runtime.KeepAlive(name)
++	if err != nil {
++		return nil, "", err
++	}
++	if len(second) < 28 || !bytes.Equal(first[:12], second[:12]) {
++		return nil, "", errors.New("raw tracepoint link changed")
++	}
++	n := le.Uint32(second[24:])
++	if n < 2 || n > uint32(len(name)) || name[n-1] != 0 || bytes.IndexByte(name[:n-1], 0) >= 0 {
++		return nil, "", errors.New("raw tracepoint target string")
++	}
++	return second, string(name[:n-1]), nil
++}
++
++// Resolve the actual program target BTF object, rather than equating unrelated
++// function IDs. Only this fixed vmlinux byte stream is accepted by the prototype.
++func (b *nativeBackend) targetBTF(id uint32) (result error) {
++	attr := make([]byte, 12)
++	le.PutUint32(attr, id)
++	fd, _, errno := syscall.Syscall(321, 19, uintptr(unsafe.Pointer(&attr[0])), uintptr(len(attr)))
++	runtime.KeepAlive(attr)
++	if errno != 0 {
++		return errno
++	}
++	defer func() { result = errors.Join(result, syscall.Close(int(fd))) }()
++	first, err := b.info(int(fd))
++	if err != nil {
++		return err
++	}
++	if len(first) < 32 || le.Uint32(first[8:]) != executableBTFSize || le.Uint32(first[12:]) != id || le.Uint32(first[28:]) != 1 {
++		return errors.New("target BTF declaration mismatch")
++	}
++	raw := make([]byte, executableBTFSize)
++	name := make([]byte, 32)
++	unpin := pinBuffers(raw, name)
++	defer unpin()
++	info := make([]byte, 256)
++	le.PutUint64(info, ptr(raw))
++	le.PutUint32(info[8:], uint32(len(raw)))
++	le.PutUint64(info[16:], ptr(name))
++	le.PutUint32(info[24:], uint32(len(name)))
++	second, err := b.readInfo(int(fd), info)
++	runtime.KeepAlive(raw)
++	runtime.KeepAlive(name)
++	if err != nil {
++		return err
++	}
++	if len(second) < 32 || le.Uint32(second[8:]) != executableBTFSize || le.Uint32(second[12:]) != id || le.Uint32(second[28:]) != 1 || !bytes.Equal(name[:8], []byte("vmlinux\x00")) || fmt.Sprintf("%x", sha256.Sum256(raw)) != executableBTFSHA256 {
++		return errors.New("target BTF content mismatch")
++	}
++	return nil
++}
+diff --git a/component/hoopaid/executable_test.go b/component/hoopaid/executable_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaid/executable_test.go
+@@ -0,0 +1,177 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/hex"
++	"encoding/json"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++	"unicode/utf8"
++)
++
++func executableABI(path []byte) ([]byte, Identity) {
++	raw := make([]byte, 296)
++	le.PutUint64(raw, 9007199254740993)
++	le.PutUint32(raw[8:], 10)
++	le.PutUint32(raw[12:], 11)
++	le.PutUint32(raw[16:], uint32(len(path)+1))
++	le.PutUint32(raw[20:], 1)
++	le.PutUint64(raw[24:], 150)
++	le.PutUint64(raw[32:], 9007199254740995)
++	copy(raw[40:], path)
++	if len(path) < 255 {
++		raw[295] = 0xa5
++	}
++	return raw, Identity{ClientCookie: "9007199254740993", TGID: 10, CallerTID: 11, LeaderStartBoottimeNS: "100", ObservedBootNS: "200"}
++}
++func TestExecutableValidAndValueOwnership(t *testing.T) {
++	raw, id := executableABI([]byte("/bin/python3 (deleted)"))
++	original := append([]byte(nil), raw...)
++	got, err := executableIdentity(raw, id)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Schema != "sourceidentity-executable-call-v1" || got.Status != "unverified" || got.Source != "task_exe_file_d_path_v1" || got.NameSource != "executable_path_basename_v1" || got.CallToken != "9007199254740995" || got.ObservedBootNS != "150" || got.PathText != "/bin/python3 (deleted)" || got.ProgramName != "python3 (deleted)" || !got.PathTextValid || !got.ProgramNameTextValid || got.RawRecord != hex.EncodeToString(original) {
++		t.Fatal("value lost", got)
++	}
++	raw[40] = 'x'
++	id.ClientCookie = "other"
++	copy := got
++	copy.PathText = "changed"
++	if got.RawRecord != hex.EncodeToString(original) || got.PathText != "/bin/python3 (deleted)" {
++		t.Fatal("mutable alias")
++	}
++	typ := reflect.TypeOf(got)
++	for i := 0; i < typ.NumField(); i++ {
++		k := typ.Field(i).Type.Kind()
++		if k != reflect.String && k != reflect.Bool {
++			t.Fatal("not pure value")
++		}
++	}
++	b, err := json.Marshal(got)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var fields map[string]json.RawMessage
++	if json.Unmarshal(b, &fields) != nil || len(fields) != 13 {
++		t.Fatal("JSON shape")
++	}
++	for _, key := range strings.Fields("schema status source name_source call_token observed_boot_ns path_raw_hex path_text path_text_valid program_name_raw_hex program_name program_name_text_valid raw_record") {
++		if _, ok := fields[key]; !ok {
++			t.Fatal("JSON tag", key)
++		}
++	}
++}
++func TestExecutablePathAndUTF8Boundaries(t *testing.T) {
++	for _, path := range [][]byte{[]byte("/a"), []byte("/路径/程序"), []byte("/" + strings.Repeat("a", 254)), {'/', 0xff, '/', 'o', 'k'}, {'/', 'x', '/', 0xff}} {
++		raw, id := executableABI(path)
++		got, err := executableIdentity(raw, id)
++		if err != nil {
++			t.Fatal("valid path", err)
++		}
++		name := path[bytes.LastIndexByte(path, '/')+1:]
++		if got.PathRawHex != hex.EncodeToString(path) || got.ProgramNameRawHex != hex.EncodeToString(name) || got.PathTextValid != utf8.Valid(path) || got.ProgramNameTextValid != utf8.Valid(name) {
++			t.Fatal("raw/validity changed")
++		}
++		if utf8.Valid(path) {
++			if got.PathText != string(path) {
++				t.Fatal("path text")
++			}
++		} else if got.PathText != "" {
++			t.Fatal("invalid path replaced")
++		}
++		if utf8.Valid(name) {
++			if got.ProgramName != string(name) {
++				t.Fatal("name text")
++			}
++		} else if got.ProgramName != "" {
++			t.Fatal("invalid basename replaced")
++		}
++	}
++	for _, path := range [][]byte{[]byte("/"), []byte("relative"), []byte("/bin/"), {'/', 'a', 0, 'b'}} {
++		raw, id := executableABI(path)
++		if _, err := executableIdentity(raw, id); err == nil {
++			t.Fatal("invalid path accepted", path)
++		}
++	}
++}
++func TestExecutableStrictABIAndIdentity(t *testing.T) {
++	raw, id := executableABI([]byte("/bin/python3"))
++	for _, n := range []int{0, 40, 288, 295, 297} {
++		b := make([]byte, n)
++		copy(b, raw)
++		if got, err := executableIdentity(b, id); err == nil || got != (Executable{}) {
++			t.Fatal("length accepted", n)
++		}
++	}
++	for i := 0; i < 24; i++ {
++		b := append([]byte(nil), raw...)
++		b[i] ^= 0x80
++		if got, err := executableIdentity(b, id); err == nil || got != (Executable{}) {
++			t.Fatal("ABI mutation accepted", i)
++		}
++	}
++	for _, n := range []uint32{0, 1, 257, 0x7fffffff, 0x80000000, 0xffffffff} {
++		b := append([]byte(nil), raw...)
++		le.PutUint32(b[16:], n)
++		if _, err := executableIdentity(b, id); err == nil {
++			t.Fatal("path_result accepted", n)
++		}
++	}
++	for _, n := range []uint32{0, 2, ^uint32(0)} {
++		b := append([]byte(nil), raw...)
++		le.PutUint32(b[20:], n)
++		if _, err := executableIdentity(b, id); err == nil {
++			t.Fatal("consumed accepted", n)
++		}
++	}
++	for _, n := range []uint64{0, 99, 201, ^uint64(0)} {
++		b := append([]byte(nil), raw...)
++		le.PutUint64(b[24:], n)
++		if _, err := executableIdentity(b, id); err == nil {
++			t.Fatal("BOOT accepted", n)
++		}
++	}
++	b := append([]byte(nil), raw...)
++	le.PutUint64(b[32:], 0)
++	if _, err := executableIdentity(b, id); err == nil {
++		t.Fatal("zero token")
++	}
++	b = append([]byte(nil), raw...)
++	b[52] = 1
++	if _, err := executableIdentity(b, id); err == nil {
++		t.Fatal("missing NUL")
++	}
++	for _, change := range []func(*Identity){func(i *Identity) { i.ClientCookie = "0" }, func(i *Identity) { i.ClientCookie = "09007199254740993" }, func(i *Identity) { i.ClientCookie = "18446744073709551616" }, func(i *Identity) { i.ClientCookie = "9007199254740994" }, func(i *Identity) { i.TGID++ }, func(i *Identity) { i.CallerTID++ }, func(i *Identity) { i.LeaderStartBoottimeNS = "0" }, func(i *Identity) { i.LeaderStartBoottimeNS = "151" }, func(i *Identity) { i.ObservedBootNS = "149" }, func(i *Identity) { i.ObservedBootNS = "invalid" }} {
++		bad := id
++		change(&bad)
++		if _, err := executableIdentity(raw, bad); err == nil {
++			t.Fatal("identity mismatch accepted", bad)
++		}
++	}
++}
++func TestExecutableUint64AndInclusiveTimes(t *testing.T) {
++	for _, n := range []uint64{1, 9007199254740993, ^uint64(0)} {
++		raw, id := executableABI([]byte("/a"))
++		le.PutUint64(raw, n)
++		le.PutUint64(raw[24:], n)
++		le.PutUint64(raw[32:], n)
++		s := strconv.FormatUint(n, 10)
++		id.ClientCookie = s
++		id.LeaderStartBoottimeNS = s
++		id.ObservedBootNS = s
++		got, err := executableIdentity(raw, id)
++		if err != nil || got.ObservedBootNS != s || got.CallToken != s {
++			t.Fatal("precision/inclusive interval", n, err)
++		}
++	}
++	for _, n := range []uint64{100, 200} {
++		raw, id := executableABI([]byte("/a"))
++		le.PutUint64(raw[24:], n)
++		if _, err := executableIdentity(raw, id); err != nil {
++			t.Fatal("inclusive endpoints", err)
++		}
++	}
++}
+diff --git a/component/hoopaid/handoff.go b/component/hoopaid/handoff.go
+--- a/component/hoopaid/handoff.go
++++ b/component/hoopaid/handoff.go
+@@ -1,5 +1,5 @@
+ // Package coreadmission is a finite isolated-guest experiment, not a production identity authority.
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"bytes"
+@@ -115,7 +115,7 @@
+ 	if err := d.Decode(&h); err != nil {
+ 		return h, err
+ 	}
+-	if h.Schema != "hoopa-core-identity-handoff-v1" || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
++	if (h.Schema != "hoopa-core-identity-handoff-v1" && h.Schema != "hoopa-core-identity-handoff-v2") || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
+ 		return h, errors.New("invalid handoff declaration")
+ 	}
+ 	for _, s := range []string{h.Generation, h.SourceCgroupID, h.RootCgroupID, h.NetnsCookie} {
+@@ -130,7 +130,7 @@
+ 	for _, group := range []struct {
+ 		fds   map[string]int
+ 		names []string
+-	}{{h.Maps, mapNames}, {h.Programs, programNames}, {h.Links, linkNames}} {
++	}{{h.Maps, h.mapNames()}, {h.Programs, h.programNames()}, {h.Links, h.linkNames()}} {
+ 		if len(group.fds) != len(group.names) {
+ 			return h, errors.New("unexpected FD object size")
+ 		}
+@@ -146,14 +146,14 @@
+ }
+ 
+ func (h handoff) orderedFDs() []int {
+-	fds := make([]int, 0, 11)
+-	for _, name := range mapNames {
++	fds := make([]int, 0, len(h.Maps)+len(h.Programs)+len(h.Links))
++	for _, name := range h.mapNames() {
+ 		fds = append(fds, h.Maps[name])
+ 	}
+-	for _, name := range programNames {
++	for _, name := range h.programNames() {
+ 		fds = append(fds, h.Programs[name])
+ 	}
+-	for _, name := range linkNames {
++	for _, name := range h.linkNames() {
+ 		fds = append(fds, h.Links[name])
+ 	}
+ 	return fds
+diff --git a/component/hoopaid/native_linux_amd64.go b/component/hoopaid/native_linux_amd64.go
+--- a/component/hoopaid/native_linux_amd64.go
++++ b/component/hoopaid/native_linux_amd64.go
+@@ -1,6 +1,6 @@
+ //go:build linux && amd64
+ 
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"errors"
+diff --git a/component/hoopaid/native_linux_amd64_test.go b/component/hoopaid/native_linux_amd64_test.go
+--- a/component/hoopaid/native_linux_amd64_test.go
++++ b/component/hoopaid/native_linux_amd64_test.go
+@@ -1,6 +1,6 @@
+ //go:build linux && amd64
+ 
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"errors"
+diff --git a/component/hoopaid/native_other.go b/component/hoopaid/native_other.go
+--- a/component/hoopaid/native_other.go
++++ b/component/hoopaid/native_other.go
+@@ -1,6 +1,6 @@
+ //go:build !linux || !amd64
+ 
+-package coreadmission
++package hoopaid
+ 
+ import "errors"
+ 
+diff --git a/component/hoopaid/owner.go b/component/hoopaid/owner.go
+--- a/component/hoopaid/owner.go
++++ b/component/hoopaid/owner.go
+@@ -1,4 +1,4 @@
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"bytes"
+@@ -31,21 +31,22 @@
+ 	Revoked  bool   `json:"revoked"`
+ }
+ type Owner struct {
+-	mu         sync.Mutex
+-	h          handoff
+-	b          backend
+-	fds        []int
+-	config     []byte
+-	programIDs map[string]uint32
+-	linkIDs    map[string]uint32
+-	status     Status
+-	closed     bool
+-	closeErr   error
+-	now        func() time.Time
+-	sleep      func(time.Duration)
+-}
+-
+-// Adopt transfers the eleven declared FDs only after a completely valid parse.
++	mu          sync.Mutex
++	h           handoff
++	b           backend
++	fds         []int
++	config      []byte
++	programIDs  map[string]uint32
++	linkIDs     map[string]uint32
++	btfObjectID uint32
++	status      Status
++	closed      bool
++	closeErr    error
++	now         func() time.Time
++	sleep       func(time.Duration)
++}
++
++// Adopt transfers the exact versioned FD set only after a completely valid parse.
+ // Subsequent failure closes each once. It never loads or attaches a BPF program.
+ func Adopt(raw []byte, expectedCoreGeneration string, expectedPort uint16) (*Owner, error) {
+ 	b, err := newBackend()
+@@ -86,6 +87,7 @@
+ var mapSpecs = map[string]mapSpec{
+ 	"capture_config": {2, 4, 32, 1, 128}, "connect_records": {1, 8, 112, 1024, 8}, "capture_faults": {2, 4, 8, 1, 8},
+ 	"capture_gate": {2, 4, 40, 1, 8}, "online_tuples": {1, 32, 8, 1024, 8}, "online_bindings": {1, 8, 56, 1024, 8},
++	"exe_records": {1, 8, 296, 1024, 8}, "exe_state": {2, 4, 64, 1, 8}, "calls": {29, 4, 8, 0, 1},
+ }
+ 
+ func kernelName(name string) string {
+@@ -99,7 +101,7 @@
+ func (o *Owner) verifyObjects() error {
+ 	ids := map[string]uint32{}
+ 	seen := map[uint32]bool{}
+-	for _, name := range mapNames {
++	for _, name := range o.h.mapNames() {
+ 		raw, err := o.b.info(o.h.Maps[name])
+ 		if err != nil {
+ 			return fmt.Errorf("map info %s: %w", name, err)
+@@ -124,7 +126,7 @@
+ 		ids[name] = id
+ 	}
+ 	seen = map[uint32]bool{}
+-	for _, name := range programNames {
++	for _, name := range o.h.programNames() {
+ 		raw, mapIDs, err := o.b.programInfo(o.h.Programs[name])
+ 		if err != nil {
+ 			return err
+@@ -132,24 +134,12 @@
+ 		if len(raw) < 80 {
+ 			return errors.New("short program info")
+ 		}
+-		kind := uint32(18)
+-		if name == "hoopa_lifecycle" {
+-			kind = 13
+-		}
+-		if name == "hoopa_stop" {
+-			kind = 3
+-		}
++		kind := o.h.programKind(name)
+ 		id := le.Uint32(raw[4:])
+ 		if le.Uint32(raw) != kind || id == 0 || seen[id] || infoName(raw[64:80]) != kernelName(name) {
+ 			return fmt.Errorf("program ABI mismatch: %s", name)
+ 		}
+-		names := []string{"capture_config", "connect_records", "capture_faults", "capture_gate"}
+-		if name == "hoopa_lifecycle" {
+-			names = mapNames
+-		}
+-		if name == "hoopa_stop" {
+-			names = []string{"capture_gate"}
+-		}
++		names := o.h.programMaps(name)
+ 		if len(mapIDs) != len(names) {
+ 			return fmt.Errorf("program map count: %s", name)
+ 		}
+@@ -163,10 +153,23 @@
+ 			}
+ 			delete(want, id)
+ 		}
++		if name == "capture_exe" {
++			if len(raw) < 228 || le.Uint32(raw[220:]) == 0 || le.Uint32(raw[224:]) != executableLSMFunctionID {
++				return errors.New("LSM program target mismatch")
++			}
++			extended, ok := o.b.(executableBackend)
++			if !ok {
++				return errors.New("executable backend unavailable")
++			}
++			o.btfObjectID = le.Uint32(raw[220:])
++			if err := extended.targetBTF(o.btfObjectID); err != nil {
++				return err
++			}
++		}
+ 		seen[id] = true
+ 		o.programIDs[name] = id
+ 	}
+-	for _, name := range linkNames {
++	for _, name := range o.h.linkNames() {
+ 		id, err := o.verifyLink(name)
+ 		if err != nil {
+ 			return err
+@@ -181,6 +184,9 @@
+ 	return nil
+ }
+ func (o *Owner) verifyLink(name string) (uint32, error) {
++	if name == "call_enter" || name == "call_exit" || name == "capture_exe" {
++		return o.verifyExecutableLink(name)
++	}
+ 	raw, err := o.b.info(o.h.Links[name])
+ 	if err != nil {
+ 		return 0, err
+@@ -244,6 +250,15 @@
+ 	if !bytes.Equal(raw, make([]byte, 8)) {
+ 		return errors.New("capture faults nonzero")
+ 	}
++	if o.h.executable() {
++		state, err := o.lookup("exe_state", make([]byte, 4), 0)
++		if err != nil {
++			return err
++		}
++		if le.Uint64(state[32:]) != 0 {
++			return errors.New("executable capture fault nonzero")
++		}
++	}
+ 	return nil
+ }
+ func (o *Owner) initialState() error {
+@@ -256,7 +271,7 @@
+ 	if err := o.checkConfig(); err != nil {
+ 		return err
+ 	}
+-	for _, name := range []string{"connect_records", "online_tuples", "online_bindings"} {
++	for _, name := range o.h.initialHashes() {
+ 		if err := o.b.nextKey(o.h.Maps[name], int(mapSpecs[name].key)); !errors.Is(err, syscall.ENOENT) {
+ 			return fmt.Errorf("hash map not initially empty %s: %v", name, err)
+ 		}
+@@ -267,6 +282,15 @@
+ 	}
+ 	if !bytes.Equal(raw, make([]byte, 40)) {
+ 		return errors.New("gate not initially zero")
++	}
++	if o.h.executable() {
++		state, err := o.lookup("exe_state", make([]byte, 4), 0)
++		if err != nil {
++			return err
++		}
++		if !bytes.Equal(state, make([]byte, 64)) {
++			return errors.New("executable state not initially zero")
++		}
+ 	}
+ 	return o.faults()
+ }
+@@ -291,7 +315,7 @@
+ 	if err = validateWitness(w, o.h); err != nil {
+ 		return reject(err)
+ 	}
+-	for _, name := range linkNames {
++	for _, name := range o.h.linkNames() {
+ 		if _, err = o.verifyLink(name); err != nil {
+ 			return reject(err)
+ 		}
+@@ -317,6 +341,13 @@
+ 	if err != nil {
+ 		return reject(err)
+ 	}
++	var executableRaw []byte
++	if o.h.executable() {
++		executableRaw, err = o.lookup("exe_records", uintKey(client), 0)
++		if err != nil {
++			return reject(err)
++		}
++	}
+ 	if err = o.faults(); err != nil {
+ 		return reject(err)
+ 	}
+@@ -327,6 +358,14 @@
+ 	id, err := identity(o.h, w, binding, connect, gate)
+ 	if err != nil {
+ 		return reject(err)
++	}
++	if o.h.executable() {
++		id.Executable, err = executableIdentity(executableRaw, id)
++		if err != nil {
++			return reject(err)
++		}
++		id.HasExecutable = true
++		id.Schema = "sourceidentity-core-admission-v2"
+ 	}
+ 	o.status.Admitted++
+ 	return id, nil
+@@ -347,6 +386,8 @@
+ }
+ 
+ // Close's polling is bounded after syscalls return; it cannot hard-timeout a syscall.
++// The writer gate drains connect/sockops only. Executable raw/LSM hooks are
++// detached through FD closure; this method does not promise a full snapshot.
+ func (o *Owner) Close() error {
+ 	o.mu.Lock()
+ 	defer o.mu.Unlock()
+diff --git a/component/hoopaid/owner_test.go b/component/hoopaid/owner_test.go
+--- a/component/hoopaid/owner_test.go
++++ b/component/hoopaid/owner_test.go
+@@ -1,4 +1,4 @@
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"encoding/json"
+diff --git a/component/hoopaid/profile_v2.go b/component/hoopaid/profile_v2.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaid/profile_v2.go
+@@ -0,0 +1,123 @@
++package hoopaid
++
++import "errors"
++
++// These constants describe the pinned 6.18.54.1 guest, not portable kernel ABI.
++const executableLSMFunctionID = 39733
++const executableBTFSize = 6018902
++const executableBTFSHA256 = "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
++
++var executableMapNames = []string{"capture_config", "connect_records", "capture_faults", "capture_gate", "online_tuples", "online_bindings", "exe_records", "exe_state", "calls"}
++var executableProgramNames = []string{"hoopa_connect", "hoopa_lifecycle", "hoopa_stop", "call_enter", "call_exit", "capture_exe"}
++var executableLinkNames = []string{"call_exit", "call_enter", "capture_exe", "hoopa_connect", "hoopa_lifecycle"}
++
++func (h handoff) executable() bool { return h.Schema == "hoopa-core-identity-handoff-v2" }
++func (h handoff) mapNames() []string {
++	if h.executable() {
++		return executableMapNames
++	}
++	return mapNames
++}
++func (h handoff) programNames() []string {
++	if h.executable() {
++		return executableProgramNames
++	}
++	return programNames
++}
++func (h handoff) linkNames() []string {
++	if h.executable() {
++		return executableLinkNames
++	}
++	return linkNames
++}
++func (h handoff) initialHashes() []string {
++	names := []string{"connect_records", "online_tuples", "online_bindings"}
++	if h.executable() {
++		names = append(names, "exe_records")
++	}
++	return names
++}
++func (h handoff) programKind(name string) uint32 {
++	switch name {
++	case "hoopa_connect":
++		return 18
++	case "hoopa_lifecycle":
++		return 13
++	case "hoopa_stop":
++		return 3
++	case "call_enter", "call_exit":
++		return 17
++	case "capture_exe":
++		return 29
++	}
++	return 0
++}
++func (h handoff) programMaps(name string) []string {
++	switch name {
++	case "hoopa_lifecycle":
++		return mapNames
++	case "hoopa_stop":
++		return []string{"capture_gate"}
++	case "call_enter", "call_exit":
++		return []string{"capture_config", "exe_state", "calls"}
++	case "capture_exe":
++		return []string{"capture_config", "exe_state", "calls", "exe_records"}
++	case "hoopa_connect":
++		names := []string{"capture_config", "connect_records", "capture_faults", "capture_gate"}
++		if h.executable() {
++			names = append(names, "exe_state", "calls", "exe_records")
++		}
++		return names
++	}
++	return nil
++}
++
++// Extra reads are required only by v2. A v1-only backend cannot adopt v2.
++type executableBackend interface {
++	linkTarget(int) ([]byte, string, error)
++	targetBTF(uint32) error
++}
++
++// EventSchemaVersion lets the protected entry bind the adopted resources to
++// its writer profile before opening a listener. The handoff is immutable.
++func (o *Owner) EventSchemaVersion() int {
++	if o.h.executable() {
++		return 4
++	}
++	return 3
++}
++
++func (o *Owner) verifyExecutableLink(name string) (uint32, error) {
++	b, ok := o.b.(executableBackend)
++	if !ok {
++		return 0, errors.New("executable backend unavailable")
++	}
++	raw, target, err := b.linkTarget(o.h.Links[name])
++	if err != nil {
++		return 0, err
++	}
++	if len(raw) < 28 {
++		return 0, errors.New("short executable link info")
++	}
++	id := le.Uint32(raw[4:])
++	if id == 0 || le.Uint32(raw[8:]) != o.programIDs[name] {
++		return 0, errors.New("executable link program mismatch")
++	}
++	if name == "capture_exe" {
++		if le.Uint32(raw) != 2 || le.Uint32(raw[16:]) != 27 || o.btfObjectID == 0 || le.Uint32(raw[20:]) != o.btfObjectID || le.Uint32(raw[24:]) != executableLSMFunctionID || target != "" {
++			return 0, errors.New("LSM link target mismatch")
++		}
++	} else {
++		want := "sys_enter"
++		if name == "call_exit" {
++			want = "sys_exit"
++		}
++		if le.Uint32(raw) != 1 || target != want || le.Uint32(raw[24:]) != uint32(len(want)+1) {
++			return 0, errors.New("raw tracepoint target mismatch")
++		}
++	}
++	if previous, ok := o.linkIDs[name]; ok && previous != id {
++		return 0, errors.New("executable link ID changed")
++	}
++	return id, nil
++}
+diff --git a/component/hoopaid/profile_v2_test.go b/component/hoopaid/profile_v2_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaid/profile_v2_test.go
+@@ -0,0 +1,247 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"reflect"
++	"testing"
++)
++
++func exampleV2() handoff {
++	h := example()
++	h.Schema = "hoopa-core-identity-handoff-v2"
++	h.Maps = map[string]int{}
++	h.Programs = map[string]int{}
++	h.Links = map[string]int{}
++	fd := 200
++	for _, group := range []struct {
++		fds   map[string]int
++		names []string
++	}{{h.Maps, executableMapNames}, {h.Programs, executableProgramNames}, {h.Links, executableLinkNames}} {
++		for _, name := range group.names {
++			group.fds[name] = fd
++			fd++
++		}
++	}
++	return h
++}
++
++type executableFake struct {
++	*fake
++	targets map[int]string
++	btfErr  error
++	btfIDs  []uint32
++}
++
++func newExecutableFake(h handoff) *executableFake {
++	f := &executableFake{fake: newFake(h), targets: map[int]string{}}
++	for i, name := range []string{"exe_records", "exe_state", "calls"} {
++		m := mapSpecs[name]
++		raw := make([]byte, 256)
++		for j, n := range []uint32{m.kind, uint32(7 + i), m.key, m.value, m.max, m.flags &^ (8 | 16)} {
++			le.PutUint32(raw[j*4:], n)
++		}
++		copy(raw[24:40], name)
++		fd := h.Maps[name]
++		f.infos[fd] = raw
++		f.values[fd] = make([]byte, m.value)
++		if name == "calls" {
++			f.accessModes[fd] = 2
++		}
++	}
++	refs := map[string][]string{
++		"hoopa_connect":   {"capture_gate", "capture_config", "capture_faults", "connect_records", "exe_state", "calls", "exe_records"},
++		"hoopa_lifecycle": {"capture_config", "connect_records", "capture_faults", "capture_gate", "online_tuples", "online_bindings"},
++		"hoopa_stop":      {"capture_gate"}, "call_enter": {"capture_config", "exe_state", "calls"}, "call_exit": {"capture_config", "exe_state", "calls"}, "capture_exe": {"capture_config", "exe_state", "calls", "exe_records"},
++	}
++	kinds := map[string]uint32{"hoopa_connect": 18, "hoopa_lifecycle": 13, "hoopa_stop": 3, "call_enter": 17, "call_exit": 17, "capture_exe": 29}
++	for i, name := range executableProgramNames {
++		raw := make([]byte, 256)
++		le.PutUint32(raw, kinds[name])
++		le.PutUint32(raw[4:], uint32(11+i))
++		copy(raw[64:80], name)
++		if name == "capture_exe" {
++			le.PutUint32(raw[220:], 1)
++			le.PutUint32(raw[224:], 39733)
++		}
++		fd := h.Programs[name]
++		f.infos[fd] = raw
++		f.refs[fd] = nil
++		for _, n := range refs[name] {
++			f.refs[fd] = append(f.refs[fd], le.Uint32(f.infos[h.Maps[n]][4:]))
++		}
++	}
++	for i, name := range []string{"call_exit", "call_enter", "capture_exe"} {
++		raw := make([]byte, 256)
++		le.PutUint32(raw, 1)
++		le.PutUint32(raw[4:], uint32(23+i))
++		le.PutUint32(raw[8:], le.Uint32(f.infos[h.Programs[name]][4:]))
++		fd := h.Links[name]
++		if name == "capture_exe" {
++			le.PutUint32(raw, 2)
++			le.PutUint32(raw[16:], 27)
++			le.PutUint32(raw[20:], 1)
++			le.PutUint32(raw[24:], 39733)
++		} else {
++			target := "sys_enter"
++			if name == "call_exit" {
++				target = "sys_exit"
++			}
++			f.targets[fd] = target
++			le.PutUint32(raw[24:], uint32(len(target)+1))
++		}
++		f.infos[fd] = raw
++	}
++	return f
++}
++func (f *executableFake) linkTarget(fd int) ([]byte, string, error) {
++	raw, err := f.info(fd)
++	return raw, f.targets[fd], err
++}
++func (f *executableFake) targetBTF(id uint32) error { f.btfIDs = append(f.btfIDs, id); return f.btfErr }
++func (f *executableFake) publishExecutable() {
++	raw, _ := executableABI([]byte("/bin/python3"))
++	le.PutUint64(raw, 8)
++	le.PutUint32(raw[8:], 72)
++	le.PutUint32(raw[12:], 73)
++	le.PutUint64(raw[24:], 20000000)
++	f.values[f.h.Maps["exe_records"]] = raw
++}
++func TestHandoffV2ExactResourceVersions(t *testing.T) {
++	h := exampleV2()
++	p, err := parse(encoded(h))
++	if err != nil || len(p.orderedFDs()) != 20 {
++		t.Fatal(err, p)
++	}
++	for _, mutate := range []func(*handoff){
++		func(h *handoff) { h.Schema = "hoopa-core-identity-handoff-v1" },
++		func(h *handoff) { delete(h.Maps, "calls") },
++		func(h *handoff) { h.Links["call_exit"] = h.Programs["call_exit"] },
++		func(h *handoff) { h.Maps["extra"] = 999 },
++	} {
++		v := exampleV2()
++		mutate(&v)
++		if _, err := parse(encoded(v)); err == nil {
++			t.Fatal("invalid v2 accepted")
++		}
++	}
++	old := example()
++	old.Schema = h.Schema
++	if _, err := parse(encoded(old)); err == nil {
++		t.Fatal("11 FDs accepted as v2")
++	}
++}
++func TestHandoffV2AdoptionAndImmutableExecutable(t *testing.T) {
++	h := exampleV2()
++	f := newExecutableFake(h)
++	o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !reflect.DeepEqual(f.btfIDs, []uint32{1}) {
++		t.Fatal("actual target BTF not checked", f.btfIDs)
++	}
++	for _, s := range f.log {
++		if s == fmt.Sprintf("next:%d", h.Maps["calls"]) {
++			t.Fatal("task storage enumerated")
++		}
++	}
++	f.publishExecutable()
++	id, err := o.Admit(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !id.HasExecutable || id.Schema != "sourceidentity-core-admission-v2" || id.Executable.PathText != "/bin/python3" || id.IdentityCapability != "unverified" || id.ProcessPath != "unknown" {
++		t.Fatal(id)
++	}
++	old := id
++	f.values[h.Maps["exe_records"]][40] = 'X'
++	if _, err = o.Admit(nil); err == nil || !o.Status().Revoked || o.Status().Admitted != 1 {
++		t.Fatal("bad new evidence admitted")
++	}
++	if old != id {
++		t.Fatal("old value mutated")
++	}
++	legacy, _ := json.Marshal(id)
++	if bytes.Contains(legacy, []byte(`"executable"`)) || bytes.Contains(legacy, []byte("HasExecutable")) {
++		t.Fatal("implicit legacy JSON extension")
++	}
++	if err = o.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err = o.Close(); err != nil {
++		t.Fatal(err)
++	}
++	got := map[int]int{}
++	for _, fd := range f.closed {
++		got[fd]++
++	}
++	if len(got) != 20 {
++		t.Fatal(got)
++	}
++	for _, n := range got {
++		if n != 1 {
++			t.Fatal("duplicate close")
++		}
++	}
++}
++func TestHandoffV2RejectsObjectAndTargetCorruption(t *testing.T) {
++	tests := map[string]func(*executableFake){
++		"BTF bytes":              func(f *executableFake) { f.btfErr = errors.New("wrong BTF") },
++		"BTF function":           func(f *executableFake) { le.PutUint32(f.infos[f.h.Programs["capture_exe"]][224:], 39734) },
++		"BTF object link":        func(f *executableFake) { le.PutUint32(f.infos[f.h.Links["capture_exe"]][20:], 2) },
++		"raw target same length": func(f *executableFake) { f.targets[f.h.Links["call_enter"]] = "bad_enter" },
++		"raw kind":               func(f *executableFake) { le.PutUint32(f.infos[f.h.Links["call_exit"]], 2) },
++		"new map access":         func(f *executableFake) { f.accessModes[f.h.Maps["exe_records"]] = 2 },
++		"task map flags":         func(f *executableFake) { le.PutUint32(f.infos[f.h.Maps["calls"]][20:], 0) },
++		"refs":                   func(f *executableFake) { f.refs[f.h.Programs["hoopa_connect"]][0] = 999 },
++		"state not fresh":        func(f *executableFake) { f.values[f.h.Maps["exe_state"]][0] = 1 },
++	}
++	for label, mutate := range tests {
++		t.Run(label, func(t *testing.T) {
++			h := exampleV2()
++			f := newExecutableFake(h)
++			mutate(f)
++			if o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f); err == nil || o != nil {
++				t.Fatal("bad resources adopted")
++			}
++			if len(f.closed) != 20 {
++				t.Fatal("partial cleanup", f.closed)
++			}
++		})
++	}
++}
++func TestHandoffV2AdmissionRefusesFaultAndMissingEvidence(t *testing.T) {
++	tests := map[string]func(*executableFake){
++		"fault":         func(f *executableFake) { f.values[f.h.Maps["exe_state"]][32] = 1 },
++		"missing":       func(f *executableFake) { f.values[f.h.Maps["exe_records"]] = nil },
++		"unconsumed":    func(f *executableFake) { le.PutUint32(f.values[f.h.Maps["exe_records"]][20:], 0) },
++		"wrong cookie":  func(f *executableFake) { le.PutUint64(f.values[f.h.Maps["exe_records"]], 9) },
++		"detached link": func(f *executableFake) { f.fail = fmt.Sprintf("info:%d", f.h.Links["call_enter"]) },
++		"fault during read": func(f *executableFake) {
++			f.lookupHook = func(fd int, _ []byte, _ uint64) {
++				if fd == f.h.Maps["exe_records"] {
++					f.values[f.h.Maps["exe_state"]][32] = 1
++				}
++			}
++		},
++	}
++	for label, mutate := range tests {
++		t.Run(label, func(t *testing.T) {
++			h := exampleV2()
++			f := newExecutableFake(h)
++			o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer o.Close()
++			f.publishExecutable()
++			mutate(f)
++			if _, err = o.Admit(nil); err == nil || !o.Status().Revoked || o.Status().Admitted != 0 {
++				t.Fatal("bad evidence admitted")
++			}
++		})
++	}
++}
+diff --git a/component/hoopaid/tcp_info_linux_amd64.go b/component/hoopaid/tcp_info_linux_amd64.go
+--- a/component/hoopaid/tcp_info_linux_amd64.go
++++ b/component/hoopaid/tcp_info_linux_amd64.go
+@@ -1,6 +1,6 @@
+ //go:build linux && amd64
+ 
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"errors"
+diff --git a/component/hoopaid/tcp_info_linux_amd64_test.go b/component/hoopaid/tcp_info_linux_amd64_test.go
+--- a/component/hoopaid/tcp_info_linux_amd64_test.go
++++ b/component/hoopaid/tcp_info_linux_amd64_test.go
+@@ -1,6 +1,6 @@
+ //go:build linux && amd64
+ 
+-package coreadmission
++package hoopaid
+ 
+ import (
+ 	"errors"
+diff --git a/component/hoopatrace/connector_linux_test.go b/component/hoopatrace/connector_linux_test.go
+--- a/component/hoopatrace/connector_linux_test.go
++++ b/component/hoopatrace/connector_linux_test.go
+@@ -224,3 +224,150 @@
+ 		t.Fatal("durable source missing", err)
+ 	}
+ }
++
++func executableIdentityFixture() hoopaid.Identity {
++	p := connectorIdentityFixture()
++	p.Schema = "sourceidentity-core-admission-v2"
++	p.HasExecutable = true
++	r := make([]byte, 296)
++	le := binary.LittleEndian
++	le.PutUint64(r, 4)
++	le.PutUint32(r[8:], 10)
++	le.PutUint32(r[12:], 11)
++	le.PutUint32(r[16:], 13)
++	le.PutUint32(r[20:], 1)
++	le.PutUint64(r[24:], 150)
++	le.PutUint64(r[32:], 9007199254740995)
++	copy(r[40:], "/bin/python3")
++	r[295] = 0xa5
++	p.Executable = hoopaid.Executable{Schema: "sourceidentity-executable-call-v1", Status: "unverified", Source: "task_exe_file_d_path_v1", NameSource: "executable_path_basename_v1", CallToken: "9007199254740995", ObservedBootNS: "150", PathRawHex: hex.EncodeToString([]byte("/bin/python3")), PathText: "/bin/python3", PathTextValid: true, ProgramNameRawHex: hex.EncodeToString([]byte("python3")), ProgramName: "python3", ProgramNameTextValid: true, RawRecord: hex.EncodeToString(r)}
++	return p
++}
++func TestExecutableWriterVersionAndCorruptionBoundaries(t *testing.T) {
++	for _, profile := range []string{"3", "4"} {
++		t.Run(profile, func(t *testing.T) {
++			t.Setenv("HOOPA_TRACE_PROFILE", profile)
++			s := testSource(t, defaultLimit)
++			wrong := executableIdentityFixture()
++			if profile == "4" {
++				wrong = connectorIdentityFixture()
++			}
++			if f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &wrong); f != nil || err == nil {
++				t.Fatal("mismatched writer/admission")
++			}
++			if len(frames(t, s)) != 0 || len(s.flows) != 0 || s.reserved != 0 {
++				t.Fatal("rejection changed source")
++			}
++			if profile != "4" {
++				return
++			}
++			for _, change := range []func(*hoopaid.Identity){func(p *hoopaid.Identity) { p.Executable.PathText = "/other" }, func(p *hoopaid.Identity) { p.Executable.RawRecord = "00" }, func(p *hoopaid.Identity) { p.Schema = "sourceidentity-core-admission-v1" }} {
++				p := executableIdentityFixture()
++				change(&p)
++				if f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &p); f != nil || err == nil {
++					t.Fatal("bad executable accepted")
++				}
++				if len(frames(t, s)) != 0 || len(s.flows) != 0 || s.reserved != 0 || s.poisoned {
++					t.Fatal("bad executable changed source")
++				}
++			}
++		})
++	}
++}
++
++func TestExecutableRawSurvivesQualityCountersAndSourceRecovery(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "4")
++	s := testSource(t, defaultLimit)
++	proof := executableIdentityFixture()
++	original := proof
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
++	if err != nil {
++		t.Fatal(err)
++	}
++	proof.LeaderComm.Text = "mutated-after-begin"
++	proof.Raw.Connect = "00"
++	proof.Executable.PathText = "mutated-after-begin"
++	if err = f.Decide("MATCH", "", "DIRECT"); err != nil {
++		t.Fatal(err)
++	}
++	a := f.NewAttempt()
++	c := qualityAttach(t, a, "connector:actual", true)
++	a.FinishConnection(nil, "", c, false)
++	a.Bind("connector:tracker")
++	a.AddUpload(9007199254740993)
++	a.AddDownload(73)
++	if err = f.Checkpoint(); err != nil {
++		t.Fatal(err)
++	}
++	f.Close()
++	if err = s.shutdown(); err != nil {
++		t.Fatal(err)
++	}
++	before := frames(t, s)
++	opened, err := telemetrywire.DecodeSourceEvent(before[0])
++	if err != nil || opened.Connector == nil {
++		t.Fatal("opened identity", err)
++	}
++	want, _ := json.Marshal(original.Executable)
++	got, _ := json.Marshal(opened.Executable)
++	if !bytes.Equal(want, got) {
++		t.Fatal("Begin retained mutable caller proof")
++	}
++	var quality, closed bool
++	for _, raw := range before {
++		e, err := telemetrywire.DecodeSourceEvent(raw)
++		if err != nil || e.SchemaVersion != 4 {
++			t.Fatal("schema4 decode", err)
++		}
++		if e.Quality != nil {
++			quality = true
++		}
++		if e.Kind == "closed" {
++			closed = true
++			if e.Counter.UploadBytes != 9007199254740993 || e.Counter.DownloadBytes != 73 {
++				t.Fatal("final precision lost")
++			}
++		}
++	}
++	if !quality || !closed || len(s.flows) != 0 || s.reserved != 0 {
++		t.Fatal("incomplete connector lifecycle")
++	}
++	dir, name, epoch := s.root.Name(), filepath.Base(s.file.Name()), s.epoch
++	s.close()
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal("source recovery", err)
++	}
++	defer next.close()
++	if next.epoch == epoch {
++		t.Fatal("reopen reused epoch")
++	}
++	snapshots, err := next.sendSnapshots()
++	if err != nil {
++		t.Fatal(err)
++	}
++	found := false
++	for _, snapshot := range snapshots {
++		if snapshot.name == name {
++			found = true
++			if !reflect.DeepEqual(before, snapshot.frames) {
++				t.Fatal("recovery changed connector raw bytes")
++			}
++		}
++	}
++	if !found {
++		t.Fatal("prior connector frames missing")
++	}
++	reports := next.recoveryReports()
++	if len(reports) != 1 || reports[0].Flows[0].Final.UploadBytes != 9007199254740993 {
++		t.Fatal("recovery lost precise final")
++	}
++	raw, _ := json.Marshal(reports)
++	if bytes.Contains(raw, []byte("connector")) || bytes.Contains(raw, []byte("leader_comm")) {
++		t.Fatal("report claims connector attribution")
++	}
++	old, err := os.ReadFile(filepath.Join(dir, name))
++	if err != nil || len(old) == 0 {
++		t.Fatal("durable source missing", err)
++	}
++}
+diff --git a/component/hoopatrace/guard_linux.go b/component/hoopatrace/guard_linux.go
+--- a/component/hoopatrace/guard_linux.go
++++ b/component/hoopatrace/guard_linux.go
+@@ -7,7 +7,7 @@
+ // PrepareGuard runs source/mapping admission before a protected entry accepts.
+ // expected maps immutable inline node/group names to the compiled adapter type.
+ func PrepareGuard(generation string, expected map[string]string) error {
+-	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
++	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3" && os.Getenv("HOOPA_TRACE_PROFILE") != "4") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
+ 		return ErrSource
+ 	}
+ 	global.once.Do(func() {
+diff --git a/component/hoopatrace/quality_linux.go b/component/hoopatrace/quality_linux.go
+--- a/component/hoopatrace/quality_linux.go
++++ b/component/hoopatrace/quality_linux.go
+@@ -124,7 +124,7 @@
+ }
+ 
+ func (a *Attempt) Attach(c C.Conn) error {
+-	if a == nil || (a.f.s.profile != 2 && a.f.s.profile != 3) || c == nil {
++	if a == nil || (a.f.s.profile != 2 && a.f.s.profile != 3 && a.f.s.profile != 4) || c == nil {
+ 		return nil
+ 	}
+ 	f := a.f
+@@ -235,7 +235,7 @@
+ }
+ func (f *Flow) counterExtra() map[string]any {
+ 	m := map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}
+-	if f.s.profile == 2 || f.s.profile == 3 {
++	if f.s.profile == 2 || f.s.profile == 3 || f.s.profile == 4 {
+ 		values := make([]segmentCounter, 0, len(f.segments))
+ 		for _, s := range f.segments {
+ 			values = append(values, *s)
+@@ -247,7 +247,7 @@
+ 	return m
+ }
+ func (f *Flow) bindSegment(id string, a *Attempt) {
+-	if f.s.profile != 2 && f.s.profile != 3 {
++	if f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4 {
+ 		f.Bind(id)
+ 		return
+ 	}
+@@ -308,7 +308,7 @@
+ 	if a == nil {
+ 		return
+ 	}
+-	if a.f.s.profile == 2 || a.f.s.profile == 3 {
++	if a.f.s.profile == 2 || a.f.s.profile == 3 || a.f.s.profile == 4 {
+ 		a.once.Do(func() { a.finishQuality(err, stage) })
+ 		return
+ 	}
+@@ -323,7 +323,7 @@
+ // Attempt zero is the pre-dial setup interval, starting at target_known. It only
+ // emits a failure when metadata/routing actually aborts before a Dial attempt.
+ func (f *Flow) FailBeforeDial(err error) {
+-	if f == nil || (f.s.profile != 2 && f.s.profile != 3) || err == nil {
++	if f == nil || (f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4) || err == nil {
+ 		return
+ 	}
+ 	a := &Attempt{f: f, id: f.id + ":attempt:0", started: f.started}
+diff --git a/component/hoopatrace/telemetrywire/connector_v3_test.go b/component/hoopatrace/telemetrywire/connector_v3_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v3_test.go
+@@ -0,0 +1,290 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++func connectorFixture() ConnectorEvidence {
++	b, c, g := make([]byte, 56), make([]byte, 112), make([]byte, 40)
++	le := binary.LittleEndian
++	for i, n := range []uint64{9007199254740993, 2, 3, 4} {
++		le.PutUint64(b[i*8:], n)
++	}
++	for i, n := range []uint32{0x0100007f, 0x0100007f, 12345, 23456, 1, 0} {
++		le.PutUint32(b[32+i*4:], n)
++	}
++	for i, n := range []uint64{9007199254740993, 200, 4, 2, 5, 100} {
++		le.PutUint64(c[i*8:], n)
++	}
++	for i, n := range []uint32{1, 10, 11, 12, 10, 1, 1, 0} {
++		le.PutUint32(c[48+i*4:], n)
++	}
++	copy(c[80:96], "caller")
++	copy(c[96:], "leader")
++	le.PutUint64(g[8:], 1)
++	le.PutUint64(g[16:], 2)
++	le.PutUint64(g[24:], 1)
++	return ConnectorEvidence{Schema: "sourceidentity-core-admission-v1", IdentityCapability: "unverified", ProcessPath: "unknown", BootID: "12345678-1234-1234-1234-123456789abc", CoreGeneration: "generation-1", Generation: "9007199254740993", SourceCgroupID: "5", RootCgroupID: "6", AcceptedCookie: "3", ClientCookie: "4", SocketNetnsCookie: "2", TGID: 10, LeaderPID: 10, CallerTID: 11, LeaderStartBoottimeNS: "100", ObservedBootNS: "200", PIDNSInode: 12, LeaderComm: ConnectorComm{hex.EncodeToString(c[96:]), "leader", true, "unverified"}, CallerComm: ConnectorComm{hex.EncodeToString(c[80:96]), "caller", true, "unverified"}, LocalEndpoint: ConnectorEndpoint{"127.0.0.1", 23456}, RemoteEndpoint: ConnectorEndpoint{"127.0.0.1", 12345}, Raw: ConnectorRawIdentity{hex.EncodeToString(b), hex.EncodeToString(c), hex.EncodeToString(g)}}
++}
++func connectorFields(t *testing.T) []map[string]json.RawMessage {
++	t.Helper()
++	f := qualityFixtures(t)
++	for _, v := range f {
++		putFields(v, map[string]any{"schema_version": 3})
++	}
++	putFields(f[0], map[string]any{"process": map[string]string{"status": "unknown", "reason": "connector_experiment_unverified"}, "identity_scope": connectorScope, "connector": connectorFixture()})
++	end := sourceFields("epoch_closed")
++	putFields(end, map[string]any{"schema_version": 3, "flow_id": nil, "attempt_id": nil, "reason": "core_shutdown", "unfinished_flows": "0", "finality": "complete"})
++	f = append(f, end)
++	return f
++}
++func TestConnectorV3LifecycleReplayAndRecovery(t *testing.T) {
++	f := connectorFields(t)
++	m := manifestFixture(t)
++	var s, replay State
++	for i, v := range f {
++		changes := map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration}
++		if i == 0 {
++			c := connectorFixture()
++			c.CoreGeneration = m.ConfigGeneration
++			changes["connector"] = c
++		}
++		e := stateEvent(t, v, i+1, changes)
++		if e.SchemaVersion != 3 || i == 0 && (e.Connector == nil || e.Connector.Generation != "9007199254740993") {
++			t.Fatal("connector precision/version lost")
++		}
++		commitState(t, &s, e)
++		again, err := DecodeSourceEvent(e.Raw)
++		if err != nil || !bytes.Equal(again.Raw, e.Raw) {
++			t.Fatal("raw replay", err)
++		}
++		commitState(t, &replay, again)
++	}
++	if !reflect.DeepEqual(s.Snapshot(), replay.Snapshot()) {
++		t.Fatal("replay changed state")
++	}
++	report, err := ProjectRecovery(m, replay.Snapshot(), strings.Repeat("c", 64), nil)
++	if err != nil || report.Flows[0].Final.UploadBytes != 9007199254740994 || replay.Snapshot().Flows[0].Final.SchemaVersion != 3 {
++		t.Fatal("recovery precision/version", err)
++	}
++	raw, _ := json.Marshal(report)
++	if bytes.Contains(raw, []byte("connector")) || bytes.Contains(raw, []byte("leader_comm")) {
++		t.Fatal("report invented connector provenance")
++	}
++}
++func TestConnectorV3StrictMutations(t *testing.T) {
++	f := connectorFields(t)[0]
++	for _, tc := range []struct {
++		name   string
++		mutate func(*ConnectorEvidence)
++	}{
++		{"schema", func(c *ConnectorEvidence) { c.Schema = "other" }},
++		{"capability", func(c *ConnectorEvidence) { c.IdentityCapability = "verified" }},
++		{"path", func(c *ConnectorEvidence) { c.ProcessPath = "/proc/10/exe" }},
++		{"boot", func(c *ConnectorEvidence) { c.BootID = strings.ToUpper(c.BootID) }},
++		{"generation", func(c *ConnectorEvidence) { c.CoreGeneration = "other" }},
++		{"leading-zero", func(c *ConnectorEvidence) { c.Generation = "09007199254740993" }},
++		{"overflow", func(c *ConnectorEvidence) { c.Generation = "18446744073709551616" }},
++		{"zero", func(c *ConnectorEvidence) { c.SocketNetnsCookie = "0" }},
++		{"same-cgroup", func(c *ConnectorEvidence) { c.RootCgroupID = c.SourceCgroupID }},
++		{"same-cookie", func(c *ConnectorEvidence) { c.AcceptedCookie = c.ClientCookie }},
++		{"pid-overflow", func(c *ConnectorEvidence) { c.TGID = 1 << 31 }},
++		{"leader-mismatch", func(c *ConnectorEvidence) { c.LeaderPID++ }},
++		{"zero-tid", func(c *ConnectorEvidence) { c.CallerTID = 0 }},
++		{"zero-pidns", func(c *ConnectorEvidence) { c.PIDNSInode = 0 }},
++		{"zero-start", func(c *ConnectorEvidence) { c.LeaderStartBoottimeNS = "0" }},
++		{"before-start", func(c *ConnectorEvidence) { c.ObservedBootNS = "99" }},
++		{"local-mismatch", func(c *ConnectorEvidence) { c.LocalEndpoint.Port++ }},
++		{"remote-mismatch", func(c *ConnectorEvidence) { c.RemoteEndpoint.IP = "127.0.0.2" }},
++		{"comm-text", func(c *ConnectorEvidence) { c.LeaderComm.Text = "other" }},
++		{"comm-valid", func(c *ConnectorEvidence) { c.CallerComm.TextValid = false }},
++		{"comm-status", func(c *ConnectorEvidence) { c.CallerComm.Status = "verified" }},
++		{"comm-raw", func(c *ConnectorEvidence) { c.LeaderComm.RawHex = strings.Repeat("00", 16) }},
++		{"uppercase", func(c *ConnectorEvidence) { c.Raw.Binding = strings.ToUpper(c.Raw.Binding) }},
++		{"short-raw", func(c *ConnectorEvidence) { c.Raw.Connect = "00" }},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			c := connectorFixture()
++			tc.mutate(&c)
++			putFields(f, map[string]any{"connector": c})
++			requireInvalidSource(t, encodeCounterFields(t, f))
++		})
++	}
++	// Every ABI byte participates in a public coordinate, schema, comm, or gate invariant.
++	// Gate counters may validly vary together; a one-byte mutation breaks the equation.
++	for _, kind := range []string{"binding", "connect", "gate"} {
++		size := map[string]int{"binding": 56, "connect": 112, "gate": 40}[kind]
++		for i := 0; i < size; i++ {
++			c := connectorFixture()
++			target := map[string]*string{"binding": &c.Raw.Binding, "connect": &c.Raw.Connect, "gate": &c.Raw.Gate}[kind]
++			b, _ := hex.DecodeString(*target)
++			b[i] ^= 0x80
++			*target = hex.EncodeToString(b)
++			putFields(f, map[string]any{"connector": c})
++			requireInvalidSource(t, encodeCounterFields(t, f))
++		}
++	}
++	putFields(f, map[string]any{"connector": connectorFixture()})
++	for _, key := range []string{"identity_scope", "process", "flow_start_ns", "source_addr", "entry_addr"} {
++		old := f[key]
++		f[key] = json.RawMessage(`null`)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++		f[key] = old
++	}
++	for _, version := range []string{`3.0`, `3e0`, `"3"`, `4`} {
++		old := f["schema_version"]
++		f["schema_version"] = json.RawMessage(version)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++		f["schema_version"] = old
++	}
++	raw := encodeCounterFields(t, f)
++	requireInvalidSource(t, bytes.Replace(raw, []byte(`"schema":"sourceidentity-core-admission-v1"`), []byte(`"schema":"sourceidentity-core-admission-v1","sch\u0065ma":"sourceidentity-core-admission-v1"`), 1))
++	requireInvalidSource(t, bytes.Replace(raw, []byte(`"text_valid":true`), []byte(`"text_valid":true,"extra":0`), 1))
++	var check func([]byte, func([]byte) []byte)
++	check = func(raw []byte, wrap func([]byte) []byte) {
++		fields, ok := object(raw)
++		if !ok {
++			return
++		}
++		for key, value := range fields {
++			copy := wireFields{}
++			for k, v := range fields {
++				copy[k] = v
++			}
++			delete(copy, key)
++			bad, _ := json.Marshal(copy)
++			requireInvalidSource(t, wrap(bad))
++			copy[key] = value
++			copy["unexpected"] = json.RawMessage(`0`)
++			bad, _ = json.Marshal(copy)
++			requireInvalidSource(t, wrap(bad))
++			duplicate := append(append([]byte(nil), raw[:len(raw)-1]...), []byte(`,"`+key+`":`+string(value)+`}`)...)
++			requireInvalidSource(t, wrap(duplicate))
++			check(value, func(child []byte) []byte {
++				parent := wireFields{}
++				for k, v := range fields {
++					parent[k] = v
++				}
++				parent[key] = child
++				b, _ := json.Marshal(parent)
++				return wrap(b)
++			})
++		}
++	}
++	check(f["connector"], func(child []byte) []byte {
++		parent := wireFields{}
++		for k, v := range f {
++			parent[k] = v
++		}
++		parent["connector"] = child
++		b, _ := json.Marshal(parent)
++		return b
++	})
++
++}
++func TestConnectorV3QualityAndEpochBoundaries(t *testing.T) {
++	f := connectorFields(t)
++	for _, index := range []int{2, 3, 4} {
++		var s State
++		commitState(t, &s, stateEvent(t, f[0], 1, nil))
++		if s.Commit(stateEvent(t, f[index], 2, nil)) == nil {
++			t.Fatal("v3 bypassed v2 state", index)
++		}
++	}
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	for _, legacy := range []map[string]json.RawMessage{validSourceFixtures()[2], qualityFixtures(t)[1]} {
++		if s.Commit(stateEvent(t, legacy, 2, nil)) == nil {
++			t.Fatal("mixed version accepted")
++		}
++	}
++	bad := f[2]
++	putFields(bad, map[string]any{"duration_ms": "999"})
++	requireInvalidSource(t, encodeCounterFields(t, bad))
++	var bounded State
++	for i := 0; i < MaxActiveFlows; i++ {
++		e := stateEvent(t, f[0], i+1, map[string]any{"flow_id": strings.Repeat("x", i+1), "attempt_id": strings.Repeat("a", i+1)})
++		commitState(t, &bounded, e)
++	}
++	if bounded.Commit(stateEvent(t, f[0], 33, map[string]any{"flow_id": "overflow", "attempt_id": "overflow"})) == nil {
++		t.Fatal("active bound bypassed")
++	}
++}
++
++func TestConnectorV3CommAndUint64Boundaries(t *testing.T) {
++	f := connectorFields(t)[0]
++	for _, tc := range []struct {
++		name   string
++		raw    []byte
++		status uint32
++		text   string
++		valid  bool
++	}{
++		{"empty-unavailable", make([]byte, 16), 0, "", true},
++		{"invalid-utf8", append([]byte{0xff, 0}, make([]byte, 14)...), 1, "", false},
++		{"unicode", append([]byte("进程"), make([]byte, 10)...), 1, "进程", true},
++		{"comm-15", append([]byte("123456789012345"), 0), 1, "123456789012345", true},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			c := connectorFixture()
++			raw, _ := hex.DecodeString(c.Raw.Connect)
++			copy(raw[80:96], tc.raw)
++			binary.LittleEndian.PutUint32(raw[68:], tc.status)
++			c.Raw.Connect = hex.EncodeToString(raw)
++			status := "unverified"
++			if tc.status == 0 {
++				status = "unavailable"
++			}
++			c.CallerComm = ConnectorComm{hex.EncodeToString(tc.raw), tc.text, tc.valid, status}
++			putFields(f, map[string]any{"connector": c})
++			e, err := DecodeSourceEvent(encodeCounterFields(t, f))
++			if err != nil || e.Connector.CallerComm != c.CallerComm {
++				t.Fatal("valid comm boundary", err)
++			}
++			c.CallerComm.Text += "wrong"
++			putFields(f, map[string]any{"connector": c})
++			requireInvalidSource(t, encodeCounterFields(t, f))
++		})
++	}
++	c := connectorFixture()
++	c.Generation = "18446744073709551615"
++	c.SourceCgroupID = "18446744073709551615"
++	c.LeaderStartBoottimeNS = "18446744073709551615"
++	c.ObservedBootNS = c.LeaderStartBoottimeNS
++	c.PIDNSInode = ^uint32(0)
++	c.TGID = 1<<31 - 1
++	c.LeaderPID = c.TGID
++	c.CallerTID = c.TGID
++	b, _ := hex.DecodeString(c.Raw.Binding)
++	conn, _ := hex.DecodeString(c.Raw.Connect)
++	binary.LittleEndian.PutUint64(b, ^uint64(0))
++	for _, off := range []int{0, 8, 32, 40} {
++		binary.LittleEndian.PutUint64(conn[off:], ^uint64(0))
++	}
++	for _, off := range []int{52, 56, 64} {
++		binary.LittleEndian.PutUint32(conn[off:], 1<<31-1)
++	}
++	binary.LittleEndian.PutUint32(conn[60:], ^uint32(0))
++	c.Raw.Binding = hex.EncodeToString(b)
++	c.Raw.Connect = hex.EncodeToString(conn)
++	putFields(f, map[string]any{"connector": c})
++	e, err := DecodeSourceEvent(encodeCounterFields(t, f))
++	if err != nil || *e.Connector != c {
++		t.Fatal("max uint64 identity lost", err)
++	}
++	// Raw field type and scalar token bounds must reject before unmarshalling a partial identity.
++	raw := encodeCounterFields(t, f)
++	for _, bad := range [][]byte{
++		bytes.Replace(raw, []byte(`"active_pidns_inum":4294967295`), []byte(`"active_pidns_inum":4294967296`), 1),
++		bytes.Replace(raw, []byte(`"active_pidns_inum":4294967295`), []byte(`"active_pidns_inum":4.294967295e9`), 1),
++		bytes.Replace(raw, []byte(`"generation":"18446744073709551615"`), []byte(`"generation":18446744073709551615`), 1),
++	} {
++		requireInvalidSource(t, bad)
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/connector_v4.go b/component/hoopatrace/telemetrywire/connector_v4.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v4.go
+@@ -0,0 +1,128 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"unicode/utf8"
++)
++
++// ConnectorExecutableEvidence preserves an experimental same-call executable
++// snapshot. It confers no authenticated identity or process-rule capability.
++type ConnectorExecutableEvidence struct {
++	Schema               string `json:"schema"`
++	Status               string `json:"status"`
++	Source               string `json:"source"`
++	NameSource           string `json:"name_source"`
++	CallToken            string `json:"call_token"`
++	ObservedBootNS       string `json:"observed_boot_ns"`
++	PathRawHex           string `json:"path_raw_hex"`
++	PathText             string `json:"path_text"`
++	PathTextValid        bool   `json:"path_text_valid"`
++	ProgramNameRawHex    string `json:"program_name_raw_hex"`
++	ProgramName          string `json:"program_name"`
++	ProgramNameTextValid bool   `json:"program_name_text_valid"`
++	RawRecord            string `json:"raw_record"`
++}
++
++func executableText(f wireFields, textKey, validKey string, raw []byte) bool {
++	valid := utf8.Valid(raw)
++	text := ""
++	if valid {
++		text = string(raw)
++	}
++	actual, ok := scalarText(f[textKey])
++	want := []byte("false")
++	if valid {
++		want = []byte("true")
++	}
++	return ok && actual == text && bytes.Equal(bytes.TrimSpace(f[validKey]), want)
++}
++
++func decodeExecutable(raw []byte, c *ConnectorEvidence) (*ConnectorExecutableEvidence, bool) {
++	f, ok := object(raw)
++	if !ok || !exactFields(f, "schema status source name_source call_token observed_boot_ns path_raw_hex path_text path_text_valid program_name_raw_hex program_name program_name_text_valid raw_record") || !literal(f, "schema", "sourceidentity-executable-call-v1") || !literal(f, "status", "unverified") || !literal(f, "source", "task_exe_file_d_path_v1") || !literal(f, "name_source", "executable_path_basename_v1") {
++		return nil, false
++	}
++	token, ok := decimal(f["call_token"], true, true)
++	if !ok {
++		return nil, false
++	}
++	observed, ok := decimal(f["observed_boot_ns"], true, true)
++	if !ok {
++		return nil, false
++	}
++	start, _ := decimal([]byte(`"`+c.LeaderStartBoottimeNS+`"`), true, true)
++	end, _ := decimal([]byte(`"`+c.ObservedBootNS+`"`), true, true)
++	if observed < start || observed > end {
++		return nil, false
++	}
++	b, ok := connectorHex(f["raw_record"], 296)
++	if !ok {
++		return nil, false
++	}
++	le := binary.LittleEndian
++	cookie, _ := decimal([]byte(`"`+c.ClientCookie+`"`), true, true)
++	n := le.Uint32(b[16:])
++	if le.Uint64(b) != cookie || le.Uint32(b[8:]) != c.TGID || le.Uint32(b[12:]) != c.CallerTID || n < 2 || n > 256 || le.Uint32(b[20:]) != 1 || le.Uint64(b[24:]) != observed || le.Uint64(b[32:]) != token {
++		return nil, false
++	}
++	path := b[40 : 40+int(n)-1]
++	if path[0] != '/' || b[40+int(n)-1] != 0 || bytes.IndexByte(path, 0) >= 0 {
++		return nil, false
++	}
++	pathHex, ok := scalarText(f["path_raw_hex"])
++	if !ok || pathHex != hex.EncodeToString(path) {
++		return nil, false
++	}
++	name := path[bytes.LastIndexByte(path, '/')+1:]
++	nameHex, ok := scalarText(f["program_name_raw_hex"])
++	if !ok || len(name) == 0 || nameHex != hex.EncodeToString(name) || !executableText(f, "path_text", "path_text_valid", path) || !executableText(f, "program_name", "program_name_text_valid", name) {
++		return nil, false
++	}
++	var out ConnectorExecutableEvidence
++	if json.Unmarshal(raw, &out) != nil {
++		return nil, false
++	}
++	return &out, true
++}
++
++func decodeV4(f wireFields, e *SourceEvent) bool {
++	if e.Kind != "opened" {
++		if !decodeV3(f, e) {
++			return false
++		}
++		if e.Counter != nil {
++			e.Counter.SchemaVersion = 4
++		}
++		return true
++	}
++	if !exactFields(f, commonFields+" process source_addr entry_addr target_kind target identity_scope flow_start_ns connector") {
++		return false
++	}
++	c, ok := object(f["connector"])
++	if !ok || !exactFields(c, "schema identity_capability process_path boot_id core_generation generation source_cgroup_id root_cgroup_id accepted_cookie client_cookie socket_netns_cookie tgid_initial leader_pid_initial caller_tid_initial leader_start_boottime_ns observed_boot_ns active_pidns_inum leader_comm caller_comm local_endpoint remote_endpoint raw executable") || !literal(c, "schema", "sourceidentity-core-admission-v2") {
++		return false
++	}
++	// Validate the unchanged connector coordinates with the v3 validator only
++	// after checking v4's exact shape. Restore the actual schema in the result.
++	executable := c["executable"]
++	delete(c, "executable")
++	c["schema"] = json.RawMessage(`"sourceidentity-core-admission-v1"`)
++	connectorRaw, err := json.Marshal(c)
++	if err != nil {
++		return false
++	}
++	normalized := make(wireFields, len(f))
++	for k, v := range f {
++		normalized[k] = v
++	}
++	normalized["connector"] = connectorRaw
++	if !decodeV3(normalized, e) {
++		return false
++	}
++	e.Connector.Schema = "sourceidentity-core-admission-v2"
++	e.Executable, ok = decodeExecutable(executable, e.Connector)
++	return ok
++}
+diff --git a/component/hoopatrace/telemetrywire/connector_v4_test.go b/component/hoopatrace/telemetrywire/connector_v4_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v4_test.go
+@@ -0,0 +1,276 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++	"unicode/utf8"
++)
++
++func executableFixture(path []byte) ConnectorExecutableEvidence {
++	b := make([]byte, 296)
++	binary.LittleEndian.PutUint64(b, 4)
++	binary.LittleEndian.PutUint32(b[8:], 10)
++	binary.LittleEndian.PutUint32(b[12:], 11)
++	binary.LittleEndian.PutUint32(b[16:], uint32(len(path)+1))
++	binary.LittleEndian.PutUint32(b[20:], 1)
++	binary.LittleEndian.PutUint64(b[24:], 150)
++	binary.LittleEndian.PutUint64(b[32:], 9007199254740993)
++	copy(b[40:], path)
++	// Preserve uninterpreted tail bytes, including nonzero bytes after the NUL.
++	if len(path) < 255 {
++		b[295] = 0xa5
++	}
++	name := path[bytes.LastIndexByte(path, '/')+1:]
++	e := ConnectorExecutableEvidence{Schema: "sourceidentity-executable-call-v1", Status: "unverified", Source: "task_exe_file_d_path_v1", NameSource: "executable_path_basename_v1", CallToken: "9007199254740993", ObservedBootNS: "150", PathRawHex: hex.EncodeToString(path), PathTextValid: utf8.Valid(path), ProgramNameRawHex: hex.EncodeToString(name), ProgramNameTextValid: utf8.Valid(name), RawRecord: hex.EncodeToString(b)}
++	if e.PathTextValid {
++		e.PathText = string(path)
++	}
++	if e.ProgramNameTextValid {
++		e.ProgramName = string(name)
++	}
++	return e
++}
++func executableFields(t *testing.T, e ConnectorExecutableEvidence, c ConnectorEvidence) map[string]json.RawMessage {
++	t.Helper()
++	f := connectorFields(t)[0]
++	putFields(f, map[string]any{"schema_version": 4})
++	raw, _ := json.Marshal(c)
++	cf, _ := object(raw)
++	cf["schema"] = json.RawMessage(`"sourceidentity-core-admission-v2"`)
++	exe, _ := json.Marshal(e)
++	cf["executable"] = exe
++	raw, _ = json.Marshal(cf)
++	f["connector"] = raw
++	return f
++}
++func executableLifecycle(t *testing.T) []map[string]json.RawMessage {
++	f := connectorFields(t)
++	for _, v := range f {
++		putFields(v, map[string]any{"schema_version": 4})
++	}
++	f[0] = executableFields(t, executableFixture([]byte("/bin/python3")), connectorFixture())
++	return f
++}
++func TestConnectorV4LifecycleReplayRecovery(t *testing.T) {
++	f := executableLifecycle(t)
++	m := manifestFixture(t)
++	c := connectorFixture()
++	c.CoreGeneration = m.ConfigGeneration
++	f[0] = executableFields(t, executableFixture([]byte("/bin/python3")), c)
++	var s, replay State
++	for i, v := range f {
++		e := stateEvent(t, v, i+1, map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration})
++		if e.SchemaVersion != 4 || e.Counter != nil && e.Counter.SchemaVersion != 4 {
++			t.Fatal("version lost")
++		}
++		if i == 0 && (e.Connector.Schema != "sourceidentity-core-admission-v2" || e.Executable.CallToken != "9007199254740993") {
++			t.Fatal("evidence lost")
++		}
++		if i > 0 && (e.Connector != nil || e.Executable != nil) {
++			t.Fatal("identity leaked to non-opened")
++		}
++		commitState(t, &s, e)
++		again, err := DecodeSourceEvent(e.Raw)
++		if err != nil || !bytes.Equal(again.Raw, e.Raw) || !reflect.DeepEqual(again.Executable, e.Executable) {
++			t.Fatal("replay changed evidence", err)
++		}
++		commitState(t, &replay, again)
++	}
++	if !reflect.DeepEqual(s.Snapshot(), replay.Snapshot()) {
++		t.Fatal("replay state")
++	}
++	report, err := ProjectRecovery(m, replay.Snapshot(), strings.Repeat("c", 64), nil)
++	if err != nil || report.Flows[0].Final.UploadBytes != 9007199254740994 || replay.Snapshot().Flows[0].Final.SchemaVersion != 4 {
++		t.Fatal("recovery", err)
++	}
++	b, _ := json.Marshal(report)
++	if bytes.Contains(b, []byte("executable")) {
++		t.Fatal("recovery invented identity")
++	}
++}
++func TestConnectorV4ExecutableMutations(t *testing.T) {
++	base := executableFixture([]byte("/bin/python3"))
++	for _, tc := range []struct {
++		name   string
++		change func(*ConnectorExecutableEvidence)
++	}{
++		{"schema", func(e *ConnectorExecutableEvidence) { e.Schema = "other" }}, {"status", func(e *ConnectorExecutableEvidence) { e.Status = "verified" }}, {"source", func(e *ConnectorExecutableEvidence) { e.Source = "proc" }}, {"name-source", func(e *ConnectorExecutableEvidence) { e.NameSource = "comm" }},
++		{"token-zero", func(e *ConnectorExecutableEvidence) { e.CallToken = "0" }}, {"token-leading", func(e *ConnectorExecutableEvidence) { e.CallToken = "01" }}, {"token-overflow", func(e *ConnectorExecutableEvidence) { e.CallToken = "18446744073709551616" }},
++		{"time-zero", func(e *ConnectorExecutableEvidence) { e.ObservedBootNS = "0" }}, {"before-start", func(e *ConnectorExecutableEvidence) { e.ObservedBootNS = "99" }}, {"after-connect", func(e *ConnectorExecutableEvidence) { e.ObservedBootNS = "201" }},
++		{"path", func(e *ConnectorExecutableEvidence) { e.PathRawHex = "2f61" }}, {"path-upper", func(e *ConnectorExecutableEvidence) { e.PathRawHex = strings.ToUpper(e.PathRawHex) }}, {"text", func(e *ConnectorExecutableEvidence) { e.PathText = "wrong" }}, {"text-valid", func(e *ConnectorExecutableEvidence) { e.PathTextValid = false }}, {"name", func(e *ConnectorExecutableEvidence) { e.ProgramName = "wrong" }}, {"name-raw", func(e *ConnectorExecutableEvidence) { e.ProgramNameRawHex = "61" }}, {"name-valid", func(e *ConnectorExecutableEvidence) { e.ProgramNameTextValid = false }}, {"short", func(e *ConnectorExecutableEvidence) { e.RawRecord = "00" }},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			e := base
++			tc.change(&e)
++			requireInvalidSource(t, encodeCounterFields(t, executableFields(t, e, connectorFixture())))
++		})
++	}
++	// Every scalar ABI byte must bind to the corresponding public value.
++	for i := 0; i < 40; i++ {
++		t.Run("raw-"+strconv.Itoa(i), func(t *testing.T) {
++			e := base
++			b, _ := hex.DecodeString(e.RawRecord)
++			b[i] ^= 0x80
++			e.RawRecord = hex.EncodeToString(b)
++			requireInvalidSource(t, encodeCounterFields(t, executableFields(t, e, connectorFixture())))
++		})
++	}
++	for _, i := range []int{40, 42, 52} {
++		e := base
++		b, _ := hex.DecodeString(e.RawRecord)
++		b[i] = 0xff
++		e.RawRecord = hex.EncodeToString(b)
++		requireInvalidSource(t, encodeCounterFields(t, executableFields(t, e, connectorFixture())))
++	}
++	f := executableFields(t, base, connectorFixture())
++	raw := encodeCounterFields(t, f)
++	for _, bad := range [][]byte{
++		bytes.Replace(raw, []byte(`"call_token":"9007199254740993"`), []byte(`"call_token":"9007199254740993","call_tok\u0065n":"9007199254740993"`), 1),
++		bytes.Replace(raw, []byte(`"path_text":"/bin/python3"`), []byte(`"path_text":"\ud800"`), 1),
++		bytes.Replace(raw, []byte(`"schema_version":4`), []byte(`"schema_version":4.0`), 1),
++	} {
++		requireInvalidSource(t, bad)
++	}
++	fields, _ := object(f["connector"])
++	ef, _ := object(fields["executable"])
++	for key := range ef {
++		copy := wireFields{}
++		for k, v := range ef {
++			copy[k] = v
++		}
++		delete(copy, key)
++		fields["executable"], _ = json.Marshal(copy)
++		f["connector"], _ = json.Marshal(fields)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++	}
++	ef["unexpected"] = json.RawMessage(`true`)
++	fields["executable"], _ = json.Marshal(ef)
++	f["connector"], _ = json.Marshal(fields)
++	requireInvalidSource(t, encodeCounterFields(t, f))
++}
++func TestConnectorV4PathsAndIntegerBoundaries(t *testing.T) {
++	for _, path := range [][]byte{[]byte("/bin/程序 (deleted)"), []byte("/" + strings.Repeat("a", 254)), {'/', 0xff, '/', 'o', 'k'}, {'/', 'x', '/', 0xff}} {
++		e := executableFixture(path)
++		f := executableFields(t, e, connectorFixture())
++		got, err := DecodeSourceEvent(encodeCounterFields(t, f))
++		if err != nil || !reflect.DeepEqual(got.Executable, &e) {
++			t.Fatal("path", path, err)
++		}
++	}
++	for _, path := range [][]byte{[]byte("/"), []byte("/bin/"), []byte("relative"), {'/', 'a', 0, 'b'}} {
++		e := executableFixture(path)
++		requireInvalidSource(t, encodeCounterFields(t, executableFields(t, e, connectorFixture())))
++	}
++	for _, path := range [][]byte{{'/', 0xff, '/', 'o', 'k'}, {'/', 'x', '/', 0xff}} {
++		e := executableFixture(path)
++		e.PathTextValid = true
++		requireInvalidSource(t, encodeCounterFields(t, executableFields(t, e, connectorFixture())))
++	}
++	for _, token := range []uint64{1, ^uint64(0)} {
++		e := executableFixture([]byte("/a"))
++		b, _ := hex.DecodeString(e.RawRecord)
++		binary.LittleEndian.PutUint64(b[32:], token)
++		e.RawRecord = hex.EncodeToString(b)
++		e.CallToken = strconv.FormatUint(token, 10)
++		if _, err := DecodeSourceEvent(encodeCounterFields(t, executableFields(t, e, connectorFixture()))); err != nil {
++			t.Fatal("u64 precision", err)
++		}
++	}
++	// BOOT uses exact u64 values independently of quality monotonic timestamps.
++	for _, observed := range []uint64{9007199254740993, ^uint64(0)} {
++		c := connectorFixture()
++		c.LeaderStartBoottimeNS = strconv.FormatUint(observed-1, 10)
++		c.ObservedBootNS = strconv.FormatUint(observed, 10)
++		b, _ := hex.DecodeString(c.Raw.Connect)
++		binary.LittleEndian.PutUint64(b[8:], observed)
++		binary.LittleEndian.PutUint64(b[40:], observed-1)
++		c.Raw.Connect = hex.EncodeToString(b)
++		e := executableFixture([]byte("/a"))
++		e.ObservedBootNS = c.ObservedBootNS
++		b, _ = hex.DecodeString(e.RawRecord)
++		binary.LittleEndian.PutUint64(b[24:], observed)
++		e.RawRecord = hex.EncodeToString(b)
++		if _, err := DecodeSourceEvent(encodeCounterFields(t, executableFields(t, e, c))); err != nil {
++			t.Fatal("BOOT precision", err)
++		}
++	}
++}
++func TestConnectorV4LegacyAndQualityBoundaries(t *testing.T) {
++	f := executableLifecycle(t)
++	for _, index := range []int{2, 3, 4} {
++		var s State
++		commitState(t, &s, stateEvent(t, f[0], 1, nil))
++		if s.Commit(stateEvent(t, f[index], 2, nil)) == nil {
++			t.Fatal("quality bypass", index)
++		}
++	}
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	for _, old := range []map[string]json.RawMessage{validSourceFixtures()[2], qualityFixtures(t)[1], connectorFields(t)[1]} {
++		before := s.Snapshot()
++		if s.Commit(stateEvent(t, old, 2, nil)) == nil || !reflect.DeepEqual(before, s.Snapshot()) {
++			t.Fatal("mixed version")
++		}
++	}
++	bad := executableLifecycle(t)[2]
++	putFields(bad, map[string]any{"duration_ms": "999"})
++	requireInvalidSource(t, encodeCounterFields(t, bad))
++	for _, version := range []int{1, 2, 3} {
++		copy := executableFields(t, executableFixture([]byte("/a")), connectorFixture())
++		putFields(copy, map[string]any{"schema_version": version})
++		requireInvalidSource(t, encodeCounterFields(t, copy))
++	}
++	old := connectorFields(t)[0]
++	putFields(old, map[string]any{"schema_version": 4})
++	requireInvalidSource(t, encodeCounterFields(t, old))
++	// Even a v1-schema connector must not smuggle executable into v3.
++	old = executableFields(t, executableFixture([]byte("/a")), connectorFixture())
++	c, _ := object(old["connector"])
++	c["schema"] = json.RawMessage(`"sourceidentity-core-admission-v1"`)
++	old["connector"], _ = json.Marshal(c)
++	putFields(old, map[string]any{"schema_version": 3})
++	requireInvalidSource(t, encodeCounterFields(t, old))
++	for _, v := range [][]map[string]json.RawMessage{qualityFixtures(t), connectorFields(t)} {
++		for _, row := range v {
++			if _, err := DecodeSourceEvent(encodeCounterFields(t, row)); err != nil {
++				t.Fatal("legacy changed", err)
++			}
++		}
++	}
++	for i := 1; i < len(f); i++ {
++		putFields(f[i], map[string]any{"executable": executableFixture([]byte("/a"))})
++		requireInvalidSource(t, encodeCounterFields(t, f[i]))
++	}
++}
++
++func TestConnectorV4ActiveBoundAndVersionFreeze(t *testing.T) {
++	f := executableLifecycle(t)
++	var s State
++	for i := 0; i < MaxActiveFlows; i++ {
++		commitState(t, &s, stateEvent(t, f[0], i+1, map[string]any{"flow_id": "flow-" + strconv.Itoa(i), "attempt_id": "attempt-" + strconv.Itoa(i)}))
++	}
++	before := s.Snapshot()
++	if s.Commit(stateEvent(t, f[0], 33, map[string]any{"flow_id": "overflow", "attempt_id": "overflow"})) == nil || !reflect.DeepEqual(before, s.Snapshot()) {
++		t.Fatal("active bound bypassed")
++	}
++	for _, version := range []int{1, 2, 3} {
++		legacy := validSourceFixtures()[0]
++		if version == 2 {
++			legacy = qualityFixtures(t)[0]
++		}
++		if version == 3 {
++			legacy = connectorFields(t)[0]
++		}
++		var old State
++		commitState(t, &old, stateEvent(t, legacy, 1, nil))
++		if old.Commit(stateEvent(t, f[1], 2, nil)) == nil {
++			t.Fatal("epoch version changed", version)
++		}
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/counter_event_test.go b/component/hoopatrace/telemetrywire/counter_event_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/counter_event_test.go
+@@ -0,0 +1,132 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"reflect"
++	"strings"
++	"testing"
++	"time"
++)
++
++func counterFields() map[string]json.RawMessage {
++	return map[string]json.RawMessage{
++		"schema_version": json.RawMessage(`1`), "source_instance_id": json.RawMessage(`"core-a"`), "source_epoch": json.RawMessage(`"epoch-a"`), "event_id": json.RawMessage(`"event-1"`), "source_seq": json.RawMessage(`"18446744073709551615"`), "flow_id": json.RawMessage(`"flow-1"`), "attempt_id": json.RawMessage(`"attempt-1"`), "observed_at": json.RawMessage(`"2026-10-22T10:11:12.123456789Z"`), "config_generation": json.RawMessage(`"generation-1"`), "boundary_ref": json.RawMessage(`"mihomo_proxy_stream_v1"`), "kind": json.RawMessage(`"bytes_checkpoint"`), "upload_bytes": json.RawMessage(`"9007199254740993"`), "download_bytes": json.RawMessage(`"18446744073709551615"`),
++	}
++}
++func encodeCounterFields(t *testing.T, fields map[string]json.RawMessage) []byte {
++	t.Helper()
++	raw, err := json.Marshal(fields)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return raw
++}
++func requireInvalidCounter(t *testing.T, raw []byte) {
++	t.Helper()
++	event, err := DecodeCounterEvent(raw)
++	if !errors.Is(err, ErrInvalidCounterEvent) {
++		t.Fatalf("expected fixed invalid-frame error, got %v", err)
++	}
++	if !reflect.DeepEqual(event, CounterEvent{}) {
++		t.Fatal("invalid frame returned partially decoded fields")
++	}
++	if strings.Contains(err.Error(), "private-value") {
++		t.Fatal("error leaked wire value")
++	}
++}
++func TestCounterEventExactLargeValuesAndTypedFields(t *testing.T) {
++	fields := counterFields()
++	raw := encodeCounterFields(t, fields)
++	event, err := DecodeCounterEvent(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if event.SchemaVersion != 1 || event.SourceSeq != ^uint64(0) || uint64(event.UploadBytes) != 9007199254740993 || uint64(event.DownloadBytes) != ^uint64(0) {
++		t.Fatalf("numeric precision changed: %+v", event)
++	}
++	if event.SourceInstanceID != "core-a" || event.SourceEpoch != "epoch-a" || event.EventID != "event-1" || event.FlowID != "flow-1" || event.AttemptID != "attempt-1" || event.ConfigGeneration != "generation-1" || event.BoundaryRef != "mihomo_proxy_stream_v1" || event.Kind != BytesCheckpoint {
++		t.Fatalf("fields changed: %+v", event)
++	}
++	if event.ObservedAt.Format(time.RFC3339Nano) != "2026-10-22T10:11:12.123456789Z" {
++		t.Fatal("timestamp lost precision")
++	}
++	fields["kind"] = json.RawMessage(`"closed"`)
++	fields["upload_bytes"] = json.RawMessage(`"0"`)
++	fields["source_seq"] = json.RawMessage(`"1"`)
++	event, err = DecodeCounterEvent(encodeCounterFields(t, fields))
++	if err != nil || event.Kind != Closed || event.UploadBytes != 0 || event.SourceSeq != 1 {
++		t.Fatal(event, err)
++	}
++	if _, err = DecodeCounterEvent(append(append([]byte(" \n"), raw...), []byte("\t \n")...)); err != nil {
++		t.Fatal("JSON whitespace rejected", err)
++	}
++}
++func TestCounterEventRejectsMissingNullAndUnknownFields(t *testing.T) {
++	for name := range counterFields() {
++		t.Run("missing/"+name, func(t *testing.T) {
++			fields := counterFields()
++			delete(fields, name)
++			requireInvalidCounter(t, encodeCounterFields(t, fields))
++		})
++		t.Run("null/"+name, func(t *testing.T) {
++			fields := counterFields()
++			fields[name] = json.RawMessage(`null`)
++			requireInvalidCounter(t, encodeCounterFields(t, fields))
++		})
++	}
++	fields := counterFields()
++	fields["private-value"] = json.RawMessage(`"private-value"`)
++	requireInvalidCounter(t, encodeCounterFields(t, fields))
++}
++func TestCounterEventRejectsWireTypeAndScalarViolations(t *testing.T) {
++	cases := []struct{ name, field, raw string }{
++		{"version_unknown", "schema_version", `2`}, {"version_string", "schema_version", `"1"`}, {"version_decimal", "schema_version", `1.0`}, {"version_exponent", "schema_version", `1e0`},
++		{"kind_unknown", "kind", `"private-value"`}, {"kind_number", "kind", `1`}, {"boundary_unknown", "boundary_ref", `"private-value"`},
++		{"utc_offset", "observed_at", `"2026-10-22T10:11:12+00:00"`}, {"non_utc", "observed_at", `"2026-10-22T10:11:12+01:00"`}, {"lowercase_z", "observed_at", `"2026-10-22T10:11:12z"`}, {"bad_date", "observed_at", `"2026-02-30T10:11:12Z"`}, {"time_excess_precision", "observed_at", `"2026-10-22T10:11:12.1234567890Z"`},
++	}
++	for _, field := range []string{"source_seq", "upload_bytes", "download_bytes"} {
++		for _, value := range []string{`1`, `9007199254740993`, `""`, `"01"`, `"-1"`, `"1.0"`, `"1e0"`, `"18446744073709551616"`, `" 1"`, `"+1"`, `"١"`, `true`, `[]`, `{}`} {
++			cases = append(cases, struct{ name, field, raw string }{field + "/" + value, field, value})
++		}
++	}
++	cases = append(cases, struct{ name, field, raw string }{"zero_sequence", "source_seq", `"0"`})
++	for _, field := range []string{"source_instance_id", "source_epoch", "event_id", "flow_id", "attempt_id", "config_generation"} {
++		for _, value := range []string{`""`, `"bad/id"`, `"private-value with space"`, `1`, `{}`} {
++			cases = append(cases, struct{ name, field, raw string }{field + "/" + value, field, value})
++		}
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			fields := counterFields()
++			fields[tc.field] = json.RawMessage(tc.raw)
++			requireInvalidCounter(t, encodeCounterFields(t, fields))
++		})
++	}
++}
++func TestCounterEventRejectsDuplicateEscapedKeysAndTrailingJSON(t *testing.T) {
++	raw := encodeCounterFields(t, counterFields())
++	for _, suffix := range []string{`,"event_id":"event-1"}`, `,"event\u005fid":"event-1"}`, `,"schema_version":1}`} {
++		malformed := append(append([]byte(nil), raw[:len(raw)-1]...), []byte(suffix)...)
++		requireInvalidCounter(t, malformed)
++	}
++	for _, raw := range [][]byte{nil, []byte(`null`), []byte(`[]`), []byte(`1`), []byte(`{"event_id":`), append(append([]byte(nil), raw...), []byte(` {}`)...), append(append([]byte(nil), raw...), []byte(` null`)...), append(append([]byte(nil), raw...), ',')} {
++		requireInvalidCounter(t, raw)
++	}
++}
++func TestCounterEventInputAndIDBounds(t *testing.T) {
++	fields := counterFields()
++	fields["event_id"] = json.RawMessage(`"` + strings.Repeat("a", 128) + `"`)
++	raw := encodeCounterFields(t, fields)
++	if _, err := DecodeCounterEvent(raw); err != nil {
++		t.Fatal("128-byte ID rejected", err)
++	}
++	padded := append(append([]byte(nil), raw...), bytes.Repeat([]byte(" "), 64*1024-len(raw))...)
++	if _, err := DecodeCounterEvent(padded); err != nil {
++		t.Fatal("64KiB input rejected", err)
++	}
++	requireInvalidCounter(t, append(padded, ' '))
++	fields["event_id"] = json.RawMessage(`"` + strings.Repeat("a", 129) + `"`)
++	requireInvalidCounter(t, encodeCounterFields(t, fields))
++}
+diff --git a/component/hoopatrace/telemetrywire/manifest_test.go b/component/hoopatrace/telemetrywire/manifest_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/manifest_test.go
+@@ -0,0 +1,59 @@
++package telemetrywire
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"strings"
++	"testing"
++)
++
++func manifestFixture(t *testing.T) Manifest {
++	t.Helper()
++	exe, hash, boot, nonce, start := "/private/core", strings.Repeat("a", 64), "12345678-1234-1234-1234-123456789abc", strings.Repeat("b", 32), "123"
++	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d|%s|%s", exe, hash, boot, 123, start, nonce)))
++	raw, _ := json.Marshal(map[string]any{"schema_version": 1, "source_epoch": "epoch:" + hex.EncodeToString(sum[:]), "binary_path": exe, "binary_sha256": hash, "boot_id": boot, "pid": 123, "start_ticks": start, "nonce": nonce, "config_generation": "generation-a", "max_source_bytes": 8 * 1024 * 1024, "max_frame_bytes": 8192, "max_active_flows": 32, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"})
++	m, err := DecodeManifest(raw)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return m
++}
++
++func TestManifestIdentityAndRawAreBound(t *testing.T) {
++	m := manifestFixture(t)
++	if m.SourceInstanceID != "source:"+strings.TrimPrefix(m.SourceEpoch, "epoch:") || m.MaxSourceBytes != 8*1024*1024 {
++		t.Fatal("manifest identity lost")
++	}
++	before := append([]byte(nil), m.Raw...)
++	decoded, err := DecodeManifest(before)
++	if err != nil {
++		t.Fatal(err)
++	}
++	before[0] = ' '
++	if string(decoded.Raw) != string(m.Raw) {
++		t.Fatal("raw aliases caller")
++	}
++}
++
++func TestManifestRejectsMalformedOrUnboundEvidence(t *testing.T) {
++	m := manifestFixture(t)
++	for _, field := range []string{"source_epoch", "binary_path", "binary_sha256", "boot_id", "pid", "start_ticks", "nonce", "max_source_bytes", "max_frame_bytes", "max_active_flows", "schema_version", "scope", "reclamation"} {
++		t.Run(field, func(t *testing.T) {
++			var fields map[string]json.RawMessage
++			_ = json.Unmarshal(m.Raw, &fields)
++			values := map[string]string{"source_epoch": `"epoch:bad"`, "binary_path": `"relative"`, "binary_sha256": `"abc"`, "boot_id": `"invalid"`, "pid": `1.0`, "start_ticks": `"01"`, "nonce": `"00000000000000000000000000000000"`, "max_source_bytes": `8388609`, "max_frame_bytes": `8193`, "max_active_flows": `33`, "schema_version": `1e0`, "scope": `"unverified"`, "reclamation": `"automatic"`}
++			fields[field] = json.RawMessage(values[field])
++			bad, _ := json.Marshal(fields)
++			if got, err := DecodeManifest(bad); err == nil || len(got.Raw) != 0 {
++				t.Fatal("unbound manifest accepted")
++			}
++		})
++	}
++	for _, raw := range [][]byte{nil, []byte(`null`), append(append([]byte(nil), m.Raw[:len(m.Raw)-1]...), []byte(`,"schema_version":1}`)...), append(append([]byte(nil), m.Raw...), []byte(` {}`)...)} {
++		if _, err := DecodeManifest(raw); err == nil {
++			t.Fatal("bad shape accepted")
++		}
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/quality_v2_test.go b/component/hoopatrace/telemetrywire/quality_v2_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/quality_v2_test.go
+@@ -0,0 +1,352 @@
++package telemetrywire
++
++import (
++	"bufio"
++	"bytes"
++	"encoding/json"
++	"os"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++)
++
++func qualityFixtures(t *testing.T) []map[string]json.RawMessage {
++	t.Helper()
++	raw, err := os.ReadFile("testdata/telemetry-quality-v2/positive.jsonl")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var out []map[string]json.RawMessage
++	s := bufio.NewScanner(bytes.NewReader(raw))
++	for s.Scan() {
++		var f map[string]json.RawMessage
++		if err := json.Unmarshal(s.Bytes(), &f); err != nil {
++			t.Fatal(err)
++		}
++		out = append(out, f)
++	}
++	if err := s.Err(); err != nil {
++		t.Fatal(err)
++	}
++	return out
++}
++func TestQualityV2StrictFixtures(t *testing.T) {
++	fixtures := qualityFixtures(t)
++	for i, f := range fixtures {
++		raw := encodeCounterFields(t, f)
++		e, err := DecodeSourceEvent(raw)
++		if err != nil || e.SchemaVersion != 2 || !bytes.Equal(e.Raw, raw) {
++			t.Fatalf("fixture %d: %v", i, err)
++		}
++		for key := range f {
++			copy := map[string]json.RawMessage{}
++			for k, v := range f {
++				copy[k] = v
++			}
++			delete(copy, key)
++			requireInvalidSource(t, encodeCounterFields(t, copy))
++		}
++		requireInvalidSource(t, append(append([]byte(nil), raw[:len(raw)-1]...), `,"kind":"opened"}`...))
++	}
++	if e, _ := DecodeSourceEvent(encodeCounterFields(t, fixtures[4])); e.Counter.SchemaVersion != 2 || e.Counter.UploadBytes != 9007199254740993 {
++		t.Fatal("v2 common counter projection lost precision/version")
++	}
++	raw, err := os.ReadFile("testdata/telemetry-quality-v2/negative.json")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var cases []struct {
++		Name  string
++		Event json.RawMessage
++	}
++	if json.Unmarshal(raw, &cases) != nil {
++		t.Fatal("bad fixtures")
++	}
++	for _, c := range cases {
++		t.Run(c.Name, func(t *testing.T) { requireInvalidSource(t, c.Event) })
++	}
++}
++func TestQualityV2NestedStrictnessAndBounds(t *testing.T) {
++	fixtures := qualityFixtures(t)
++	for _, tc := range []struct {
++		index    int
++		key, raw string
++	}{
++		{1, "ordered_chain", `[{"internal_name":"x","adapter_type":"Direct","provider_name":"","node_id":null,"provider_id":null,"group_id":null,"node\u005fid":null}]`},
++		{1, "ordered_chain", `[{"internal_name":"x","adapter_type":"Direct","provider_name":"","node_id":null,"provider_id":null,"group_id":null,"extra":0}]`},
++		{1, "ordered_chain", `[{"internal_name":"x","adapter_type":"Direct","provider_name":"","node_id":"y","provider_id":null,"group_id":null}]`},
++		{1, "ordered_chain", `[{"internal_name":"x","adapter_type":"Direct","provider_name":"p","node_id":null,"provider_id":"other","group_id":null}]`},
++		{1, "ordered_chain", `[]`},
++		{4, "segments", `[{"actual_connection_ref":"actual-1","attempt_id":"attempt-1","upload_bytes":"9007199254740993","download_bytes":"4","download\u005fbytes":"4"}]`},
++		{4, "segments", `[{"actual_connection_ref":"actual-1","attempt_id":"attempt-1","upload_bytes":"18446744073709551615","download_bytes":"4"}]`},
++		{2, "ready_ns", `"18446744073709551616"`}, {2, "finish_ns", `"06000000"`}, {2, "protocol", `"unknown"`}, {2, "failure_stage", `"dial_or_handshake"`},
++	} {
++		t.Run(tc.key+tc.raw, func(t *testing.T) {
++			f := fixtures[tc.index]
++			old := f[tc.key]
++			f[tc.key] = json.RawMessage(tc.raw)
++			requireInvalidSource(t, encodeCounterFields(t, f))
++			f[tc.key] = old
++		})
++	}
++	for _, p := range []struct{ protocol, ready string }{{"direct_tcp", "tcp_connected"}, {"http_connect", "http_connect_accepted"}, {"socks5", "socks5_connect_accepted"}} {
++		e := stateEvent(t, fixtures[2], 1, map[string]any{"protocol": p.protocol, "ready_kind": p.ready})
++		if e.Quality.ReadyKind != p.ready {
++			t.Fatal("ready proof changed")
++		}
++	}
++	for _, outcome := range []string{"failure", "timeout", "cancelled", "unknown"} {
++		stage := "dial_or_handshake"
++		if outcome == "unknown" {
++			stage = ""
++		}
++		e := stateEvent(t, fixtures[2], 1, map[string]any{"protocol": "unknown", "ready_kind": "ready_unproven", "ready_ns": nil, "duration_ms": nil, "flow_duration_ms": nil, "reason": "ready_unknown", "outcome": outcome, "failure_stage": stage})
++		if e.Quality.Outcome != outcome {
++			t.Fatal("outcome changed")
++		}
++	}
++	for _, tc := range []struct {
++		index int
++		key   string
++		limit int
++	}{{1, "ordered_chain", 8}, {4, "segments", 10}} {
++		f := fixtures[tc.index]
++		var items []json.RawMessage
++		json.Unmarshal(f[tc.key], &items)
++		var tooMany []json.RawMessage
++		for i := 0; i <= tc.limit; i++ {
++			tooMany = append(tooMany, items[0])
++		}
++		old := f[tc.key]
++		f[tc.key], _ = json.Marshal(tooMany)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++		f[tc.key] = old
++	}
++}
++func TestQualityV2LifecycleRejectsWithoutMutation(t *testing.T) {
++	f := qualityFixtures(t)
++	for _, tc := range []struct {
++		name    string
++		before  []int
++		index   int
++		changes map[string]any
++	}{
++		{"unregistered-binding", []int{0}, 3, nil},
++		{"unregistered-setup", []int{0}, 2, nil},
++		{"unregistered-segment", []int{0}, 4, nil},
++		{"wrong-attempt-setup", []int{0, 1}, 2, map[string]any{"attempt_id": "other"}},
++		{"wrong-attempt-binding", []int{0, 1}, 3, map[string]any{"attempt_id": "other"}},
++		{"wrong-flow-start", []int{0, 1}, 2, map[string]any{"flow_start_ns": "0", "flow_duration_ms": "5", "flow_observed_wait_ms": "6"}},
++		{"duplicate-reference", []int{0, 1}, 1, nil},
++		{"duplicate-binding", []int{0, 1, 3}, 3, nil},
++		{"duplicate-setup", []int{0, 1, 2}, 2, nil},
++		{"missing-zero-segment", []int{0, 1}, 4, map[string]any{"segments": []SegmentCounter{}, "upload_bytes": "0", "download_bytes": "0"}},
++		{"segment-regression", []int{0, 1, 4}, 4, map[string]any{"upload_bytes": "9007199254740993", "segments": []SegmentCounter{{"actual-1", "attempt-1", 9007199254740992, 4}}, "unallocated_upload_bytes": "1"}},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			var s State
++			for i, index := range tc.before {
++				commitState(t, &s, stateEvent(t, f[index], i+1, nil))
++			}
++			e := stateEvent(t, f[tc.index], len(tc.before)+1, tc.changes)
++			before := s.Snapshot()
++			if s.Validate(e) == nil || s.Commit(e) == nil || !reflect.DeepEqual(before, s.Snapshot()) {
++				t.Fatal("invalid transition accepted or changed snapshot")
++			}
++		})
++	}
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	mixed := stateEvent(t, validSourceFixtures()[2], 2, nil)
++	if s.Commit(mixed) == nil {
++		t.Fatal("mixed epoch accepted")
++	}
++}
++func TestQualityV2ReplayRecoveryAndDetachedValidation(t *testing.T) {
++	f := qualityFixtures(t)
++	m := manifestFixture(t)
++	changes := map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration}
++	var s, replay State
++	for i, fields := range f {
++		e := stateEvent(t, fields, i+1, changes)
++		if s.Validate(e) != nil || s.Validate(e) != nil {
++			t.Fatal("validation mutated evidence")
++		}
++		commitState(t, &s, e)
++		again, err := DecodeSourceEvent(e.Raw)
++		if err != nil {
++			t.Fatal(err)
++		}
++		commitState(t, &replay, again)
++	}
++	if !reflect.DeepEqual(s.Snapshot(), replay.Snapshot()) {
++		t.Fatal("raw replay changed lifecycle")
++	}
++	life := s.Snapshot()
++	if life.Flows[0].Final.SchemaVersion != 2 {
++		t.Fatal("snapshot lost version")
++	}
++	report, err := ProjectRecovery(m, life, strings.Repeat("c", 64), nil)
++	if err != nil || report.Flows[0].Final.UploadBytes != 9007199254740994 {
++		t.Fatal("recovery lost v2 totals", err)
++	}
++	raw, _ := json.Marshal(report)
++	for _, key := range []string{"actual_connection_ref", "quality", "segments"} {
++		if bytes.Contains(raw, []byte(`"`+key+`"`)) {
++			t.Fatal("recovery invented quality provenance")
++		}
++	}
++	// A second source may reuse local IDs, with a fresh validator.
++	var reopened State
++	commitState(t, &reopened, stateEvent(t, f[0], 1, map[string]any{"source_epoch": "fresh-epoch"}))
++}
++func TestQualityV2TenSegmentsAndCrossFlowReferences(t *testing.T) {
++	f := qualityFixtures(t)
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	for i := 0; i < 10; i++ {
++		commitState(t, &s, stateEvent(t, f[1], i+2, map[string]any{"actual_connection_ref": "conn-" + strconv.Itoa(i), "attempt_id": "attempt-" + strconv.Itoa(i)}))
++	}
++	if s.Commit(stateEvent(t, f[1], 12, map[string]any{"actual_connection_ref": "eleventh", "attempt_id": "eleventh"})) == nil {
++		t.Fatal("eleventh segment registered")
++	}
++	commitState(t, &s, stateEvent(t, f[0], 12, map[string]any{"flow_id": "other-flow", "attempt_id": "other-attempt"}))
++	if s.Commit(stateEvent(t, f[1], 13, map[string]any{"flow_id": "other-flow", "attempt_id": "other-attempt", "actual_connection_ref": "conn-1"})) == nil {
++		t.Fatal("cross-flow ref reused")
++	}
++}
++
++func TestQualityV2NegativeEpochFixtures(t *testing.T) {
++	raw, err := os.ReadFile("testdata/telemetry-quality-v2/epoch-negative.json")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var cases []struct {
++		Name   string
++		Events []json.RawMessage
++	}
++	if err := json.Unmarshal(raw, &cases); err != nil {
++		t.Fatal(err)
++	}
++	for _, tc := range cases {
++		t.Run(tc.Name, func(t *testing.T) {
++			var s State
++			for i, raw := range tc.Events {
++				e, err := DecodeSourceEvent(raw)
++				if err != nil {
++					t.Fatal("epoch fixture must be wire-valid", err)
++				}
++				if i < len(tc.Events)-1 {
++					commitState(t, &s, e)
++				} else {
++					if s.Validate(e) == nil || s.Commit(e) == nil {
++						t.Fatal("invalid epoch accepted")
++					}
++				}
++			}
++		})
++	}
++}
++
++func TestQualityV2AttemptOrderAndUnallocatedMonotonic(t *testing.T) {
++	f := qualityFixtures(t)
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	commitState(t, &s, stateEvent(t, f[1], 2, nil))
++	commitState(t, &s, stateEvent(t, f[2], 3, nil))
++	commitState(t, &s, stateEvent(t, f[1], 4, map[string]any{"actual_connection_ref": "actual-2", "attempt_id": "attempt-2"}))
++	e := stateEvent(t, f[2], 5, map[string]any{"actual_connection_ref": "actual-2", "attempt_id": "attempt-2", "attempt_start_ns": "2000000", "duration_ms": "3", "observed_wait_ms": "4"})
++	if s.Commit(e) == nil {
++		t.Fatal("attempt start moved backwards")
++	}
++	var other State
++	commitState(t, &other, stateEvent(t, f[0], 1, nil))
++	commitState(t, &other, stateEvent(t, f[4], 2, map[string]any{"segments": []SegmentCounter{}, "upload_bytes": "10", "download_bytes": "0", "unallocated_upload_bytes": "10"}))
++	commitState(t, &other, stateEvent(t, f[1], 3, nil))
++	e = stateEvent(t, f[4], 4, map[string]any{"segments": []SegmentCounter{{"actual-1", "attempt-1", 1, 0}}, "upload_bytes": "10", "download_bytes": "0", "unallocated_upload_bytes": "9"})
++	if other.Commit(e) == nil {
++		t.Fatal("unallocated bytes moved to segment")
++	}
++}
++
++func TestQualityV2Uint64BoundaryAndSegmentOverflow(t *testing.T) {
++	f := qualityFixtures(t)
++	max := "18446744073709551615"
++	ms := "18446744073709"
++	e := stateEvent(t, f[2], 1, map[string]any{"flow_start_ns": "0", "attempt_start_ns": "0", "ready_ns": max, "finish_ns": max, "duration_ms": ms, "flow_duration_ms": ms, "observed_wait_ms": ms, "flow_observed_wait_ms": ms})
++	if e.Quality.FinishNS != ^uint64(0) {
++		t.Fatal("uint64 nanoseconds truncated")
++	}
++	bad := f[4]
++	putFields(bad, map[string]any{"upload_bytes": max, "unallocated_upload_bytes": "1", "segments": []SegmentCounter{{"actual-1", "attempt-1", ^uint64(0), 4}}})
++	requireInvalidSource(t, encodeCounterFields(t, bad))
++}
++func TestQualityV2NestedRequiredFieldsAndValidLimits(t *testing.T) {
++	f := qualityFixtures(t)
++	for _, tc := range []struct {
++		index int
++		key   string
++	}{{1, "ordered_chain"}, {4, "segments"}} {
++		var items []map[string]json.RawMessage
++		json.Unmarshal(f[tc.index][tc.key], &items)
++		for key := range items[0] {
++			copy := map[string]json.RawMessage{}
++			for k, v := range items[0] {
++				if k != key {
++					copy[k] = v
++				}
++			}
++			original := f[tc.index][tc.key]
++			f[tc.index][tc.key], _ = json.Marshal([]map[string]json.RawMessage{copy})
++			requireInvalidSource(t, encodeCounterFields(t, f[tc.index]))
++			f[tc.index][tc.key] = original
++		}
++	}
++	var chain []RouteHop
++	json.Unmarshal(f[1]["ordered_chain"], &chain)
++	for len(chain) < 8 {
++		chain = append(chain, chain[0])
++	}
++	if stateEvent(t, f[1], 1, map[string]any{"ordered_chain": chain}).OrderedChain == nil {
++		t.Fatal("eight-hop limit rejected")
++	}
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	segments := []SegmentCounter{}
++	for i := 0; i < 10; i++ {
++		ref, attempt := "conn-"+strconv.Itoa(i), "attempt-"+strconv.Itoa(i)
++		commitState(t, &s, stateEvent(t, f[1], i+2, map[string]any{"actual_connection_ref": ref, "attempt_id": attempt}))
++		segments = append(segments, SegmentCounter{ref, attempt, uint64(i), 0})
++	}
++	commitState(t, &s, stateEvent(t, f[4], 12, map[string]any{"upload_bytes": "45", "download_bytes": "0", "segments": segments}))
++}
++
++func TestQualityV2OneActualConnectionPerAttempt(t *testing.T) {
++	f := qualityFixtures(t)
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	commitState(t, &s, stateEvent(t, f[1], 2, nil))
++	if s.Commit(stateEvent(t, f[1], 3, map[string]any{"actual_connection_ref": "second-for-same-attempt"})) == nil {
++		t.Fatal("attempt acquired two actual connections")
++	}
++	// Rejection must not advance sequence or mutate connection state.
++	commitState(t, &s, stateEvent(t, f[2], 3, nil))
++}
++
++func TestQualityV2PreRouteFailure(t *testing.T) {
++	f := qualityFixtures(t)
++	changes := map[string]any{"protocol": "unknown", "ready_kind": "ready_unproven", "outcome": "timeout", "reason": "ready_unknown", "failure_stage": "pre_route", "actual_connection_ref": nil, "ready_ns": nil, "duration_ms": nil, "flow_duration_ms": nil, "attempt_start_ns": "1000000", "observed_wait_ms": "5"}
++	var s State
++	commitState(t, &s, stateEvent(t, f[0], 1, nil))
++	commitState(t, &s, stateEvent(t, f[2], 2, changes))
++	if s.Commit(stateEvent(t, f[1], 3, nil)) == nil {
++		t.Fatal("actual connection after aborted pre-route accepted")
++	}
++	var existing State
++	commitState(t, &existing, stateEvent(t, f[0], 1, nil))
++	commitState(t, &existing, stateEvent(t, f[1], 2, nil))
++	if existing.Commit(stateEvent(t, f[2], 3, changes)) == nil {
++		t.Fatal("pre-route failure after actual dial accepted")
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/recovery_test.go b/component/hoopatrace/telemetrywire/recovery_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/recovery_test.go
+@@ -0,0 +1,92 @@
++package telemetrywire
++
++import (
++	"encoding/json"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++func recoveryFixture(t *testing.T) (Manifest, Lifecycle, string) {
++	m := manifestFixture(t)
++	changes := map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration}
++	var state State
++	commitState(t, &state, stateEvent(t, openedFields(), 1, changes))
++	changes["upload_bytes"] = "9007199254740993"
++	changes["download_bytes"] = "17"
++	commitState(t, &state, stateEvent(t, counterFields(), 2, changes))
++	return m, state.Snapshot(), strings.Repeat("c", 64)
++}
++
++func TestRecoveryPendingNeedsExplicitWriterEndEvidence(t *testing.T) {
++	m, life, hash := recoveryFixture(t)
++	r, err := ProjectRecovery(m, life, hash, nil)
++	if err != nil || r.HistoryQuality != "pending" || r.WriterEnd != nil || r.RecordingStatus != "unverified" {
++		t.Fatal("snapshot fabricated end/ready", err)
++	}
++	f := r.Flows[0]
++	if f.State != "pending" || f.TailBytes != nil || f.Final != nil || f.ReconciliationID != "" || f.LastCheckpoint.UploadBytes != 9007199254740993 {
++		t.Fatal("pending tail/CP changed")
++	}
++	raw, _ := json.Marshal(r)
++	if !strings.Contains(string(raw), `"tail_bytes":null`) || strings.Contains(string(raw), `"receipt_seq"`) {
++		t.Fatal("report is not independent of source/receipt positions")
++	}
++}
++
++func TestRecoveryGapIdentitySurvivesRepeatedReopen(t *testing.T) {
++	m, life, hash := recoveryFixture(t)
++	before := life
++	end := &WriterEndEvidence{"exclusive_writer_full_scan", m.SourceEpoch, m.SHA256, hash, "2026-10-23T01:02:03Z"}
++	first, err := ProjectRecovery(m, life, hash, end)
++	if err != nil {
++		t.Fatal(err)
++	}
++	end.ObservedAt = "2026-10-24T01:02:03Z"
++	again, err := ProjectRecovery(m, life, hash, end)
++	if err != nil {
++		t.Fatal(err)
++	}
++	a, b := first.Flows[0], again.Flows[0]
++	if a.State != "gap" || a.Reason != "epoch_ended_without_final" || a.TailBytes != nil || a.Final != nil || a.ReconciliationID == "" || a.ReconciliationID != b.ReconciliationID || a.FactSHA256 != b.FactSHA256 {
++		t.Fatal("reopen fabricated final or a new fact")
++	}
++	if !reflect.DeepEqual(life, before) || first.WriterEnd.ObservedAt == again.WriterEnd.ObservedAt {
++		t.Fatal("projection aliases input/evidence")
++	}
++	life.Flows[0].LastCheckpoint.UploadBytes++
++	conflict, err := ProjectRecovery(m, life, hash, end)
++	if err != nil || conflict.Flows[0].ReconciliationID != a.ReconciliationID || conflict.Flows[0].FactSHA256 == a.FactSHA256 {
++		t.Fatal("conflicting fact content cannot be detected")
++	}
++}
++
++func TestRecoveryClosedPreservesFinalAndDimensionGap(t *testing.T) {
++	m, life, hash := recoveryFixture(t)
++	final := *life.Flows[0].LastCheckpoint
++	final.DownloadBytes = 24
++	zero := uint64(0)
++	life.Flows[0].Final = &final
++	life.Flows[0].TailBytes = &zero
++	life.Flows[0].State = "closed"
++	life.Flows[0].Reason = ""
++	life.Flows[0].GapDimensions = []string{"route_or_setup"}
++	end := &WriterEndEvidence{"exclusive_writer_full_scan", m.SourceEpoch, m.SHA256, hash, "2026-10-23T01:02:03Z"}
++	r, err := ProjectRecovery(m, life, hash, end)
++	if err != nil || r.HistoryQuality != "gap" || r.Flows[0].Final.UploadBytes != 9007199254740993 || r.Flows[0].Final.DownloadBytes != 24 || r.Flows[0].ReconciliationID != "" || r.Flows[0].TailBytes == nil || *r.Flows[0].TailBytes != 0 {
++		t.Fatal("exact final added again or gap erased", err)
++	}
++}
++
++func TestRecoveryRejectsMismatchedProvenance(t *testing.T) {
++	m, life, hash := recoveryFixture(t)
++	for _, end := range []*WriterEndEvidence{{"lock_only", m.SourceEpoch, m.SHA256, hash, "2026-10-23T01:02:03Z"}, {"exclusive_writer_full_scan", "wrong", m.SHA256, hash, "2026-10-23T01:02:03Z"}, {"exclusive_writer_full_scan", m.SourceEpoch, m.SHA256, strings.Repeat("0", 64), "2026-10-23T01:02:03Z"}} {
++		if _, err := ProjectRecovery(m, life, hash, end); err == nil {
++			t.Fatal("unbound end evidence accepted")
++		}
++	}
++	life.ConfigGeneration = "wrong"
++	if _, err := ProjectRecovery(m, life, hash, nil); err == nil {
++		t.Fatal("manifest/frame mismatch accepted")
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/source_event.go b/component/hoopatrace/telemetrywire/source_event.go
+--- a/component/hoopatrace/telemetrywire/source_event.go
++++ b/component/hoopatrace/telemetrywire/source_event.go
+@@ -19,6 +19,7 @@
+ // Null flow/attempt are allowed only on the source-scoped epoch_closed marker.
+ type SourceEvent struct {
+ 	Connector                              *ConnectorEvidence
++	Executable                             *ConnectorExecutableEvidence
+ 	SchemaVersion                          uint8
+ 	FlowStartNS                            uint64
+ 	ActualConnectionRef                    string
+@@ -308,7 +309,7 @@
+ 	return false
+ }
+ 
+-// DecodeSourceEvent strictly validates v1/v2/v3 candidates, including nested
++// DecodeSourceEvent strictly validates v1/v2/v3/v4 candidates, including nested
+ // ProcessEvidence. It preserves unknown counters as null and candidate timing as
+ // unverified for v1. It does not infer source continuity from one frame.
+ func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
+@@ -323,6 +324,8 @@
+ 	version := uint8(1)
+ 	if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("2")) {
+ 		version = 2
++	} else if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("4")) {
++		version = 4
+ 	} else if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("3")) {
+ 		version = 3
+ 	} else if !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) {
+@@ -366,7 +369,11 @@
+ 			return invalid()
+ 		}
+ 	}
+-	if version == 3 {
++	if version == 4 {
++		if !decodeV4(f, &e) {
++			return invalid()
++		}
++	} else if version == 3 {
+ 		if !decodeV3(f, &e) {
+ 			return invalid()
+ 		}
+diff --git a/component/hoopatrace/telemetrywire/source_event_test.go b/component/hoopatrace/telemetrywire/source_event_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/source_event_test.go
+@@ -0,0 +1,130 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++func sourceFields(kind string) map[string]json.RawMessage {
++	f := counterFields()
++	f["source_seq"] = json.RawMessage(`"1"`)
++	f["kind"], _ = json.Marshal(kind)
++	delete(f, "upload_bytes")
++	delete(f, "download_bytes")
++	return f
++}
++
++func putFields(f map[string]json.RawMessage, extra map[string]any) {
++	for k, v := range extra {
++		f[k], _ = json.Marshal(v)
++	}
++}
++
++func openedFields() map[string]json.RawMessage {
++	f := sourceFields("opened")
++	putFields(f, map[string]any{"process": map[string]any{"status": "unknown", "reason": "owner_visibility"}, "source_addr": "127.0.0.1:12345", "entry_addr": "127.0.0.1:23456", "target_kind": "host", "target": "example.test", "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"})
++	return f
++}
++
++func validSourceFixtures() []map[string]json.RawMessage {
++	opened := openedFields()
++	identified := openedFields()
++	putFields(identified, map[string]any{"process": map[string]any{"status": "identified", "pid": 123, "name": "app", "name_source": "linux_proc_comm", "start_ticks": "100", "boot_id": "12345678-1234-1234-1234-123456789abc", "pid_namespace": "pid:[123]", "network_namespace": "net:[456]", "socket_inode": "789", "path": "/usr/bin/app"}})
++	route := sourceFields("route_decided")
++	putFields(route, map[string]any{"rule": "MATCH", "rule_payload": "", "logical_target": "DIRECT", "process": map[string]any{"status": "unknown", "reason": "owner_visibility"}})
++	bind := sourceFields("route_decided")
++	putFields(bind, map[string]any{"phase": "connection_binding", "connection_id": "connection-1"})
++	setup := sourceFields("setup_finished")
++	putFields(setup, map[string]any{"definition": "attempt_dial_handshake_v1_candidate", "duration_ms": 4, "waited_ms": 4, "flow_duration_ms": 6, "flow_waited_ms": 6, "flow_definition": "request_known_to_ready_v1_candidate", "outcome": "success", "failure_stage": "", "ordered_chain": []string{"DIRECT"}, "provider_chain": []string{""}, "route_evidence": "returned_conn_only", "protocol_ready_validation": "unverified"})
++	failure := sourceFields("setup_finished")
++	putFields(failure, map[string]any{"definition": "attempt_dial_handshake_v1_candidate", "duration_ms": nil, "waited_ms": 4, "flow_duration_ms": nil, "flow_waited_ms": 6, "flow_definition": "request_known_to_ready_v1_candidate", "outcome": "failure", "failure_stage": "dial", "ordered_chain": []string{}, "provider_chain": []string{}, "route_evidence": "returned_conn_only", "protocol_ready_validation": "unverified"})
++	gap := sourceFields("gap")
++	putFields(gap, map[string]any{"reason": "source_shutdown_before_final", "dimensions": []string{"bytes", "route_or_setup", "window_checkpoints"}, "upload_bytes": nil, "download_bytes": nil, "connection_id": ""})
++	epoch := sourceFields("epoch_closed")
++	putFields(epoch, map[string]any{"flow_id": nil, "attempt_id": nil, "reason": "core_shutdown", "unfinished_flows": "1", "finality": "incomplete"})
++	return []map[string]json.RawMessage{opened, identified, route, bind, setup, failure, counterFields(), gap, epoch}
++}
++
++func requireInvalidSource(t *testing.T, raw []byte) {
++	t.Helper()
++	e, err := DecodeSourceEvent(raw)
++	if !errors.Is(err, ErrInvalidSourceEvent) || !reflect.DeepEqual(e, SourceEvent{}) {
++		t.Fatalf("invalid event was accepted or partially exposed: %v", err)
++	}
++	if strings.Contains(err.Error(), "private-value") {
++		t.Fatal("parser error leaked input")
++	}
++}
++
++func TestSourceEventAllKindsPreserveRawAndExactIntegers(t *testing.T) {
++	for i, f := range validSourceFixtures() {
++		raw := append([]byte(" \n"), encodeCounterFields(t, f)...)
++		e, err := DecodeSourceEvent(raw)
++		if err != nil || !bytes.Equal(e.Raw, raw) {
++			t.Fatalf("fixture %d: %v", i, err)
++		}
++		if e.Kind == "bytes_checkpoint" && (e.SourceSeq != ^uint64(0) || uint64(e.Counter.UploadBytes) != 9007199254740993) {
++			t.Fatal("exact uint64 changed")
++		}
++		raw[0] = '\t'
++		if bytes.Equal(e.Raw, raw) {
++			t.Fatal("decoded raw aliases caller memory")
++		}
++		for name := range f {
++			copyFields := make(map[string]json.RawMessage)
++			for k, v := range f {
++				copyFields[k] = v
++			}
++			delete(copyFields, name)
++			requireInvalidSource(t, encodeCounterFields(t, copyFields))
++		}
++	}
++}
++
++func TestSourceEventRejectsDuplicatesUnknownsAndTrailingData(t *testing.T) {
++	for _, f := range validSourceFixtures() {
++		raw := encodeCounterFields(t, f)
++		for _, suffix := range []string{`,"event_id":"event-1"}`, `,"event\u005fid":"event-1"}`, `,"private-value":{}}`} {
++			requireInvalidSource(t, append(append([]byte(nil), raw[:len(raw)-1]...), suffix...))
++		}
++		requireInvalidSource(t, append(append([]byte(nil), raw...), []byte(` null`)...))
++	}
++	f := openedFields()
++	for _, process := range []string{`{"status":"unknown","reason":"owner_visibility","rea\u0073on":"owner_visibility"}`, `{"status":"unknown","reason":"owner_visibility","pid":123}`, `{"status":"identified","pid":123}`, `null`} {
++		f["process"] = json.RawMessage(process)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++	}
++}
++
++func TestSourceEventRejectsUnknownAsZeroAndMisleadingFinality(t *testing.T) {
++	fixtures := validSourceFixtures()
++	for _, tc := range []struct {
++		index        int
++		field, value string
++	}{
++		{0, "source_seq", `"0"`}, {0, "source_seq", `1`}, {0, "source_seq", `"01"`},
++		{0, "flow_id", `null`}, {0, "source_instance_id", `"private-value /"`}, {0, "receipt_seq", `"1"`},
++		{0, "schema_version", `1e0`}, {0, "observed_at", `"2026-10-22T10:11:12+00:00"`},
++		{0, "target_kind", `"unknown"`}, {0, "source_addr", `"private-value"`},
++		{4, "duration_ms", `null`}, {4, "waited_ms", `1.0`}, {4, "duration_ms", `-1`}, {4, "flow_duration_ms", `1e1`},
++		{4, "protocol_ready_validation", `"passed"`}, {4, "ordered_chain", `null`}, {4, "ordered_chain", `[""]`},
++		{5, "duration_ms", `0`}, {7, "upload_bytes", `"0"`}, {7, "dimensions", `[]`},
++		{7, "dimensions", `["bytes","bytes"]`}, {8, "flow_id", `"flow-1"`},
++		{7, "dimensions", `[""]`},
++		{8, "finality", `"complete"`}, {8, "unfinished_flows", `"01"`},
++	} {
++		f := make(map[string]json.RawMessage)
++		for k, v := range fixtures[tc.index] {
++			f[k] = v
++		}
++		f[tc.field] = json.RawMessage(tc.value)
++		requireInvalidSource(t, encodeCounterFields(t, f))
++	}
++	for _, raw := range [][]byte{nil, []byte(`null`), []byte(`[]`), []byte(`{"kind":`), bytes.Repeat([]byte(" "), SourceInputLimit+1)} {
++		requireInvalidSource(t, raw)
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/state.go b/component/hoopatrace/telemetrywire/state.go
+--- a/component/hoopatrace/telemetrywire/state.go
++++ b/component/hoopatrace/telemetrywire/state.go
+@@ -90,7 +90,7 @@
+ 	if !exists || f.terminal && e.Kind != "gap" {
+ 		return bad()
+ 	}
+-	if e.SchemaVersion == 2 || e.SchemaVersion == 3 {
++	if e.SchemaVersion == 2 || e.SchemaVersion == 3 || e.SchemaVersion == 4 {
+ 		var ok bool
+ 		f.quality, ok = s.nextV2(e, f.quality)
+ 		if !ok {
+diff --git a/component/hoopatrace/telemetrywire/state_test.go b/component/hoopatrace/telemetrywire/state_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/state_test.go
+@@ -0,0 +1,143 @@
++package telemetrywire
++
++import (
++	"encoding/json"
++	"errors"
++	"reflect"
++	"strconv"
++	"testing"
++)
++
++func stateEvent(t *testing.T, fields map[string]json.RawMessage, seq int, changes map[string]any) SourceEvent {
++	t.Helper()
++	copyFields := map[string]json.RawMessage{}
++	for k, v := range fields {
++		copyFields[k] = v
++	}
++	putFields(copyFields, map[string]any{"source_seq": strconv.Itoa(seq), "event_id": "event-" + strconv.Itoa(seq)})
++	putFields(copyFields, changes)
++	event, err := DecodeSourceEvent(encodeCounterFields(t, copyFields))
++	if err != nil {
++		t.Fatal(err)
++	}
++	return event
++}
++func commitState(t *testing.T, s *State, e SourceEvent) {
++	t.Helper()
++	if err := s.Commit(e); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestStateRejectedTransitionNeverAdvances(t *testing.T) {
++	for _, tc := range []struct {
++		name   string
++		before []SourceEvent
++		bad    SourceEvent
++	}{
++		{"orphan_counter", nil, stateEvent(t, counterFields(), 1, nil)},
++		{"orphan_setup", nil, stateEvent(t, validSourceFixtures()[4], 1, nil)},
++		{"sequence_gap", nil, stateEvent(t, openedFields(), 2, nil)},
++		{"metadata", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, counterFields(), 2, map[string]any{"config_generation": "other"})},
++		{"epoch", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, counterFields(), 2, map[string]any{"source_epoch": "other"})},
++		{"instance", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, counterFields(), 2, map[string]any{"source_instance_id": "other"})},
++		{"repeat_id", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, counterFields(), 2, map[string]any{"event_id": "event-1"})},
++		{"repeat_open", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, openedFields(), 2, nil)},
++		{"attempt_other_flow", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, openedFields(), 2, map[string]any{"flow_id": "other-flow"})},
++		{"repeat_setup", []SourceEvent{stateEvent(t, openedFields(), 1, nil), stateEvent(t, validSourceFixtures()[4], 2, nil)}, stateEvent(t, validSourceFixtures()[4], 3, nil)},
++		{"decreasing_counter", []SourceEvent{stateEvent(t, openedFields(), 1, nil), stateEvent(t, counterFields(), 2, map[string]any{"upload_bytes": "10"})}, stateEvent(t, counterFields(), 3, map[string]any{"upload_bytes": "9"})},
++		{"after_terminal", []SourceEvent{stateEvent(t, openedFields(), 1, nil), stateEvent(t, counterFields(), 2, map[string]any{"kind": "closed"})}, stateEvent(t, counterFields(), 3, nil)},
++		{"bytes_gap_after_closed", []SourceEvent{stateEvent(t, openedFields(), 1, nil), stateEvent(t, counterFields(), 2, map[string]any{"kind": "closed"})}, stateEvent(t, validSourceFixtures()[7], 3, nil)},
++		{"false_complete_marker", []SourceEvent{stateEvent(t, openedFields(), 1, nil)}, stateEvent(t, validSourceFixtures()[8], 2, map[string]any{"unfinished_flows": "0", "finality": "complete"})},
++		{"wrong_unfinished_count", []SourceEvent{stateEvent(t, openedFields(), 1, nil), stateEvent(t, validSourceFixtures()[7], 2, nil)}, stateEvent(t, validSourceFixtures()[8], 3, map[string]any{"unfinished_flows": "2"})},
++		{"after_marker", []SourceEvent{stateEvent(t, validSourceFixtures()[8], 1, map[string]any{"unfinished_flows": "0", "finality": "complete"})}, stateEvent(t, openedFields(), 2, nil)},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			var s State
++			for _, e := range tc.before {
++				commitState(t, &s, e)
++			}
++			before := s.Snapshot()
++			if !errors.Is(s.Validate(tc.bad), ErrInvalidLifecycle) || !reflect.DeepEqual(before, s.Snapshot()) {
++				t.Fatal("validation accepted/mutated invalid transition")
++			}
++			if !errors.Is(s.Commit(tc.bad), ErrInvalidLifecycle) || !reflect.DeepEqual(before, s.Snapshot()) {
++				t.Fatal("commit accepted/mutated invalid transition")
++			}
++		})
++	}
++}
++
++func TestStateMultipleAttemptsBindingPendingAndExactFinal(t *testing.T) {
++	var s State
++	commitState(t, &s, stateEvent(t, openedFields(), 1, map[string]any{"attempt_id": "attempt-0"}))
++	// NewAttempt has no wire event; even its checkpoint can precede setup.
++	cp := stateEvent(t, counterFields(), 2, map[string]any{"attempt_id": "attempt-1", "upload_bytes": "10", "download_bytes": "20"})
++	before := s.Snapshot()
++	if s.Validate(cp) != nil || !reflect.DeepEqual(before, s.Snapshot()) {
++		t.Fatal("Validate advanced confirmed state")
++	}
++	commitState(t, &s, cp)
++	pending := s.Snapshot()
++	if pending.LastSourceSeq != 2 || pending.EpochFinality != "unverified" || pending.Flows[0].State != "pending" || pending.Flows[0].TailBytes != nil {
++		t.Fatal("pending tail fabricated")
++	}
++	commitState(t, &s, stateEvent(t, validSourceFixtures()[5], 3, map[string]any{"attempt_id": "attempt-1"}))
++	commitState(t, &s, stateEvent(t, validSourceFixtures()[4], 4, map[string]any{"attempt_id": "attempt-2"}))
++	commitState(t, &s, stateEvent(t, validSourceFixtures()[3], 5, map[string]any{"attempt_id": "attempt-2"}))
++	commitState(t, &s, stateEvent(t, counterFields(), 6, map[string]any{"attempt_id": "attempt-2", "kind": "closed", "upload_bytes": "13", "download_bytes": "24"}))
++	commitState(t, &s, stateEvent(t, validSourceFixtures()[7], 7, map[string]any{"attempt_id": "attempt-2", "reason": "source_event_uncertain", "dimensions": []string{"route_or_setup"}}))
++	commitState(t, &s, stateEvent(t, validSourceFixtures()[8], 8, map[string]any{"unfinished_flows": "0", "finality": "complete"}))
++	snap := s.Snapshot()
++	f := snap.Flows[0]
++	if snap.LastSourceSeq != 8 || snap.EpochFinality != "complete" || f.State != "closed" || f.Final.UploadBytes != 13 || f.LastCheckpoint.UploadBytes != 10 || f.TailBytes == nil || *f.TailBytes != 0 || len(f.GapDimensions) != 1 {
++		t.Fatal("exact final/dimension gap changed")
++	}
++	// Snapshot mutations cannot change the validator or another projection.
++	f.Final.UploadBytes = 0
++	f.LastCheckpoint.UploadBytes = 0
++	*f.TailBytes = 99
++	f.GapDimensions[0] = "bytes"
++	again := s.Snapshot().Flows[0]
++	if again.Final.UploadBytes != 13 || again.LastCheckpoint.UploadBytes != 10 || *again.TailBytes != 0 || again.GapDimensions[0] != "route_or_setup" {
++		t.Fatal("snapshot aliases validator state")
++	}
++}
++
++func TestStateEnforcesConcurrentActiveFlowLimit(t *testing.T) {
++	var s State
++	for i := 0; i < 32; i++ {
++		e := stateEvent(t, openedFields(), i+1, map[string]any{"flow_id": "flow-live-" + strconv.Itoa(i), "attempt_id": "attempt-live-" + strconv.Itoa(i)})
++		commitState(t, &s, e)
++	}
++	before := s.Snapshot()
++	extra := stateEvent(t, openedFields(), 33, map[string]any{"flow_id": "flow-over-limit", "attempt_id": "attempt-over-limit"})
++	if s.Validate(extra) == nil || s.Commit(extra) == nil || !reflect.DeepEqual(before, s.Snapshot()) {
++		t.Fatal("33 concurrent source flows accepted or state advanced")
++	}
++}
++
++func TestStateActiveLimitDoesNotLimitTerminalHistory(t *testing.T) {
++	var s State
++	seq := 0
++	for i := 0; i < 65; i++ {
++		seq++
++		changes := map[string]any{"flow_id": "flow-ended-" + strconv.Itoa(i), "attempt_id": "attempt-ended-" + strconv.Itoa(i)}
++		commitState(t, &s, stateEvent(t, openedFields(), seq, changes))
++		seq++
++		fields := counterFields()
++		changes["kind"] = "closed"
++		if i%2 == 1 {
++			fields = validSourceFixtures()[7]
++			changes["kind"] = "gap"
++		}
++		commitState(t, &s, stateEvent(t, fields, seq, changes))
++	}
++	for i := 0; i < 32; i++ {
++		seq++
++		commitState(t, &s, stateEvent(t, openedFields(), seq, map[string]any{"flow_id": "flow-active-" + strconv.Itoa(i), "attempt_id": "attempt-active-" + strconv.Itoa(i)}))
++	}
++	if len(s.Snapshot().Flows) != 97 {
++		t.Fatal("historical flows were evicted or counted as active")
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/epoch-negative.json b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/epoch-negative.json
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/epoch-negative.json
+@@ -0,0 +1,449 @@
++[
++  {
++    "name": "binding-before-actual",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "connection_binding",
++        "connection_id": "tracker-1",
++        "actual_connection_ref": "actual-1"
++      }
++    ]
++  },
++  {
++    "name": "setup-before-actual",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "setup_finished",
++        "definition": "forward_setup_v2",
++        "protocol": "direct_tcp",
++        "ready_kind": "tcp_connected",
++        "outcome": "success",
++        "reason": "",
++        "failure_stage": "",
++        "flow_start_ns": "1000000",
++        "attempt_start_ns": "3000000",
++        "ready_ns": "5000000",
++        "finish_ns": "6000000",
++        "duration_ms": "2",
++        "flow_duration_ms": "4",
++        "observed_wait_ms": "3",
++        "flow_observed_wait_ms": "5",
++        "actual_connection_ref": "actual-1"
++      }
++    ]
++  },
++  {
++    "name": "repeat-actual",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "actual_connection",
++        "actual_connection_ref": "actual-1",
++        "ordered_chain": [
++          {
++            "internal_name": "node-1",
++            "adapter_type": "Direct",
++            "provider_name": "",
++            "node_id": "node-1",
++            "provider_id": null,
++            "group_id": null
++          }
++        ]
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-3",
++        "source_seq": "3",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "actual_connection",
++        "actual_connection_ref": "actual-1",
++        "ordered_chain": [
++          {
++            "internal_name": "node-1",
++            "adapter_type": "Direct",
++            "provider_name": "",
++            "node_id": "node-1",
++            "provider_id": null,
++            "group_id": null
++          }
++        ]
++      }
++    ]
++  },
++  {
++    "name": "binding-wrong-attempt",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "actual_connection",
++        "actual_connection_ref": "actual-1",
++        "ordered_chain": [
++          {
++            "internal_name": "node-1",
++            "adapter_type": "Direct",
++            "provider_name": "",
++            "node_id": "node-1",
++            "provider_id": null,
++            "group_id": null
++          }
++        ]
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-3",
++        "source_seq": "3",
++        "flow_id": "flow-1",
++        "attempt_id": "other",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "connection_binding",
++        "connection_id": "tracker-1",
++        "actual_connection_ref": "actual-1"
++      }
++    ]
++  },
++  {
++    "name": "setup-open-coordinate-mismatch",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "actual_connection",
++        "actual_connection_ref": "actual-1",
++        "ordered_chain": [
++          {
++            "internal_name": "node-1",
++            "adapter_type": "Direct",
++            "provider_name": "",
++            "node_id": "node-1",
++            "provider_id": null,
++            "group_id": null
++          }
++        ]
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-3",
++        "source_seq": "3",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "setup_finished",
++        "definition": "forward_setup_v2",
++        "protocol": "direct_tcp",
++        "ready_kind": "tcp_connected",
++        "outcome": "success",
++        "reason": "",
++        "failure_stage": "",
++        "flow_start_ns": "0",
++        "attempt_start_ns": "3000000",
++        "ready_ns": "5000000",
++        "finish_ns": "6000000",
++        "duration_ms": "2",
++        "flow_duration_ms": "5",
++        "observed_wait_ms": "3",
++        "flow_observed_wait_ms": "6",
++        "actual_connection_ref": "actual-1"
++      }
++    ]
++  },
++  {
++    "name": "missing-zero-segment",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "phase": "actual_connection",
++        "actual_connection_ref": "actual-1",
++        "ordered_chain": [
++          {
++            "internal_name": "node-1",
++            "adapter_type": "Direct",
++            "provider_name": "",
++            "node_id": "node-1",
++            "provider_id": null,
++            "group_id": null
++          }
++        ]
++      },
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-3",
++        "source_seq": "3",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "bytes_checkpoint",
++        "upload_bytes": "0",
++        "download_bytes": "0",
++        "segments": [],
++        "unallocated_upload_bytes": "0",
++        "unallocated_download_bytes": "0"
++      }
++    ]
++  },
++  {
++    "name": "mixed-version",
++    "events": [
++      {
++        "schema_version": 2,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-1",
++        "source_seq": "1",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "opened",
++        "flow_start_ns": "1000000",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        },
++        "source_addr": "127.0.0.1:12345",
++        "entry_addr": "127.0.0.1:23456",
++        "target_kind": "host",
++        "target": "example.test",
++        "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++      },
++      {
++        "schema_version": 1,
++        "source_instance_id": "source-1",
++        "source_epoch": "epoch-1",
++        "event_id": "event-2",
++        "source_seq": "2",
++        "flow_id": "flow-1",
++        "attempt_id": "attempt-1",
++        "observed_at": "2026-10-23T00:00:00Z",
++        "config_generation": "generation-1",
++        "boundary_ref": "mihomo_proxy_stream_v1",
++        "kind": "route_decided",
++        "rule": "MATCH",
++        "rule_payload": "",
++        "logical_target": "DIRECT",
++        "process": {
++          "status": "unknown",
++          "reason": "owner_visibility"
++        }
++      }
++    ]
++  }
++]
+diff --git a/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/negative.json b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/negative.json
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/negative.json
+@@ -0,0 +1,144 @@
++[
++  {
++    "name": "numeric-ns",
++    "event": {
++      "schema_version": 2,
++      "source_instance_id": "source-1",
++      "source_epoch": "epoch-1",
++      "event_id": "event-1",
++      "source_seq": "1",
++      "flow_id": "flow-1",
++      "attempt_id": "attempt-1",
++      "observed_at": "2026-10-23T00:00:00Z",
++      "config_generation": "generation-1",
++      "boundary_ref": "mihomo_proxy_stream_v1",
++      "kind": "opened",
++      "flow_start_ns": 1,
++      "process": {
++        "status": "unknown",
++        "reason": "owner_visibility"
++      },
++      "source_addr": "127.0.0.1:12345",
++      "entry_addr": "127.0.0.1:23456",
++      "target_kind": "host",
++      "target": "example.test",
++      "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++    }
++  },
++  {
++    "name": "overflow-ns",
++    "event": {
++      "schema_version": 2,
++      "source_instance_id": "source-1",
++      "source_epoch": "epoch-1",
++      "event_id": "event-1",
++      "source_seq": "1",
++      "flow_id": "flow-1",
++      "attempt_id": "attempt-1",
++      "observed_at": "2026-10-23T00:00:00Z",
++      "config_generation": "generation-1",
++      "boundary_ref": "mihomo_proxy_stream_v1",
++      "kind": "opened",
++      "flow_start_ns": "18446744073709551616",
++      "process": {
++        "status": "unknown",
++        "reason": "owner_visibility"
++      },
++      "source_addr": "127.0.0.1:12345",
++      "entry_addr": "127.0.0.1:23456",
++      "target_kind": "host",
++      "target": "example.test",
++      "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"
++    }
++  },
++  {
++    "name": "bad-duration",
++    "event": {
++      "schema_version": 2,
++      "source_instance_id": "source-1",
++      "source_epoch": "epoch-1",
++      "event_id": "event-3",
++      "source_seq": "3",
++      "flow_id": "flow-1",
++      "attempt_id": "attempt-1",
++      "observed_at": "2026-10-23T00:00:00Z",
++      "config_generation": "generation-1",
++      "boundary_ref": "mihomo_proxy_stream_v1",
++      "kind": "setup_finished",
++      "definition": "forward_setup_v2",
++      "protocol": "direct_tcp",
++      "ready_kind": "tcp_connected",
++      "outcome": "success",
++      "reason": "",
++      "failure_stage": "",
++      "flow_start_ns": "1000000",
++      "attempt_start_ns": "3000000",
++      "ready_ns": "5000000",
++      "finish_ns": "6000000",
++      "duration_ms": "3",
++      "flow_duration_ms": "4",
++      "observed_wait_ms": "3",
++      "flow_observed_wait_ms": "5",
++      "actual_connection_ref": "actual-1"
++    }
++  },
++  {
++    "name": "unknown-ready",
++    "event": {
++      "schema_version": 2,
++      "source_instance_id": "source-1",
++      "source_epoch": "epoch-1",
++      "event_id": "event-3",
++      "source_seq": "3",
++      "flow_id": "flow-1",
++      "attempt_id": "attempt-1",
++      "observed_at": "2026-10-23T00:00:00Z",
++      "config_generation": "generation-1",
++      "boundary_ref": "mihomo_proxy_stream_v1",
++      "kind": "setup_finished",
++      "definition": "forward_setup_v2",
++      "protocol": "direct_tcp",
++      "ready_kind": "ready_unproven",
++      "outcome": "success",
++      "reason": "",
++      "failure_stage": "",
++      "flow_start_ns": "1000000",
++      "attempt_start_ns": "3000000",
++      "ready_ns": "5000000",
++      "finish_ns": "6000000",
++      "duration_ms": "2",
++      "flow_duration_ms": "4",
++      "observed_wait_ms": "3",
++      "flow_observed_wait_ms": "5",
++      "actual_connection_ref": "actual-1"
++    }
++  },
++  {
++    "name": "conservation",
++    "event": {
++      "schema_version": 2,
++      "source_instance_id": "source-1",
++      "source_epoch": "epoch-1",
++      "event_id": "event-5",
++      "source_seq": "5",
++      "flow_id": "flow-1",
++      "attempt_id": "attempt-1",
++      "observed_at": "2026-10-23T00:00:00Z",
++      "config_generation": "generation-1",
++      "boundary_ref": "mihomo_proxy_stream_v1",
++      "kind": "bytes_checkpoint",
++      "upload_bytes": "1",
++      "download_bytes": "4",
++      "segments": [
++        {
++          "actual_connection_ref": "actual-1",
++          "attempt_id": "attempt-1",
++          "upload_bytes": "9007199254740993",
++          "download_bytes": "4"
++        }
++      ],
++      "unallocated_upload_bytes": "0",
++      "unallocated_download_bytes": "0"
++    }
++  }
++]
+diff --git a/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/positive.jsonl b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/positive.jsonl
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/testdata/telemetry-quality-v2/positive.jsonl
+@@ -0,0 +1,6 @@
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-1","source_seq":"1","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"opened","flow_start_ns":"1000000","process":{"status":"unknown","reason":"owner_visibility"},"source_addr":"127.0.0.1:12345","entry_addr":"127.0.0.1:23456","target_kind":"host","target":"example.test","identity_scope":"same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"}
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-2","source_seq":"2","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"route_decided","phase":"actual_connection","actual_connection_ref":"actual-1","ordered_chain":[{"internal_name":"node-1","adapter_type":"Direct","provider_name":"","node_id":"node-1","provider_id":null,"group_id":null}]}
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-3","source_seq":"3","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"setup_finished","definition":"forward_setup_v2","protocol":"direct_tcp","ready_kind":"tcp_connected","outcome":"success","reason":"","failure_stage":"","flow_start_ns":"1000000","attempt_start_ns":"3000000","ready_ns":"5000000","finish_ns":"6000000","duration_ms":"2","flow_duration_ms":"4","observed_wait_ms":"3","flow_observed_wait_ms":"5","actual_connection_ref":"actual-1"}
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-4","source_seq":"4","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"route_decided","phase":"connection_binding","connection_id":"tracker-1","actual_connection_ref":"actual-1"}
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-5","source_seq":"5","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"bytes_checkpoint","upload_bytes":"9007199254740993","download_bytes":"4","segments":[{"actual_connection_ref":"actual-1","attempt_id":"attempt-1","upload_bytes":"9007199254740993","download_bytes":"4"}],"unallocated_upload_bytes":"0","unallocated_download_bytes":"0"}
++{"schema_version":2,"source_instance_id":"source-1","source_epoch":"epoch-1","event_id":"event-6","source_seq":"6","flow_id":"flow-1","attempt_id":"attempt-1","observed_at":"2026-10-23T00:00:00Z","config_generation":"generation-1","boundary_ref":"mihomo_proxy_stream_v1","kind":"closed","upload_bytes":"9007199254740994","download_bytes":"4","segments":[{"actual_connection_ref":"actual-1","attempt_id":"attempt-1","upload_bytes":"9007199254740994","download_bytes":"4"}],"unallocated_upload_bytes":"0","unallocated_download_bytes":"0"}
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -220,13 +220,13 @@
+ 	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret, replay: map[string]replayEpoch{}, confirmedHasher: sha256.New()}
+ 	s.profile = 1
+ 	if v := os.Getenv("HOOPA_TRACE_PROFILE"); v != "" && v != "1" {
+-		if v != "2" && v != "3" {
++		if v != "2" && v != "3" && v != "4" {
+ 			s.close()
+ 			return nil, ErrSource
+ 		}
+ 		s.profile, _ = strconv.Atoi(v)
+ 	}
+-	if s.profile == 2 || s.profile == 3 {
++	if s.profile == 2 || s.profile == 3 || s.profile == 4 {
+ 		s.routes, err = loadRouteMapping(os.Getenv("HOOPA_TRACE_ROUTE_MAP"), generation)
+ 		if err != nil {
+ 			s.close()
+@@ -429,8 +429,8 @@
+ 		proof = connector[0]
+ 	}
+ 	var ident ProcessEvidence
+-	if s.profile == 3 {
+-		if proof == nil {
++	if s.profile == 3 || s.profile == 4 {
++		if proof == nil || (s.profile == 3 && proof.HasExecutable) || (s.profile == 4 && !proof.HasExecutable) {
+ 			return nil, ErrSource
+ 		}
+ 		ident = ProcessEvidence{Status: "unknown", Reason: "connector_experiment_unverified"}
+@@ -465,12 +465,19 @@
+ 		localText = local.String()
+ 	}
+ 	extra := map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"}
+-	if s.profile == 2 || s.profile == 3 {
++	if s.profile == 2 || s.profile == 3 || s.profile == 4 {
+ 		extra["flow_start_ns"] = numberNS(started)
+ 	}
+-	if s.profile == 3 {
++	if s.profile == 3 || s.profile == 4 {
+ 		extra["identity_scope"] = "connect_initiator_v1_initial_ns_ipv4_loopback_experimental"
+-		extra["connector"] = *proof
++		if s.profile == 4 {
++			extra["connector"] = struct {
++				hoopaid.Identity
++				Executable hoopaid.Executable `json:"executable"`
++			}{*proof, proof.Executable}
++		} else {
++			extra["connector"] = *proof
++		}
+ 	}
+ 	err = s.append(f, "opened", f.attemptID(), extra)
+ 	if err != nil {
+diff --git a/hoopa_guard_linux.go b/hoopa_guard_linux.go
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -103,6 +103,9 @@
+ 	wantProfile := "2"
+ 	if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
+ 		wantProfile = "3"
++		if os.Getenv("HOOPA_TRACE_PROFILE") == "4" {
++			wantProfile = "4"
++		}
+ 	}
+ 	if !found || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_PROFILE") != wantProfile || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
+ 		return false, nil, errHoopaGuard
+@@ -172,6 +175,9 @@
+ 				result = errors.Join(result, errHoopaGuard, err)
+ 			}
+ 		}()
++		if strconv.Itoa(identity.EventSchemaVersion()) != os.Getenv("HOOPA_TRACE_PROFILE") {
++			return errHoopaGuard
++		}
+ 	}
+ 	if tracing {
+ 		if err := hoopatrace.PrepareGuard(generation, expected); err != nil {
+diff --git a/hoopa_identity_test.go b/hoopa_identity_test.go
+--- a/hoopa_identity_test.go
++++ b/hoopa_identity_test.go
+@@ -79,6 +79,11 @@
+ 	if err != nil || !enabled {
+ 		t.Fatal("handoff profile3 rejected", err)
+ 	}
++	t.Setenv("HOOPA_TRACE_PROFILE", "4")
++	enabled, _, err = guardTraceConfig(p, "generation")
++	if err != nil || !enabled {
++		t.Fatal("handoff profile4 rejected", err)
++	}
+ 	for _, tc := range []struct{ key, value string }{{"HOOPA_TRACE_GENERATION", "other"}, {"HOOPA_TRACE_INBOUND", "other"}, {"HOOPA_TRACE_ROUTE_MAP", "relative.json"}, {"HOOPA_TRACE_PROFILE", "1"}} {
+ 		t.Run(tc.key, func(t *testing.T) {
+ 			t.Setenv(tc.key, tc.value)

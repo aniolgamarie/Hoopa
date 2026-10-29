@@ -1,0 +1,3040 @@
+diff --git a/adapter/inbound/addition.go b/adapter/inbound/addition.go
+index 894910a..74fc754 100644
+--- a/adapter/inbound/addition.go
++++ b/adapter/inbound/addition.go
+@@ -1,6 +1,7 @@
+ package inbound
+ 
+ import (
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
+ 	"net"
+ 
+ 	C "github.com/metacubex/mihomo/constant"
+@@ -71,3 +72,12 @@ func WithDSCP(dscp uint8) Addition {
+ }
+ 
+ func Placeholder(metadata *C.Metadata) {}
++
++// WithHoopaAdmission carries the immutable result for the original accepted socket.
++// Give each protocol metadata value its own copy; later requests cannot mutate it.
++func WithHoopaAdmission(identity hoopaid.Identity) Addition {
++	return func(metadata *C.Metadata) {
++		copy := identity
++		metadata.HoopaAdmission = &copy
++	}
++}
+diff --git b/adapter/inbound/hoopa_admission_test.go b/adapter/inbound/hoopa_admission_test.go
+new file mode 100644
+index 0000000..d6708c3
+--- /dev/null
++++ b/adapter/inbound/hoopa_admission_test.go
+@@ -0,0 +1,29 @@
++package inbound
++
++import (
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
++	C "github.com/metacubex/mihomo/constant"
++	"testing"
++)
++
++func TestHoopaAdmissionCopiesIndependentValues(t *testing.T) {
++	original := hoopaid.Identity{CoreGeneration: "generation", Generation: "9007199254740993", LeaderComm: hoopaid.Comm{RawHex: "immutable", Text: "leader", TextValid: true, Status: "unverified"}, LocalEndpoint: hoopaid.Endpoint{IP: "127.0.0.1", Port: 32002}, Raw: hoopaid.RawIdentity{Binding: "binding", Connect: "connect", Gate: "gate"}}
++	expected := original
++	add := WithHoopaAdmission(original)
++	original.LeaderComm.Text = "caller-mutated"
++	original.Raw.Connect = "caller-mutated"
++	original.LocalEndpoint.Port++
++	var first, second, third C.Metadata
++	ApplyAdditions(&first, add)
++	ApplyAdditions(&second, add)
++	if first.HoopaAdmission == nil || second.HoopaAdmission == nil || first.HoopaAdmission == second.HoopaAdmission || *first.HoopaAdmission != expected || *second.HoopaAdmission != expected {
++		t.Fatal("admission did not freeze distinct pure values")
++	}
++	first.HoopaAdmission.LeaderComm.Text = "first-mutated"
++	first.HoopaAdmission.Raw.Binding = "first-mutated"
++	first.HoopaAdmission.LocalEndpoint.Port++
++	ApplyAdditions(&third, add)
++	if *second.HoopaAdmission != expected || *third.HoopaAdmission != expected || third.HoopaAdmission == first.HoopaAdmission || third.HoopaAdmission == second.HoopaAdmission {
++		t.Fatal("metadata mutation escaped its own copy")
++	}
++}
+diff --git b/component/hoopaid/abi.go b/component/hoopaid/abi.go
+new file mode 100644
+index 0000000..8a82827
+--- /dev/null
++++ b/component/hoopaid/abi.go
+@@ -0,0 +1,157 @@
++package coreadmission
++
++import (
++	"encoding/binary"
++	"encoding/hex"
++	"errors"
++	"fmt"
++	"strconv"
++	"unicode/utf8"
++)
++
++var le = binary.LittleEndian
++
++type Endpoint struct {
++	IP   string `json:"ip"`
++	Port uint16 `json:"port"`
++}
++
++// TextValid distinguishes invalid UTF-8 from an empty comm without mutable pointers.
++type Comm struct {
++	RawHex    string `json:"raw_hex"`
++	Text      string `json:"text"`
++	TextValid bool   `json:"text_valid"`
++	Status    string `json:"status"`
++}
++type RawIdentity struct {
++	Binding string `json:"binding"`
++	Connect string `json:"connect"`
++	Gate    string `json:"gate"`
++}
++
++// Identity contains values only: subsequent rejection cannot mutate a previous grant.
++type Identity struct {
++	Schema                string      `json:"schema"`
++	IdentityCapability    string      `json:"identity_capability"`
++	ProcessPath           string      `json:"process_path"`
++	BootID                string      `json:"boot_id"`
++	CoreGeneration        string      `json:"core_generation"`
++	Generation            string      `json:"generation"`
++	SourceCgroupID        string      `json:"source_cgroup_id"`
++	RootCgroupID          string      `json:"root_cgroup_id"`
++	AcceptedCookie        string      `json:"accepted_cookie"`
++	ClientCookie          string      `json:"client_cookie"`
++	SocketNetnsCookie     string      `json:"socket_netns_cookie"`
++	TGID                  uint32      `json:"tgid_initial"`
++	LeaderPID             uint32      `json:"leader_pid_initial"`
++	CallerTID             uint32      `json:"caller_tid_initial"`
++	LeaderStartBoottimeNS string      `json:"leader_start_boottime_ns"`
++	ObservedBootNS        string      `json:"observed_boot_ns"`
++	PIDNSInode            uint32      `json:"active_pidns_inum"`
++	LeaderComm            Comm        `json:"leader_comm"`
++	CallerComm            Comm        `json:"caller_comm"`
++	LocalEndpoint         Endpoint    `json:"local_endpoint"`
++	RemoteEndpoint        Endpoint    `json:"remote_endpoint"`
++	Raw                   RawIdentity `json:"raw"`
++}
++
++type witness struct {
++	cookie, netns uint64
++	local, remote Endpoint
++}
++type gate struct {
++	closed                      bool
++	active, admitted, completed uint64
++}
++
++func readGate(raw []byte) (gate, error) {
++	var g gate
++	if len(raw) != 40 {
++		return g, errors.New("gate size")
++	}
++	closed := le.Uint32(raw[4:])
++	g = gate{closed == 1, le.Uint64(raw[8:]), le.Uint64(raw[16:]), le.Uint64(raw[24:])}
++	if le.Uint32(raw) != 0 || closed > 1 || le.Uint32(raw[32:]) != 0 || le.Uint32(raw[36:]) != 0 || g.completed > g.admitted || g.active != g.admitted-g.completed {
++		return gate{}, errors.New("invalid/poisoned gate")
++	}
++	return g, nil
++}
++func comm(raw []byte, status uint32) (Comm, error) {
++	if len(raw) != 16 || raw[15] != 0 || status > 1 {
++		return Comm{}, errors.New("invalid comm ABI")
++	}
++	end := 0
++	for end < len(raw) && raw[end] != 0 {
++		end++
++	}
++	c := Comm{RawHex: hex.EncodeToString(raw), TextValid: utf8.Valid(raw[:end]), Status: "unavailable"}
++	if c.TextValid {
++		c.Text = string(raw[:end])
++	}
++	if status == 1 {
++		c.Status = "unverified"
++	}
++	return c, nil
++}
++func config(h handoff) []byte {
++	out := make([]byte, 32)
++	for i, s := range []string{h.Generation, h.SourceCgroupID, h.NetnsCookie} {
++		n, _ := u64(s)
++		le.PutUint64(out[i*8:], n)
++	}
++	le.PutUint32(out[24:], uint32(h.Port))
++	return out
++}
++func uintKey(n uint64) []byte { out := make([]byte, 8); le.PutUint64(out, n); return out }
++func validateWitness(w witness, h handoff) error {
++	netns, _ := u64(h.NetnsCookie)
++	if w.cookie == 0 || w.netns != netns || w.local != (Endpoint{"127.0.0.1", h.Port}) || w.remote.IP != "127.0.0.1" || w.remote.Port == 0 {
++		return errors.New("original accepted socket namespace/endpoints mismatch")
++	}
++	return nil
++}
++func bindingCookie(raw []byte, w witness, h handoff) (uint64, error) {
++	if len(raw) != 56 {
++		return 0, errors.New("binding size")
++	}
++	generation, _ := u64(h.Generation)
++	netns, _ := u64(h.NetnsCookie)
++	client := le.Uint64(raw[24:])
++	if le.Uint64(raw) != generation || le.Uint64(raw[8:]) != netns || le.Uint64(raw[16:]) != w.cookie || client == 0 || client == w.cookie ||
++		le.Uint32(raw[32:]) != 0x0100007f || le.Uint32(raw[36:]) != 0x0100007f || le.Uint32(raw[40:]) != uint32(w.remote.Port) || le.Uint32(raw[44:]) != uint32(h.Port) || le.Uint32(raw[48:]) != 1 || le.Uint32(raw[52:]) != 0 {
++		return 0, errors.New("binding ABI/witness mismatch")
++	}
++	return client, nil
++}
++func identity(h handoff, w witness, b, c, g []byte) (Identity, error) {
++	var out Identity
++	client, err := bindingCookie(b, w, h)
++	if err != nil {
++		return out, err
++	}
++	if len(c) != 112 {
++		return out, errors.New("connect size")
++	}
++	generation, _ := u64(h.Generation)
++	netns, _ := u64(h.NetnsCookie)
++	source, _ := u64(h.SourceCgroupID)
++	tgid, tid, pidns, leader := le.Uint32(c[52:]), le.Uint32(c[56:]), le.Uint32(c[60:]), le.Uint32(c[64:])
++	if le.Uint64(c) != generation || le.Uint64(c[16:]) != client || le.Uint64(c[24:]) != netns || le.Uint64(c[32:]) != source || le.Uint64(c[40:]) == 0 || le.Uint64(c[8:]) < le.Uint64(c[40:]) || le.Uint32(c[48:]) != 1 || tgid == 0 || tgid > 0x7fffffff || tid == 0 || tid > 0x7fffffff || leader != tgid || pidns != h.PIDNSInode || le.Uint32(c[76:]) != 0 {
++		return out, errors.New("connect coordinates/schema mismatch")
++	}
++	caller, err := comm(c[80:96], le.Uint32(c[68:]))
++	if err != nil {
++		return out, err
++	}
++	leaderComm, err := comm(c[96:], le.Uint32(c[72:]))
++	if err != nil {
++		return out, err
++	}
++	gate, err := readGate(g)
++	if err != nil || gate.closed {
++		return out, fmt.Errorf("grant gate: %v closed=%v", err, gate.closed)
++	}
++	out = Identity{Schema: "sourceidentity-core-admission-v1", IdentityCapability: "unverified", ProcessPath: "unknown", BootID: h.BootID, CoreGeneration: h.CoreGeneration, Generation: h.Generation, SourceCgroupID: h.SourceCgroupID, RootCgroupID: h.RootCgroupID,
++		AcceptedCookie: strconv.FormatUint(w.cookie, 10), ClientCookie: strconv.FormatUint(client, 10), SocketNetnsCookie: h.NetnsCookie, TGID: tgid, LeaderPID: leader, CallerTID: tid, LeaderStartBoottimeNS: strconv.FormatUint(le.Uint64(c[40:]), 10), ObservedBootNS: strconv.FormatUint(le.Uint64(c[8:]), 10), PIDNSInode: pidns, LeaderComm: leaderComm, CallerComm: caller, LocalEndpoint: w.local, RemoteEndpoint: w.remote, Raw: RawIdentity{hex.EncodeToString(b), hex.EncodeToString(c), hex.EncodeToString(g)}}
++	return out, nil
++}
+diff --git b/component/hoopaid/handoff.go b/component/hoopaid/handoff.go
+new file mode 100644
+index 0000000..46eed1b
+--- /dev/null
++++ b/component/hoopaid/handoff.go
+@@ -0,0 +1,160 @@
++// Package coreadmission is a finite isolated-guest experiment, not a production identity authority.
++package coreadmission
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"regexp"
++	"strconv"
++)
++
++var mapNames = []string{"capture_config", "connect_records", "capture_faults", "capture_gate", "online_tuples", "online_bindings"}
++var programNames = []string{"hoopa_connect", "hoopa_lifecycle", "hoopa_stop"}
++var linkNames = []string{"hoopa_connect", "hoopa_lifecycle"}
++var positiveDecimal = regexp.MustCompile(`^[1-9][0-9]{0,19}$`)
++var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
++var sourcePath = regexp.MustCompile(`^/sys/fs/cgroup/hoopa-online-[A-Za-z0-9_-]+$`)
++
++type handoff struct {
++	Schema         string         `json:"schema"`
++	CoreGeneration string         `json:"core_generation"`
++	Generation     string         `json:"generation"`
++	SourceCgroupID string         `json:"source_cgroup_id"`
++	RootCgroupID   string         `json:"root_cgroup_id"`
++	NetnsCookie    string         `json:"netns_cookie"`
++	PIDNSInode     uint32         `json:"pidns_inode"`
++	BootID         string         `json:"boot_id"`
++	SourcePath     string         `json:"source_path"`
++	Port           uint16         `json:"port"`
++	Maps           map[string]int `json:"maps"`
++	Programs       map[string]int `json:"programs"`
++	Links          map[string]int `json:"links"`
++}
++
++func u64(s string) (uint64, error) {
++	if !positiveDecimal.MatchString(s) {
++		return 0, errors.New("noncanonical positive uint64")
++	}
++	n, err := strconv.ParseUint(s, 10, 64)
++	if err != nil {
++		return 0, err
++	}
++	return n, nil
++}
++
++// rejectDuplicates runs before typed decoding, including inside all FD objects.
++func jsonValue(d *json.Decoder) error {
++	t, err := d.Token()
++	if err != nil {
++		return err
++	}
++	delim, ok := t.(json.Delim)
++	if !ok {
++		return nil
++	}
++	switch delim {
++	case '{':
++		seen := map[string]bool{}
++		for d.More() {
++			key, err := d.Token()
++			if err != nil {
++				return err
++			}
++			name, ok := key.(string)
++			if !ok || seen[name] {
++				return errors.New("duplicate/invalid JSON key")
++			}
++			seen[name] = true
++			if err = jsonValue(d); err != nil {
++				return err
++			}
++		}
++	case '[':
++		for d.More() {
++			if err = jsonValue(d); err != nil {
++				return err
++			}
++		}
++	default:
++		return errors.New("unexpected JSON delimiter")
++	}
++	_, err = d.Token()
++	return err
++}
++
++func parse(raw []byte) (handoff, error) {
++	var h handoff
++	if len(raw) == 0 || len(raw) > 8192 {
++		return h, errors.New("handoff must contain 1..8192 bytes")
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	if err := jsonValue(d); err != nil {
++		return h, err
++	}
++	if _, err := d.Token(); err != io.EOF {
++		return h, errors.New("trailing JSON")
++	}
++	var keys map[string]json.RawMessage
++	if err := json.Unmarshal(raw, &keys); err != nil {
++		return h, err
++	}
++	names := []string{"schema", "core_generation", "generation", "source_cgroup_id", "root_cgroup_id", "netns_cookie", "pidns_inode", "boot_id", "source_path", "port", "maps", "programs", "links"}
++	if len(keys) != len(names) {
++		return h, errors.New("unexpected handoff field set")
++	}
++	for _, name := range names {
++		if _, ok := keys[name]; !ok {
++			return h, fmt.Errorf("missing exact field %s", name)
++		}
++	}
++	d = json.NewDecoder(bytes.NewReader(raw))
++	d.DisallowUnknownFields()
++	if err := d.Decode(&h); err != nil {
++		return h, err
++	}
++	if h.Schema != "hoopa-core-identity-handoff-v1" || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
++		return h, errors.New("invalid handoff declaration")
++	}
++	for _, s := range []string{h.Generation, h.SourceCgroupID, h.RootCgroupID, h.NetnsCookie} {
++		if _, err := u64(s); err != nil {
++			return h, err
++		}
++	}
++	if h.SourceCgroupID == h.RootCgroupID {
++		return h, errors.New("source must differ from root")
++	}
++	seen := map[int]bool{}
++	for _, group := range []struct {
++		fds   map[string]int
++		names []string
++	}{{h.Maps, mapNames}, {h.Programs, programNames}, {h.Links, linkNames}} {
++		if len(group.fds) != len(group.names) {
++			return h, errors.New("unexpected FD object size")
++		}
++		for _, name := range group.names {
++			fd, ok := group.fds[name]
++			if !ok || fd < 200 || fd > 1023 || seen[fd] {
++				return h, fmt.Errorf("invalid/duplicate FD for %s", name)
++			}
++			seen[fd] = true
++		}
++	}
++	return h, nil
++}
++
++func (h handoff) orderedFDs() []int {
++	fds := make([]int, 0, 11)
++	for _, name := range mapNames {
++		fds = append(fds, h.Maps[name])
++	}
++	for _, name := range programNames {
++		fds = append(fds, h.Programs[name])
++	}
++	for _, name := range linkNames {
++		fds = append(fds, h.Links[name])
++	}
++	return fds
++}
+diff --git b/component/hoopaid/native_linux_amd64.go b/component/hoopaid/native_linux_amd64.go
+new file mode 100644
+index 0000000..15a2bc6
+--- /dev/null
++++ b/component/hoopaid/native_linux_amd64.go
+@@ -0,0 +1,361 @@
++//go:build linux && amd64
++
++package coreadmission
++
++import (
++	"errors"
++	"fmt"
++	"net"
++	"os"
++	"path/filepath"
++	"runtime"
++	"strings"
++	"syscall"
++	"unsafe"
++)
++
++type nativeBackend struct{ call func(uint32, []byte) error }
++
++func newBackend() (backend, error) { return &nativeBackend{call: rawBPF}, nil }
++func rawBPF(command uint32, attr []byte) error {
++	r, _, errno := syscall.Syscall(321, uintptr(command), uintptr(unsafe.Pointer(&attr[0])), uintptr(len(attr)))
++	runtime.KeepAlive(attr)
++	if errno != 0 {
++		return errno
++	}
++	if r != 0 {
++		return fmt.Errorf("BPF command %d unexpected positive return %d", command, r)
++	}
++	return nil
++}
++func ptr(raw []byte) uint64 {
++	if len(raw) == 0 {
++		return 0
++	}
++	return uint64(uintptr(unsafe.Pointer(&raw[0])))
++}
++
++// Pin before encoding addresses into integer ABI fields. KeepAlive alone does
++// not prevent stack movement between address encoding and the syscall.
++func pinBuffers(buffers ...[]byte) func() {
++	var pins runtime.Pinner
++	for _, buffer := range buffers {
++		if len(buffer) > 0 {
++			pins.Pin(&buffer[0])
++		}
++	}
++	return pins.Unpin
++}
++
++func (b *nativeBackend) readInfo(fd int, buffer []byte) ([]byte, error) {
++	unpin := pinBuffers(buffer)
++	defer unpin()
++	attr := make([]byte, 16)
++	le.PutUint32(attr, uint32(fd))
++	le.PutUint32(attr[4:], uint32(len(buffer)))
++	le.PutUint64(attr[8:], ptr(buffer))
++	err := b.call(15, attr)
++	runtime.KeepAlive(buffer)
++	if err != nil {
++		return nil, err
++	}
++	n := le.Uint32(attr[4:])
++	if n > uint32(len(buffer)) {
++		return nil, errors.New("oversized kernel info")
++	}
++	return buffer[:n], nil
++}
++func (b *nativeBackend) info(fd int) ([]byte, error) { return b.readInfo(fd, make([]byte, 256)) }
++func (b *nativeBackend) programInfo(fd int) ([]byte, []uint32, error) {
++	first, err := b.info(fd)
++	if err != nil {
++		return nil, nil, err
++	}
++	if len(first) < 80 {
++		return nil, nil, errors.New("short program info")
++	}
++	count := le.Uint32(first[52:])
++	if count > 16 {
++		return nil, nil, errors.New("program map count exceeds bound")
++	}
++	// A byte array avoids a second pointer-bearing Go object in bpf_attr.
++	ids := make([]byte, count*4)
++	unpin := pinBuffers(ids)
++	defer unpin()
++	buf := make([]byte, 256)
++	le.PutUint32(buf[52:], count)
++	le.PutUint64(buf[56:], ptr(ids))
++	second, err := b.readInfo(fd, buf)
++	runtime.KeepAlive(ids)
++	if err != nil {
++		return nil, nil, err
++	}
++	if len(second) < 80 || le.Uint32(second[52:]) > count || string(second[:8]) != string(first[:8]) || string(second[64:80]) != string(first[64:80]) {
++		return nil, nil, errors.New("program info changed/short")
++	}
++	out := make([]uint32, le.Uint32(second[52:]))
++	for i := range out {
++		out[i] = le.Uint32(ids[i*4:])
++	}
++	return second, out, nil
++}
++func fcntl(fd, command, arg int) (int, error) {
++	r, _, errno := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(command), uintptr(arg))
++	if errno != 0 {
++		return 0, errno
++	}
++	return int(r), nil
++}
++func (b *nativeBackend) access(fd int) (int, error) {
++	flags, err := fcntl(fd, syscall.F_GETFL, 0)
++	return flags & syscall.O_ACCMODE, err
++}
++func (b *nativeBackend) cloexec(fd int) error {
++	flags, err := fcntl(fd, syscall.F_GETFD, 0)
++	if err != nil {
++		return err
++	}
++	_, err = fcntl(fd, syscall.F_SETFD, flags|syscall.FD_CLOEXEC)
++	return err
++}
++func (b *nativeBackend) lookup(fd int, key []byte, size int, flags uint64) ([]byte, error) {
++	out := make([]byte, size)
++	unpin := pinBuffers(key, out)
++	defer unpin()
++	attr := make([]byte, 32)
++	le.PutUint32(attr, uint32(fd))
++	le.PutUint64(attr[8:], ptr(key))
++	le.PutUint64(attr[16:], ptr(out))
++	le.PutUint64(attr[24:], flags)
++	err := b.call(1, attr)
++	runtime.KeepAlive(key)
++	runtime.KeepAlive(out)
++	return out, err
++}
++func (b *nativeBackend) nextKey(fd int, size int) error {
++	out := make([]byte, size)
++	unpin := pinBuffers(out)
++	defer unpin()
++	attr := make([]byte, 32)
++	le.PutUint32(attr, uint32(fd))
++	le.PutUint64(attr[16:], ptr(out))
++	err := b.call(4, attr)
++	runtime.KeepAlive(out)
++	return err
++}
++func (b *nativeBackend) update(fd int, key, value []byte) error {
++	unpin := pinBuffers(key, value)
++	defer unpin()
++	attr := make([]byte, 32)
++	le.PutUint32(attr, uint32(fd))
++	le.PutUint64(attr[8:], ptr(key))
++	le.PutUint64(attr[16:], ptr(value))
++	err := b.call(2, attr)
++	runtime.KeepAlive(key)
++	runtime.KeepAlive(value)
++	return err
++}
++func (b *nativeBackend) testRun(fd int) error {
++	packet := make([]byte, 64)
++	unpin := pinBuffers(packet)
++	defer unpin()
++	attr := make([]byte, 80)
++	le.PutUint32(attr, uint32(fd))
++	le.PutUint32(attr[8:], 64)
++	le.PutUint64(attr[16:], ptr(packet))
++	le.PutUint32(attr[32:], 1)
++	err := b.call(10, attr)
++	runtime.KeepAlive(packet)
++	if err != nil {
++		return err
++	}
++	if le.Uint32(attr[4:]) != 0 {
++		return fmt.Errorf("stop program retval %d", le.Uint32(attr[4:]))
++	}
++	return nil
++}
++func (b *nativeBackend) close(fd int) error { return syscall.Close(fd) }
++func inode(path string) (uint64, error) {
++	info, err := os.Stat(path)
++	if err != nil {
++		return 0, err
++	}
++	s, ok := info.Sys().(*syscall.Stat_t)
++	if !ok {
++		return 0, errors.New("stat ABI")
++	}
++	return s.Ino, nil
++}
++func read(path string) (string, error) {
++	raw, err := os.ReadFile(path)
++	return strings.TrimSpace(string(raw)), err
++}
++func (b *nativeBackend) environment(h handoff) error {
++	cmdline, err := read("/proc/cmdline")
++	if err != nil {
++		return err
++	}
++	lab := false
++	for _, arg := range strings.Fields(cmdline) {
++		if arg == "hoopa_lab=t132" {
++			lab = true
++		}
++	}
++	if os.Geteuid() != 0 || !lab {
++		return errors.New("dedicated root t132 guest required")
++	}
++	boot, err := read("/proc/sys/kernel/random/boot_id")
++	if err != nil {
++		return err
++	}
++	if boot != h.BootID {
++		return errors.New("boot ID mismatch")
++	}
++	for _, ns := range []string{"pid", "net", "user", "time", "time_for_children"} {
++		self, err := inode("/proc/self/ns/" + ns)
++		if err != nil {
++			return err
++		}
++		initial, err := inode("/proc/1/ns/" + ns)
++		if err != nil {
++			return err
++		}
++		if self != initial || ns == "pid" && self != uint64(h.PIDNSInode) {
++			return fmt.Errorf("initial guest namespace mismatch: %s", ns)
++		}
++	}
++	mounts, err := read("/proc/self/mountinfo")
++	if err != nil {
++		return err
++	}
++	matches := 0
++	for _, line := range strings.Split(mounts, "\n") {
++		parts := strings.Split(line, " - ")
++		if len(parts) != 2 {
++			continue
++		}
++		left, right := strings.Fields(parts[0]), strings.Fields(parts[1])
++		if len(left) > 4 && left[4] == "/sys/fs/cgroup" {
++			if len(right) == 0 || right[0] != "cgroup2" || left[3] != "/" {
++				return errors.New("cgroup2 root mount required")
++			}
++			matches++
++		}
++	}
++	if matches != 1 {
++		return errors.New("one cgroup2 root mount required")
++	}
++	info, err := os.Lstat(h.SourcePath)
++	if err != nil {
++		return err
++	}
++	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
++		return errors.New("source leaf must be a directory")
++	}
++	kind, err := read(filepath.Join(h.SourcePath, "cgroup.type"))
++	if err != nil {
++		return err
++	}
++	if kind != "domain" {
++		return errors.New("domain source leaf required")
++	}
++	for path, want := range map[string]string{h.SourcePath: h.SourceCgroupID, "/sys/fs/cgroup": h.RootCgroupID} {
++		got, err := inode(path)
++		if err != nil {
++			return err
++		}
++		n, _ := u64(want)
++		if got != n {
++			return errors.New("actual cgroup inode mismatch")
++		}
++	}
++	membership, err := read("/proc/self/cgroup")
++	if err != nil {
++		return err
++	}
++	if membership != "0::/"+filepath.Base(h.SourcePath) {
++		return errors.New("current process not in configured source leaf")
++	}
++	return nil
++}
++func socketU64(fd int, option int) (uint64, error) {
++	var value uint64
++	size := uint32(8)
++	_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, uintptr(fd), syscall.SOL_SOCKET, uintptr(option), uintptr(unsafe.Pointer(&value)), uintptr(unsafe.Pointer(&size)), 0)
++	runtime.KeepAlive(&value)
++	runtime.KeepAlive(&size)
++	if errno != 0 {
++		return 0, errno
++	}
++	if size != 8 {
++		return 0, errors.New("socket cookie option size")
++	}
++	return value, nil
++}
++func endpoint(addr syscall.Sockaddr) (Endpoint, error) {
++	v, ok := addr.(*syscall.SockaddrInet4)
++	if !ok || v.Addr != [4]byte{127, 0, 0, 1} || v.Port < 1 || v.Port > 65535 {
++		return Endpoint{}, errors.New("non-loopback IPv4 endpoint")
++	}
++	return Endpoint{"127.0.0.1", uint16(v.Port)}, nil
++}
++func (b *nativeBackend) socket(conn *net.TCPConn) (witness, error) {
++	var w witness
++	if conn == nil {
++		return w, errors.New("nil original TCPConn")
++	}
++	raw, err := conn.SyscallConn()
++	if err != nil {
++		return w, err
++	}
++	return captureWithControl(raw.Control, captureSocket)
++}
++
++func captureWithControl(control func(func(uintptr)) error, capture func(int) (witness, error)) (witness, error) {
++	var w witness
++	var captureErr error
++	calls := 0
++	err := control(func(fd uintptr) { calls++; w, captureErr = capture(int(fd)) })
++	if calls != 1 {
++		return witness{}, errors.Join(err, captureErr, errors.New("original socket Control callback count"))
++	}
++	if err != nil || captureErr != nil {
++		return witness{}, errors.Join(err, captureErr)
++	}
++	return w, nil
++}
++func captureSocket(fd int) (witness, error) {
++	var w witness
++	for _, item := range []struct{ option, want int }{{39, syscall.AF_INET}, {syscall.SO_TYPE, syscall.SOCK_STREAM}, {38, syscall.IPPROTO_TCP}} {
++		got, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, item.option)
++		if err != nil {
++			return w, err
++		}
++		if got != item.want {
++			return w, errors.New("original socket must be ordinary IPv4 TCP")
++		}
++	}
++	var err error
++	w.cookie, err = socketU64(fd, 57)
++	if err != nil {
++		return w, err
++	}
++	w.netns, err = socketU64(fd, 71)
++	if err != nil {
++		return w, err
++	}
++	local, err := syscall.Getsockname(fd)
++	if err != nil {
++		return w, err
++	}
++	remote, err := syscall.Getpeername(fd)
++	if err != nil {
++		return w, err
++	}
++	w.local, err = endpoint(local)
++	if err != nil {
++		return w, err
++	}
++	w.remote, err = endpoint(remote)
++	return w, err
++}
+diff --git b/component/hoopaid/native_linux_amd64_test.go b/component/hoopaid/native_linux_amd64_test.go
+new file mode 100644
+index 0000000..8b1bb0a
+--- /dev/null
++++ b/component/hoopaid/native_linux_amd64_test.go
+@@ -0,0 +1,133 @@
++//go:build linux && amd64
++
++package coreadmission
++
++import (
++	"errors"
++	"syscall"
++	"testing"
++)
++
++func TestNativeTestRunAttributeAndRefusal(t *testing.T) {
++	for _, mode := range []string{"ok", "errno", "retval"} {
++		t.Run(mode, func(t *testing.T) {
++			b := &nativeBackend{call: func(cmd uint32, attr []byte) error {
++				if cmd != 10 || len(attr) != 80 || le.Uint32(attr) != 208 || le.Uint32(attr[8:]) != 64 || le.Uint64(attr[16:]) == 0 || le.Uint32(attr[32:]) != 1 {
++					t.Fatal("TEST_RUN layout")
++				}
++				allowed := map[int]bool{}
++				for _, r := range [][2]int{{0, 4}, {8, 12}, {16, 24}, {32, 36}} {
++					for i := r[0]; i < r[1]; i++ {
++						allowed[i] = true
++					}
++				}
++				for i, v := range attr {
++					if !allowed[i] && v != 0 {
++						t.Fatalf("nonzero optional/output byte %d", i)
++					}
++				}
++				if mode == "errno" {
++					return syscall.EPERM
++				}
++				if mode == "retval" {
++					le.PutUint32(attr[4:], 1)
++				}
++				return nil
++			}}
++			err := b.testRun(208)
++			if (err == nil) != (mode == "ok") {
++				t.Fatal(err)
++			}
++		})
++	}
++}
++func TestNativeMapAttributesAndErrors(t *testing.T) {
++	for _, command := range []uint32{1, 2, 4} {
++		t.Run(string(rune('0'+command)), func(t *testing.T) {
++			b := &nativeBackend{call: func(cmd uint32, a []byte) error {
++				if cmd != command || len(a) != 32 || le.Uint32(a) != 203 || le.Uint32(a[4:]) != 0 || le.Uint64(a[16:]) == 0 {
++					t.Fatal("map attr layout")
++				}
++				if command == 4 {
++					if le.Uint64(a[8:]) != 0 {
++						t.Fatal("GET_NEXT_KEY must start with NULL")
++					}
++				} else if le.Uint64(a[8:]) == 0 {
++					t.Fatal("missing key")
++				}
++				flags := uint64(0)
++				if command == 1 {
++					flags = 4
++				}
++				if le.Uint64(a[24:]) != flags {
++					t.Fatal("map flags")
++				}
++				return syscall.ENOENT
++			}}
++			var err error
++			switch command {
++			case 1:
++				_, err = b.lookup(203, make([]byte, 4), 40, 4)
++			case 2:
++				err = b.update(203, make([]byte, 4), make([]byte, 40))
++			case 4:
++				err = b.nextKey(203, 4)
++			}
++			if !errors.Is(err, syscall.ENOENT) {
++				t.Fatal(err)
++			}
++		})
++	}
++}
++func TestNativeSocketNilAndAddressRejection(t *testing.T) {
++	b := &nativeBackend{}
++	if _, err := b.socket(nil); err == nil {
++		t.Fatal("nil socket accepted")
++	}
++	for _, sa := range []syscall.Sockaddr{&syscall.SockaddrInet6{}, &syscall.SockaddrInet4{Port: 1, Addr: [4]byte{127, 0, 0, 2}}, &syscall.SockaddrInet4{Port: 0, Addr: [4]byte{127, 0, 0, 1}}} {
++		if _, err := endpoint(sa); err == nil {
++			t.Fatal("invalid endpoint")
++		}
++	}
++	if e, err := endpoint(&syscall.SockaddrInet4{Port: 65535, Addr: [4]byte{127, 0, 0, 1}}); err != nil || e.Port != 65535 {
++		t.Fatal(e, err)
++	}
++}
++
++func TestOriginalSocketSingleControlAndErrorCleanupBoundary(t *testing.T) {
++	for _, mode := range []string{"ok", "capture-error", "control-error", "no-callback"} {
++		t.Run(mode, func(t *testing.T) {
++			calls, reads := 0, 0
++			control := func(callback func(uintptr)) error {
++				calls++
++				if mode != "no-callback" {
++					callback(207)
++				}
++				if mode == "control-error" {
++					return syscall.EBADF
++				}
++				return nil
++			}
++			capture := func(fd int) (witness, error) {
++				reads++
++				if fd != 207 {
++					t.Fatal("not original callback FD")
++				}
++				if mode == "capture-error" {
++					return witness{}, syscall.ENOPROTOOPT
++				}
++				return witness{cookie: 7}, nil
++			}
++			w, err := captureWithControl(control, capture)
++			if calls != 1 || reads > 1 {
++				t.Fatal("multiple Controls/captures")
++			}
++			if (err == nil) != (mode == "ok") {
++				t.Fatal(err)
++			}
++			if mode == "ok" && w.cookie != 7 {
++				t.Fatal(w)
++			}
++		})
++	}
++}
+diff --git b/component/hoopaid/native_other.go b/component/hoopaid/native_other.go
+new file mode 100644
+index 0000000..f62fdf0
+--- /dev/null
++++ b/component/hoopaid/native_other.go
+@@ -0,0 +1,9 @@
++//go:build !linux || !amd64
++
++package coreadmission
++
++import "errors"
++
++func newBackend() (backend, error) {
++	return nil, errors.New("core admission experiment requires linux/amd64")
++}
+diff --git b/component/hoopaid/owner.go b/component/hoopaid/owner.go
+new file mode 100644
+index 0000000..bc0a5f1
+--- /dev/null
++++ b/component/hoopaid/owner.go
+@@ -0,0 +1,392 @@
++package coreadmission
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"net"
++	"strings"
++	"sync"
++	"syscall"
++	"time"
++)
++
++type backend interface {
++	environment(handoff) error
++	info(int) ([]byte, error)
++	programInfo(int) ([]byte, []uint32, error)
++	access(int) (int, error)
++	cloexec(int) error
++	lookup(int, []byte, int, uint64) ([]byte, error)
++	nextKey(int, int) error
++	update(int, []byte, []byte) error
++	testRun(int) error
++	close(int) error
++	socket(*net.TCPConn) (witness, error)
++}
++
++type Status struct {
++	Admitted uint64 `json:"admitted"`
++	Rejected uint64 `json:"rejected"`
++	Revoked  bool   `json:"revoked"`
++}
++type Owner struct {
++	mu         sync.Mutex
++	h          handoff
++	b          backend
++	fds        []int
++	config     []byte
++	programIDs map[string]uint32
++	linkIDs    map[string]uint32
++	status     Status
++	closed     bool
++	closeErr   error
++	now        func() time.Time
++	sleep      func(time.Duration)
++}
++
++// Adopt transfers the eleven declared FDs only after a completely valid parse.
++// Subsequent failure closes each once. It never loads or attaches a BPF program.
++func Adopt(raw []byte, expectedCoreGeneration string, expectedPort uint16) (*Owner, error) {
++	b, err := newBackend()
++	if err != nil {
++		return nil, err
++	}
++	return adopt(raw, expectedCoreGeneration, expectedPort, b)
++}
++func adopt(raw []byte, expectedCoreGeneration string, expectedPort uint16, b backend) (*Owner, error) {
++	h, err := parse(raw)
++	if err != nil {
++		return nil, err
++	}
++	o := &Owner{h: h, b: b, fds: h.orderedFDs(), config: config(h), programIDs: map[string]uint32{}, linkIDs: map[string]uint32{}, now: time.Now, sleep: time.Sleep}
++	fail := func(err error) (*Owner, error) { return nil, errors.Join(err, o.closeFDs()) }
++	if h.CoreGeneration != expectedCoreGeneration || expectedCoreGeneration == "" || h.Port != expectedPort || expectedPort == 0 {
++		return fail(errors.New("expected core generation/port mismatch"))
++	}
++	if err = b.environment(h); err != nil {
++		return fail(err)
++	}
++	if err = o.verifyObjects(); err != nil {
++		return fail(err)
++	}
++	if err = o.initialState(); err != nil {
++		return fail(err)
++	}
++	for _, fd := range o.fds {
++		if err = b.cloexec(fd); err != nil {
++			return fail(fmt.Errorf("restore CLOEXEC: %w", err))
++		}
++	}
++	return o, nil
++}
++
++type mapSpec struct{ kind, key, value, max, flags uint32 }
++
++var mapSpecs = map[string]mapSpec{
++	"capture_config": {2, 4, 32, 1, 128}, "connect_records": {1, 8, 112, 1024, 8}, "capture_faults": {2, 4, 8, 1, 8},
++	"capture_gate": {2, 4, 40, 1, 8}, "online_tuples": {1, 32, 8, 1024, 8}, "online_bindings": {1, 8, 56, 1024, 8},
++}
++
++func kernelName(name string) string {
++	if len(name) > 15 {
++		return name[:15]
++	}
++	return name
++}
++
++func infoName(raw []byte) string { return strings.SplitN(string(raw), "\x00", 2)[0] }
++func (o *Owner) verifyObjects() error {
++	ids := map[string]uint32{}
++	seen := map[uint32]bool{}
++	for _, name := range mapNames {
++		raw, err := o.b.info(o.h.Maps[name])
++		if err != nil {
++			return fmt.Errorf("map info %s: %w", name, err)
++		}
++		if len(raw) < 40 {
++			return errors.New("short map info")
++		}
++		m := mapSpecs[name]
++		id := le.Uint32(raw[4:])
++		access, err := o.b.access(o.h.Maps[name])
++		if err != nil {
++			return err
++		}
++		wantAccess := 0
++		if m.flags&8 == 0 {
++			wantAccess = 2
++		}
++		if le.Uint32(raw) != m.kind || id == 0 || seen[id] || le.Uint32(raw[8:]) != m.key || le.Uint32(raw[12:]) != m.value || le.Uint32(raw[16:]) != m.max || le.Uint32(raw[20:]) != m.flags&^(8|16) || infoName(raw[24:40]) != kernelName(name) || access != wantAccess {
++			return fmt.Errorf("map ABI/access mismatch: %s", name)
++		}
++		seen[id] = true
++		ids[name] = id
++	}
++	seen = map[uint32]bool{}
++	for _, name := range programNames {
++		raw, mapIDs, err := o.b.programInfo(o.h.Programs[name])
++		if err != nil {
++			return err
++		}
++		if len(raw) < 80 {
++			return errors.New("short program info")
++		}
++		kind := uint32(18)
++		if name == "hoopa_lifecycle" {
++			kind = 13
++		}
++		if name == "hoopa_stop" {
++			kind = 3
++		}
++		id := le.Uint32(raw[4:])
++		if le.Uint32(raw) != kind || id == 0 || seen[id] || infoName(raw[64:80]) != kernelName(name) {
++			return fmt.Errorf("program ABI mismatch: %s", name)
++		}
++		names := []string{"capture_config", "connect_records", "capture_faults", "capture_gate"}
++		if name == "hoopa_lifecycle" {
++			names = mapNames
++		}
++		if name == "hoopa_stop" {
++			names = []string{"capture_gate"}
++		}
++		if len(mapIDs) != len(names) {
++			return fmt.Errorf("program map count: %s", name)
++		}
++		want := map[uint32]bool{}
++		for _, n := range names {
++			want[ids[n]] = true
++		}
++		for _, id := range mapIDs {
++			if !want[id] {
++				return fmt.Errorf("program map references: %s", name)
++			}
++			delete(want, id)
++		}
++		seen[id] = true
++		o.programIDs[name] = id
++	}
++	for _, name := range linkNames {
++		id, err := o.verifyLink(name)
++		if err != nil {
++			return err
++		}
++		for _, previous := range o.linkIDs {
++			if id == previous {
++				return errors.New("duplicate link ID")
++			}
++		}
++		o.linkIDs[name] = id
++	}
++	return nil
++}
++func (o *Owner) verifyLink(name string) (uint32, error) {
++	raw, err := o.b.info(o.h.Links[name])
++	if err != nil {
++		return 0, err
++	}
++	if len(raw) < 28 {
++		return 0, errors.New("short link info")
++	}
++	root, _ := u64(o.h.RootCgroupID)
++	attach := uint32(10)
++	if name == "hoopa_lifecycle" {
++		attach = 3
++	}
++	id := le.Uint32(raw[4:])
++	if le.Uint32(raw) != 3 || id == 0 || le.Uint32(raw[8:]) != o.programIDs[name] || le.Uint64(raw[16:]) != root || le.Uint32(raw[24:]) != attach {
++		return 0, fmt.Errorf("link ABI mismatch: %s", name)
++	}
++	if expected, ok := o.linkIDs[name]; ok && id != expected {
++		return 0, errors.New("link ID changed")
++	}
++	return id, nil
++}
++func (o *Owner) lookup(name string, key []byte, flags uint64) ([]byte, error) {
++	raw, err := o.b.lookup(o.h.Maps[name], key, int(mapSpecs[name].value), flags)
++	if err != nil {
++		return nil, fmt.Errorf("lookup %s: %w", name, err)
++	}
++	if len(raw) != int(mapSpecs[name].value) {
++		return nil, fmt.Errorf("lookup %s: wrong size", name)
++	}
++	return raw, nil
++}
++func (o *Owner) checkConfig() error {
++	raw, err := o.lookup("capture_config", make([]byte, 4), 0)
++	if err != nil {
++		return err
++	}
++	if !bytes.Equal(raw, o.config) {
++		return errors.New("config readback mismatch")
++	}
++	return nil
++}
++func (o *Owner) gate(open bool) ([]byte, gate, error) {
++	raw, err := o.lookup("capture_gate", make([]byte, 4), 4)
++	if err != nil {
++		return nil, gate{}, err
++	}
++	g, err := readGate(raw)
++	if err != nil {
++		return nil, g, err
++	}
++	if open && g.closed {
++		return nil, g, errors.New("gate closed")
++	}
++	return raw, g, nil
++}
++func (o *Owner) faults() error {
++	raw, err := o.lookup("capture_faults", make([]byte, 4), 0)
++	if err != nil {
++		return err
++	}
++	if !bytes.Equal(raw, make([]byte, 8)) {
++		return errors.New("capture faults nonzero")
++	}
++	return nil
++}
++func (o *Owner) initialState() error {
++	if err := o.checkConfig(); err != nil {
++		return err
++	}
++	if err := o.b.update(o.h.Maps["capture_config"], make([]byte, 4), o.config); !errors.Is(err, syscall.EPERM) {
++		return fmt.Errorf("config freeze probe must be EPERM, got %v", err)
++	}
++	if err := o.checkConfig(); err != nil {
++		return err
++	}
++	for _, name := range []string{"connect_records", "online_tuples", "online_bindings"} {
++		if err := o.b.nextKey(o.h.Maps[name], int(mapSpecs[name].key)); !errors.Is(err, syscall.ENOENT) {
++			return fmt.Errorf("hash map not initially empty %s: %v", name, err)
++		}
++	}
++	raw, _, err := o.gate(true)
++	if err != nil {
++		return err
++	}
++	if !bytes.Equal(raw, make([]byte, 40)) {
++		return errors.New("gate not initially zero")
++	}
++	return o.faults()
++}
++
++// Admit does no application I/O and never closes conn, even on refusal.
++// Any refusal revokes this owner; callers must close a refused connection.
++func (o *Owner) Admit(conn *net.TCPConn) (Identity, error) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	reject := func(err error) (Identity, error) {
++		o.status.Rejected++
++		o.status.Revoked = true
++		return Identity{}, err
++	}
++	if o.status.Revoked || o.closed {
++		return reject(errors.New("admission revoked"))
++	}
++	w, err := o.b.socket(conn)
++	if err != nil {
++		return reject(err)
++	}
++	if err = validateWitness(w, o.h); err != nil {
++		return reject(err)
++	}
++	for _, name := range linkNames {
++		if _, err = o.verifyLink(name); err != nil {
++			return reject(err)
++		}
++	}
++	if err = o.checkConfig(); err != nil {
++		return reject(err)
++	}
++	if _, _, err = o.gate(true); err != nil {
++		return reject(err)
++	}
++	if err = o.faults(); err != nil {
++		return reject(err)
++	}
++	binding, err := o.lookup("online_bindings", uintKey(w.cookie), 0)
++	if err != nil {
++		return reject(err)
++	}
++	client, err := bindingCookie(binding, w, o.h)
++	if err != nil {
++		return reject(err)
++	}
++	connect, err := o.lookup("connect_records", uintKey(client), 0)
++	if err != nil {
++		return reject(err)
++	}
++	if err = o.faults(); err != nil {
++		return reject(err)
++	}
++	gate, _, err := o.gate(true)
++	if err != nil {
++		return reject(err)
++	}
++	id, err := identity(o.h, w, binding, connect, gate)
++	if err != nil {
++		return reject(err)
++	}
++	o.status.Admitted++
++	return id, nil
++}
++func (o *Owner) Status() Status { o.mu.Lock(); defer o.mu.Unlock(); return o.status }
++func (o *Owner) closeFDs() error {
++	var errs []error
++	// Remove bookkeeping before close: EINTR must not cause unsafe retries.
++	for len(o.fds) > 0 {
++		last := len(o.fds) - 1
++		fd := o.fds[last]
++		o.fds = o.fds[:last]
++		if err := o.b.close(fd); err != nil {
++			errs = append(errs, fmt.Errorf("close fd %d: %w", fd, err))
++		}
++	}
++	return errors.Join(errs...)
++}
++
++// Close's polling is bounded after syscalls return; it cannot hard-timeout a syscall.
++func (o *Owner) Close() error {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	if o.closed {
++		return o.closeErr
++	}
++	o.closed = true
++	o.status.Revoked = true
++	var errs []error
++	if err := o.b.testRun(o.h.Programs["hoopa_stop"]); err != nil {
++		errs = append(errs, fmt.Errorf("stop TEST_RUN: %w", err))
++	} else {
++		deadline := o.now().Add(2 * time.Second)
++		drained := false
++		for calls := 0; calls < 1001; calls++ {
++			_, g, err := o.gate(false)
++			if err != nil {
++				errs = append(errs, fmt.Errorf("stop gate: %w", err))
++				break
++			}
++			if !g.closed {
++				errs = append(errs, errors.New("stop did not close gate"))
++				break
++			}
++			if g.active == 0 {
++				drained = true
++				break
++			}
++			if !o.now().Before(deadline) {
++				break
++			}
++			if calls < 1000 {
++				o.sleep(2 * time.Millisecond)
++			}
++		}
++		if !drained {
++			errs = append(errs, errors.New("stop gate did not drain within bounds"))
++		}
++	}
++	errs = append(errs, o.closeFDs())
++	o.closeErr = errors.Join(errs...)
++	return o.closeErr
++}
+diff --git b/component/hoopaid/owner_test.go b/component/hoopaid/owner_test.go
+new file mode 100644
+index 0000000..a5f8843
+--- /dev/null
++++ b/component/hoopaid/owner_test.go
+@@ -0,0 +1,612 @@
++package coreadmission
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"net"
++	"reflect"
++	"strings"
++	"sync"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func example() handoff {
++	h := handoff{Schema: "hoopa-core-identity-handoff-v1", CoreGeneration: "core-fixed", Generation: "123", SourceCgroupID: "22", RootCgroupID: "1", NetnsCookie: "3", PIDNSInode: 4026531836, BootID: "01234567-89ab-cdef-0123-456789abcdef", SourcePath: "/sys/fs/cgroup/hoopa-online-fixed", Port: 18993, Maps: map[string]int{}, Programs: map[string]int{}, Links: map[string]int{}}
++	fd := 200
++	for _, group := range []struct {
++		fds   map[string]int
++		names []string
++	}{{h.Maps, mapNames}, {h.Programs, programNames}, {h.Links, linkNames}} {
++		for _, name := range group.names {
++			group.fds[name] = fd
++			fd++
++		}
++	}
++	return h
++}
++func encoded(h handoff) []byte { raw, _ := json.Marshal(h); return raw }
++
++type fake struct {
++	h             handoff
++	infos         map[int][]byte
++	refs          map[int][]uint32
++	accessModes   map[int]int
++	values        map[int][]byte
++	w             witness
++	log           []string
++	closed        []int
++	fail          string
++	updateErr     error
++	nextErr       error
++	stopErr       error
++	stopBusy      bool
++	socketEntered chan struct{}
++	socketResume  chan struct{}
++	lookupHook    func(int, []byte, uint64)
++}
++
++func newFake(h handoff) *fake {
++	f := &fake{h: h, infos: map[int][]byte{}, refs: map[int][]uint32{}, accessModes: map[int]int{}, values: map[int][]byte{}, w: witness{7, 3, Endpoint{"127.0.0.1", h.Port}, Endpoint{"127.0.0.1", 31001}}, updateErr: syscall.EPERM, nextErr: syscall.ENOENT}
++	for i, name := range mapNames {
++		m := mapSpecs[name]
++		raw := make([]byte, 256)
++		for j, n := range []uint32{m.kind, uint32(i + 1), m.key, m.value, m.max, m.flags &^ (8 | 16)} {
++			le.PutUint32(raw[j*4:], n)
++		}
++		copy(raw[24:40], kernelName(name))
++		fd := h.Maps[name]
++		f.infos[fd] = raw
++		f.values[fd] = make([]byte, m.value)
++		if m.flags&8 == 0 {
++			f.accessModes[fd] = 2
++		}
++	}
++	f.values[h.Maps["capture_config"]] = config(h)
++	for i, name := range programNames {
++		kind := uint32(18)
++		names := mapNames[:4]
++		if name == "hoopa_lifecycle" {
++			kind = 13
++			names = mapNames
++		}
++		if name == "hoopa_stop" {
++			kind = 3
++			names = []string{"capture_gate"}
++		}
++		raw := make([]byte, 256)
++		le.PutUint32(raw, kind)
++		le.PutUint32(raw[4:], uint32(11+i))
++		copy(raw[64:80], name)
++		fd := h.Programs[name]
++		f.infos[fd] = raw
++		for _, n := range names {
++			f.refs[fd] = append(f.refs[fd], le.Uint32(f.infos[h.Maps[n]][4:]))
++		}
++	}
++	for i, name := range linkNames {
++		raw := make([]byte, 256)
++		le.PutUint32(raw, 3)
++		le.PutUint32(raw[4:], uint32(21+i))
++		le.PutUint32(raw[8:], le.Uint32(f.infos[h.Programs[name]][4:]))
++		le.PutUint64(raw[16:], 1)
++		attach := uint32(10)
++		if name == "hoopa_lifecycle" {
++			attach = 3
++		}
++		le.PutUint32(raw[24:], attach)
++		f.infos[h.Links[name]] = raw
++	}
++	f.publish()
++	return f
++}
++func (f *fake) publish() {
++	b := make([]byte, 56)
++	for i, n := range []uint64{123, 3, 7, 8} {
++		le.PutUint64(b[i*8:], n)
++	}
++	for i, n := range []uint32{0x0100007f, 0x0100007f, 31001, uint32(f.h.Port), 1, 0} {
++		le.PutUint32(b[32+i*4:], n)
++	}
++	f.values[f.h.Maps["online_bindings"]] = b
++	c := make([]byte, 112)
++	for i, n := range []uint64{123, 30000000, 8, 3, 22, 10000000} {
++		le.PutUint64(c[i*8:], n)
++	}
++	for i, n := range []uint32{1, 72, 73, f.h.PIDNSInode, 72, 1, 1, 0} {
++		le.PutUint32(c[48+i*4:], n)
++	}
++	copy(c[80:96], "worker")
++	copy(c[96:], "leader")
++	f.values[f.h.Maps["connect_records"]] = c
++}
++func (f *fake) record(s string) error {
++	f.log = append(f.log, s)
++	if s == f.fail {
++		return errors.New("injected " + s)
++	}
++	return nil
++}
++func (f *fake) environment(h handoff) error { return f.record("environment") }
++func (f *fake) info(fd int) ([]byte, error) {
++	err := f.record(fmt.Sprintf("info:%d", fd))
++	return append([]byte(nil), f.infos[fd]...), err
++}
++func (f *fake) programInfo(fd int) ([]byte, []uint32, error) {
++	err := f.record(fmt.Sprintf("program:%d", fd))
++	return append([]byte(nil), f.infos[fd]...), append([]uint32(nil), f.refs[fd]...), err
++}
++func (f *fake) access(fd int) (int, error) {
++	return f.accessModes[fd], f.record(fmt.Sprintf("access:%d", fd))
++}
++func (f *fake) cloexec(fd int) error { return f.record(fmt.Sprintf("cloexec:%d", fd)) }
++func (f *fake) lookup(fd int, key []byte, size int, flags uint64) ([]byte, error) {
++	if f.lookupHook != nil {
++		f.lookupHook(fd, key, flags)
++	}
++	err := f.record(fmt.Sprintf("lookup:%d:%d", fd, flags))
++	return append([]byte(nil), f.values[fd]...), err
++}
++func (f *fake) nextKey(fd, size int) error {
++	if err := f.record(fmt.Sprintf("next:%d", fd)); err != nil {
++		return err
++	}
++	return f.nextErr
++}
++func (f *fake) update(fd int, key, value []byte) error {
++	if err := f.record("freeze-update"); err != nil {
++		return err
++	}
++	return f.updateErr
++}
++func (f *fake) testRun(fd int) error {
++	if err := f.record("stop"); err != nil {
++		return err
++	}
++	if f.stopErr != nil {
++		return f.stopErr
++	}
++	raw := make([]byte, 40)
++	le.PutUint32(raw[4:], 1)
++	if f.stopBusy {
++		le.PutUint64(raw[8:], 1)
++		le.PutUint64(raw[16:], 1)
++	}
++	f.values[f.h.Maps["capture_gate"]] = raw
++	return nil
++}
++func (f *fake) close(fd int) error {
++	f.closed = append(f.closed, fd)
++	return f.record(fmt.Sprintf("close:%d", fd))
++}
++func (f *fake) socket(conn *net.TCPConn) (witness, error) {
++	if err := f.record("socket"); err != nil {
++		return witness{}, err
++	}
++	if f.socketEntered != nil {
++		close(f.socketEntered)
++		<-f.socketResume
++	}
++	return f.w, nil
++}
++func adoptFake(t *testing.T) (*Owner, *fake) {
++	t.Helper()
++	h := example()
++	f := newFake(h)
++	o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.log = nil
++	return o, f
++}
++
++func TestStrictHandoff(t *testing.T) {
++	valid := encoded(example())
++	if _, err := parse(valid); err != nil {
++		t.Fatal(err)
++	}
++	tests := map[string][]byte{"duplicate": []byte(strings.Replace(string(valid), `"schema":`, `"schema":"hoopa-core-identity-handoff-v1","schema":`, 1)), "unknown": []byte(strings.Replace(string(valid), `"schema":`, `"extra":1,"schema":`, 1)), "casealias": []byte(strings.Replace(string(valid), `"schema":`, `"Schema":`, 1)), "trailing": append(append([]byte{}, valid...), []byte(" {}")...), "oversize": make([]byte, 8193)}
++	for _, s := range []string{"0", "01", "+1", "-1", "1.0", "18446744073709551616"} {
++		h := example()
++		h.Generation = s
++		tests["generation:"+s] = encoded(h)
++	}
++	for _, path := range []string{"/sys/fs/cgroup/hoopa-online-x/child", "/sys/fs/cgroup/hoopa-online-x/", "/sys/fs/cgroup/hoopa-online-../x", "relative", "/sys/fs/cgroup/hoopa-online-"} {
++		h := example()
++		h.SourcePath = path
++		tests[path] = encoded(h)
++	}
++	mutations := map[string]func(*handoff){"fdlow": func(h *handoff) { h.Maps["capture_config"] = 199 }, "fdhigh": func(h *handoff) { h.Maps["capture_config"] = 1024 }, "aliasfd": func(h *handoff) { h.Links["hoopa_connect"] = h.Maps["capture_config"] }, "unknownmap": func(h *handoff) { delete(h.Maps, "capture_config"); h.Maps["other"] = 200 }, "samecgroup": func(h *handoff) { h.SourceCgroupID = h.RootCgroupID }, "portzero": func(h *handoff) { h.Port = 0 }, "pidnszero": func(h *handoff) { h.PIDNSInode = 0 }, "bootuppercase": func(h *handoff) { h.BootID = strings.ToUpper(h.BootID) }}
++	for name, mutate := range mutations {
++		h := example()
++		mutate(&h)
++		tests[name] = encoded(h)
++	}
++	for name, raw := range tests {
++		t.Run(name, func(t *testing.T) {
++			f := newFake(example())
++			if _, err := adopt(raw, "core-fixed", 18993, f); err == nil {
++				t.Fatal("accepted malformed declaration")
++			}
++			if len(f.log) != 0 || len(f.closed) != 0 {
++				t.Fatal("touched FDs before valid parse")
++			}
++		})
++	}
++	for _, s := range []string{"1", "18446744073709551615"} {
++		if _, err := u64(s); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
++func TestAdoptionFailuresCloseAllExactlyOnce(t *testing.T) {
++	tests := map[string]func(*fake){
++		"environment": func(f *fake) { f.fail = "environment" },
++		"maptype":     func(f *fake) { le.PutUint32(f.infos[200], 7) }, "mapflags": func(f *fake) { le.PutUint32(f.infos[201][20:], 8) }, "writable": func(f *fake) { f.accessModes[201] = 2 },
++		"mapname": func(f *fake) { f.infos[200][24] = 'x' }, "duplicateMapID": func(f *fake) { le.PutUint32(f.infos[201][4:], 1) }, "shortmap": func(f *fake) { f.infos[200] = make([]byte, 39) },
++		"programtype": func(f *fake) { le.PutUint32(f.infos[206], 13) }, "programname": func(f *fake) { f.infos[206][64] = 'x' }, "wrongrefs": func(f *fake) { f.refs[206][0] = 6 }, "duplicaterefs": func(f *fake) { f.refs[206][0] = 2 }, "fewrefs": func(f *fake) { f.refs[207] = f.refs[207][:5] },
++		"linkroot": func(f *fake) { le.PutUint64(f.infos[209][16:], 22) }, "linkprogram": func(f *fake) { le.PutUint32(f.infos[210][8:], 11) }, "linkattach": func(f *fake) { le.PutUint32(f.infos[210][24:], 10) },
++		"config": func(f *fake) { f.values[200][0]++ }, "unfrozen": func(f *fake) { f.updateErr = nil }, "freezeWrongErrno": func(f *fake) { f.updateErr = syscall.EACCES }, "nonemptyhash": func(f *fake) { f.nextErr = nil }, "closedgate": func(f *fake) { f.values[203][4] = 1 }, "activegate": func(f *fake) { f.values[203][8] = 1; f.values[203][16] = 1 }, "fault": func(f *fake) { f.values[202][0] = 1 }, "cloexecPartial": func(f *fake) { f.fail = "cloexec:205" },
++	}
++	for name, mutate := range tests {
++		t.Run(name, func(t *testing.T) {
++			h := example()
++			f := newFake(h)
++			mutate(f)
++			if _, err := adopt(encoded(h), h.CoreGeneration, h.Port, f); err == nil {
++				t.Fatal("accepted mutation")
++			}
++			want := h.orderedFDs()
++			for i, j := 0, len(want)-1; i < j; i, j = i+1, j-1 {
++				want[i], want[j] = want[j], want[i]
++			}
++			if !reflect.DeepEqual(f.closed, want) {
++				t.Fatalf("closed %v want %v", f.closed, want)
++			}
++			for _, s := range f.log {
++				if s == "stop" {
++					t.Fatal("ran unverified stop")
++				}
++			}
++		})
++	}
++	for _, mismatch := range []string{"generation", "port"} {
++		t.Run(mismatch, func(t *testing.T) {
++			h := example()
++			f := newFake(h)
++			gen, port := h.CoreGeneration, h.Port
++			if mismatch == "generation" {
++				gen = "other"
++			} else {
++				port++
++			}
++			if _, err := adopt(encoded(h), gen, port, f); err == nil || len(f.closed) != 11 {
++				t.Fatal("mismatch ownership cleanup")
++			}
++		})
++	}
++}
++func TestAdmitExactIdentityAndValueLifetime(t *testing.T) {
++	o, f := adoptFake(t)
++	id, err := o.Admit(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if id.ClientCookie != "8" || id.AcceptedCookie != "7" || id.TGID != 72 || id.CallerTID != 73 || id.LeaderStartBoottimeNS != "10000000" || id.ObservedBootNS != "30000000" || id.LeaderComm.Text != "leader" || id.LeaderComm.Status != "unverified" || id.ProcessPath != "unknown" || id.IdentityCapability != "unverified" {
++		t.Fatalf("wrong identity %#v", id)
++	}
++	want := []string{"socket", "info:209", "info:210", "lookup:200:0", "lookup:203:4", "lookup:202:0", "lookup:205:0", "lookup:201:0", "lookup:202:0", "lookup:203:4"}
++	if !reflect.DeepEqual(f.log, want) {
++		t.Fatalf("admission order %v", f.log)
++	}
++	f.values[202][0] = 1
++	if _, err = o.Admit(nil); err == nil {
++		t.Fatal("fault accepted")
++	}
++	if id.ClientCookie != "8" || id.LeaderComm.Text != "leader" {
++		t.Fatal("previous grant mutated")
++	}
++	if o.Status() != (Status{1, 1, true}) {
++		t.Fatal(o.Status())
++	}
++	before := len(f.log)
++	if _, err = o.Admit(nil); err == nil || len(f.log) != before {
++		t.Fatal("reads after revoked")
++	}
++	raw, err := json.Marshal(id)
++	if err != nil || !strings.Contains(string(raw), `"active_pidns_inum":4026531836`) {
++		t.Fatal(string(raw), err)
++	}
++	if err = o.Close(); err != nil {
++		t.Fatal(err)
++	}
++	count := len(f.log)
++	if err = o.Close(); err != nil || len(f.log) != count {
++		t.Fatal("non-idempotent close")
++	}
++}
++func TestAdmitMutationsRevokeAndStopReads(t *testing.T) {
++	tests := map[string]func(*fake){
++		"socket": func(f *fake) { f.fail = "socket" }, "cookiezero": func(f *fake) { f.w.cookie = 0 }, "netns": func(f *fake) { f.w.netns++ }, "localport": func(f *fake) { f.w.local.Port++ }, "peerip": func(f *fake) { f.w.remote.IP = "127.0.0.2" },
++		"lostlink": func(f *fake) { f.fail = "info:209" }, "linkidchanged": func(f *fake) { le.PutUint32(f.infos[209][4:], 99) }, "config": func(f *fake) { f.values[200][0]++ }, "closed": func(f *fake) { f.values[203][4] = 1 }, "poison": func(f *fake) { f.values[203][32] = 1 }, "badgatecounts": func(f *fake) { f.values[203][8] = 1 }, "fault": func(f *fake) { f.values[202][0] = 1 }, "missingbinding": func(f *fake) { f.fail = "lookup:205:0" }, "bindingcookie": func(f *fake) { f.values[205][16]++ }, "bindingschema": func(f *fake) { f.values[205][48]++ }, "bindingport": func(f *fake) { f.values[205][40]++ }, "connectcookie": func(f *fake) { f.values[201][16]++ }, "connectscope": func(f *fake) { f.values[201][32]++ }, "connectns": func(f *fake) { f.values[201][24]++ }, "pidns": func(f *fake) { f.values[201][60]++ }, "leaderpid": func(f *fake) { f.values[201][64]++ }, "startzero": func(f *fake) {
++			for i := 40; i < 48; i++ {
++				f.values[201][i] = 0
++			}
++		}, "commstatus": func(f *fake) { f.values[201][68] = 2 }, "commterminator": func(f *fake) { f.values[201][95] = 1 }, "reserved": func(f *fake) { f.values[201][76] = 1 }, "shortconnect": func(f *fake) { f.values[201] = f.values[201][:111] },
++	}
++	for name, mutate := range tests {
++		t.Run(name, func(t *testing.T) {
++			o, f := adoptFake(t)
++			mutate(f)
++			if _, err := o.Admit(nil); err == nil {
++				t.Fatal("accepted mutation")
++			}
++			before := len(f.log)
++			if _, err := o.Admit(nil); err == nil || len(f.log) != before {
++				t.Fatal("read after refusal")
++			}
++			if o.Status() != (Status{0, 2, true}) {
++				t.Fatal(o.Status())
++			}
++		})
++	}
++}
++func TestLateFaultAndGateSamples(t *testing.T) {
++	for _, target := range []string{"fault", "gate"} {
++		t.Run(target, func(t *testing.T) {
++			o, f := adoptFake(t)
++			f.lookupHook = func(fd int, key []byte, flags uint64) {
++				if fd == 201 {
++					if target == "fault" {
++						f.values[202][0] = 1
++					} else {
++						f.values[203][4] = 1
++					}
++				}
++			}
++			if _, err := o.Admit(nil); err == nil {
++				t.Fatal("late change accepted")
++			}
++		})
++	}
++}
++func TestLookupKeysAndNoEnumeration(t *testing.T) {
++	o, f := adoptFake(t)
++	f.lookupHook = func(fd int, key []byte, flags uint64) {
++		switch fd {
++		case 205:
++			if len(key) != 8 || le.Uint64(key) != 7 {
++				t.Fatal("not original accepted cookie")
++			}
++		case 201:
++			if len(key) != 8 || le.Uint64(key) != 8 {
++				t.Fatal("not exact binding client cookie")
++			}
++		default:
++			if len(key) != 4 || le.Uint32(key) != 0 {
++				t.Fatal("bad array key")
++			}
++		}
++		if (fd == 203) != (flags == 4) {
++			t.Fatal("LOCK flags")
++		}
++	}
++	if _, err := o.Admit(nil); err != nil {
++		t.Fatal(err)
++	}
++	for _, call := range f.log {
++		if strings.HasPrefix(call, "next:") {
++			t.Fatal("enumerated during grant")
++		}
++	}
++}
++func TestCloseErrorsStillReleaseAndBoundedPolling(t *testing.T) {
++	for _, mode := range []string{"testerror", "closeerror", "busy-count", "busy-time"} {
++		t.Run(mode, func(t *testing.T) {
++			o, f := adoptFake(t)
++			switch mode {
++			case "testerror":
++				f.stopErr = syscall.EINVAL
++			case "closeerror":
++				f.fail = "close:210"
++			case "busy-count":
++				f.stopBusy = true
++				o.now = func() time.Time { return time.Unix(0, 0) }
++				o.sleep = func(time.Duration) {}
++			case "busy-time":
++				f.stopBusy = true
++				n := 0
++				o.now = func() time.Time { n++; return time.Unix(int64(n), 0) }
++				o.sleep = func(time.Duration) {}
++			}
++			if err := o.Close(); err == nil {
++				t.Fatal("missing close failure")
++			}
++			if len(f.closed) != 11 {
++				t.Fatal("leaked FDs")
++			}
++			calls := 0
++			for _, call := range f.log {
++				if call == "lookup:203:4" {
++					calls++
++				}
++			}
++			if mode == "busy-count" && calls != 1001 {
++				t.Fatal(calls)
++			}
++			if mode == "busy-time" && calls > 3 {
++				t.Fatal(calls)
++			}
++			before := len(f.log)
++			if err := o.Close(); err == nil || len(f.log) != before {
++				t.Fatal("close retried")
++			}
++			if _, err := o.Admit(nil); err == nil || len(f.log) != before {
++				t.Fatal("read after closed")
++			}
++		})
++	}
++}
++func TestConcurrentAdmitCloseSerialize(t *testing.T) {
++	o, f := adoptFake(t)
++	f.socketEntered = make(chan struct{})
++	f.socketResume = make(chan struct{})
++	var wg sync.WaitGroup
++	wg.Add(2)
++	admitResult := make(chan error, 1)
++	closeResult := make(chan error, 1)
++	go func() { defer wg.Done(); _, err := o.Admit(nil); admitResult <- err }()
++	<-f.socketEntered
++	go func() { defer wg.Done(); closeResult <- o.Close() }()
++	close(f.socketResume)
++	wg.Wait()
++	if err := <-admitResult; err != nil {
++		t.Fatal(err)
++	}
++	if err := <-closeResult; err != nil {
++		t.Fatal(err)
++	}
++	if o.Status() != (Status{1, 0, true}) {
++		t.Fatal(o.Status())
++	}
++	stop := -1
++	lastlookup := -1
++	for i, s := range f.log {
++		if s == "stop" {
++			stop = i
++		}
++		if strings.HasPrefix(s, "lookup:") {
++			lastlookup = i
++		}
++	}
++	if stop < 0 || lastlookup <= stop {
++		t.Fatal("missing close gate lookup")
++	}
++	if len(f.closed) != 11 {
++		t.Fatal("cleanup")
++	}
++}
++func TestCommUnavailableInvalidUTF8AndGateUnits(t *testing.T) {
++	o, f := adoptFake(t)
++	f.values[201][68] = 0
++	f.values[201][80] = 0xff
++	id, err := o.Admit(nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if id.CallerComm.Status != "unavailable" || id.CallerComm.TextValid || id.CallerComm.Text != "" {
++		t.Fatal(id.CallerComm)
++	}
++	raw := make([]byte, 40)
++	le.PutUint64(raw[8:], 2)
++	le.PutUint64(raw[16:], 9)
++	le.PutUint64(raw[24:], 7)
++	g, err := readGate(raw)
++	if err != nil || g.active != 2 {
++		t.Fatal(g, err)
++	}
++}
++
++func TestNoReadsBeyondFirstRejection(t *testing.T) {
++	tests := []struct {
++		name   string
++		mutate func(*fake)
++		last   string
++	}{
++		{"bad-witness", func(f *fake) { f.w.netns = 4 }, "socket"},
++		{"missing-link", func(f *fake) { f.fail = "info:209" }, "info:209"},
++		{"config", func(f *fake) { f.values[200][0]++ }, "lookup:200:0"},
++		{"gate", func(f *fake) { f.values[203][4] = 1 }, "lookup:203:4"},
++		{"fault", func(f *fake) { f.values[202][0] = 1 }, "lookup:202:0"},
++		{"binding", func(f *fake) { f.values[205][16]++ }, "lookup:205:0"},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			o, f := adoptFake(t)
++			tt.mutate(f)
++			if _, err := o.Admit(nil); err == nil {
++				t.Fatal("accepted reject")
++			}
++			if f.log[len(f.log)-1] != tt.last {
++				t.Fatalf("continued reads %v", f.log)
++			}
++		})
++	}
++}
++func TestStrictNestedFDJSONAndRequiredTypes(t *testing.T) {
++	raw := string(encoded(example()))
++	for _, bad := range []string{
++		strings.Replace(raw, `"capture_config":200`, `"capture_config":200,"capture_config":201`, 1),
++		strings.Replace(raw, `"capture_config":200`, `"capture_config":2e2`, 1),
++		strings.Replace(raw, `"capture_config":200`, `"capture_config":200.0`, 1),
++		strings.Replace(raw, `"capture_config":200`, `"capture_config":true`, 1),
++		strings.Replace(raw, `"generation":"123"`, `"generation":123`, 1),
++		strings.Replace(raw, `"pidns_inode":4026531836`, `"pidns_inode":4294967296`, 1),
++		strings.Replace(raw, `"port":18993`, `"port":65536`, 1),
++	} {
++		if _, err := parse([]byte(bad)); err == nil {
++			t.Fatalf("accepted %s", bad)
++		}
++	}
++}
++func TestAdoptionAndCloseRetainAllCleanupErrors(t *testing.T) {
++	h := example()
++	f := newFake(h)
++	f.values[200][0]++
++	f.fail = "close:210"
++	_, err := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++	if err == nil || !strings.Contains(err.Error(), "config") || !strings.Contains(err.Error(), "close fd 210") || len(f.closed) != 11 {
++		t.Fatal(err, f.closed)
++	}
++	o, f := adoptFake(t)
++	f.stopErr = syscall.EINVAL
++	f.fail = "close:210"
++	err = o.Close()
++	if err == nil || !strings.Contains(err.Error(), "stop TEST_RUN") || !strings.Contains(err.Error(), "close fd 210") || len(f.closed) != 11 {
++		t.Fatal(err, f.closed)
++	}
++}
++func TestStatusSnapshotAndCloseFirst(t *testing.T) {
++	o, f := adoptFake(t)
++	snapshot := o.Status()
++	snapshot.Revoked = true
++	if o.Status().Revoked {
++		t.Fatal("mutable status alias")
++	}
++	if err := o.Close(); err != nil {
++		t.Fatal(err)
++	}
++	n := len(f.log)
++	if _, err := o.Admit(nil); err == nil || len(f.log) != n {
++		t.Fatal("admit after close read")
++	}
++	if o.Status() != (Status{0, 1, true}) {
++		t.Fatal(o.Status())
++	}
++}
++
++func TestPIDRangeAndBootClockOrder(t *testing.T) {
++	tests := map[string]func([]byte){
++		"tgid-high":             func(c []byte) { le.PutUint32(c[52:], 0x80000000); le.PutUint32(c[64:], 0x80000000) },
++		"tid-high":              func(c []byte) { le.PutUint32(c[56:], 0x80000000) },
++		"observed-zero":         func(c []byte) { le.PutUint64(c[8:], 0) },
++		"observed-before-start": func(c []byte) { le.PutUint64(c[8:], 9999999) },
++	}
++	for name, mutate := range tests {
++		t.Run(name, func(t *testing.T) {
++			o, f := adoptFake(t)
++			mutate(f.values[201])
++			if _, err := o.Admit(nil); err == nil {
++				t.Fatal("accepted invalid PID/boot-time coordinates")
++			}
++		})
++	}
++	o, f := adoptFake(t)
++	le.PutUint64(f.values[201][8:], 10000000)
++	if _, err := o.Admit(nil); err != nil {
++		t.Fatal("equal boot clock timestamps must be allowed", err)
++	}
++}
+diff --git b/component/hoopatrace/connector_linux_test.go b/component/hoopatrace/connector_linux_test.go
+new file mode 100644
+index 0000000..974714c
+--- /dev/null
++++ b/component/hoopatrace/connector_linux_test.go
+@@ -0,0 +1,226 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++	"time"
++
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++)
++
++func connectorIdentityFixture() hoopaid.Identity {
++	b, c, g := make([]byte, 56), make([]byte, 112), make([]byte, 40)
++	le := binary.LittleEndian
++	for i, n := range []uint64{9007199254740993, 2, 3, 4} {
++		le.PutUint64(b[i*8:], n)
++	}
++	for i, n := range []uint32{0x0100007f, 0x0100007f, 32001, 32002, 1, 0} {
++		le.PutUint32(b[32+i*4:], n)
++	}
++	for i, n := range []uint64{9007199254740993, 200, 4, 2, 5, 100} {
++		le.PutUint64(c[i*8:], n)
++	}
++	for i, n := range []uint32{1, 10, 11, 12, 10, 1, 1, 0} {
++		le.PutUint32(c[48+i*4:], n)
++	}
++	copy(c[80:96], "caller")
++	copy(c[96:], "leader")
++	le.PutUint64(g[8:], 1)
++	le.PutUint64(g[16:], 2)
++	le.PutUint64(g[24:], 1)
++	return hoopaid.Identity{Schema: "sourceidentity-core-admission-v1", IdentityCapability: "unverified", ProcessPath: "unknown", BootID: "12345678-1234-1234-1234-123456789abc", CoreGeneration: "test-generation", Generation: "9007199254740993", SourceCgroupID: "5", RootCgroupID: "6", AcceptedCookie: "3", ClientCookie: "4", SocketNetnsCookie: "2", TGID: 10, LeaderPID: 10, CallerTID: 11, LeaderStartBoottimeNS: "100", ObservedBootNS: "200", PIDNSInode: 12, LeaderComm: hoopaid.Comm{RawHex: hex.EncodeToString(c[96:]), Text: "leader", TextValid: true, Status: "unverified"}, CallerComm: hoopaid.Comm{RawHex: hex.EncodeToString(c[80:96]), Text: "caller", TextValid: true, Status: "unverified"}, LocalEndpoint: hoopaid.Endpoint{IP: "127.0.0.1", Port: 32002}, RemoteEndpoint: hoopaid.Endpoint{IP: "127.0.0.1", Port: 32001}, Raw: hoopaid.RawIdentity{Binding: hex.EncodeToString(b), Connect: hex.EncodeToString(c), Gate: hex.EncodeToString(g)}}
++}
++
++type connectorCountedAddr struct {
++	text  string
++	calls int
++}
++
++func (a *connectorCountedAddr) Network() string { return "tcp" }
++func (a *connectorCountedAddr) String() string  { a.calls++; return a.text }
++
++func TestConnectorProfileBeginProofAndLegacyBoundary(t *testing.T) {
++	for _, profile := range []string{"1", "2", "3"} {
++		t.Run(profile, func(t *testing.T) {
++			t.Setenv("HOOPA_TRACE_PROFILE", profile)
++			s := testSource(t, defaultLimit)
++			proof := connectorIdentityFixture()
++			bad := [][]*hoopaid.Identity{{&proof, &proof}}
++			if profile == "3" {
++				bad = append(bad, nil, []*hoopaid.Identity{nil})
++			} else {
++				bad = append(bad, []*hoopaid.Identity{&proof})
++			}
++			for _, args := range bad {
++				if flow, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), args...); flow != nil || err == nil {
++					t.Fatal("invalid proof cardinality accepted")
++				}
++			}
++			if len(frames(t, s)) != 0 || len(s.flows) != 0 || s.reserved != 0 || s.poisoned {
++				t.Fatal("rejected proof retained opened/reservation")
++			}
++			peer := &connectorCountedAddr{text: "127.0.0.1:32001"}
++			entry := &connectorCountedAddr{text: "127.0.0.1:32002"}
++			var args []*hoopaid.Identity
++			if profile == "3" {
++				args = []*hoopaid.Identity{&proof}
++			}
++			flow, err := s.begin(peer, entry, "example.test", "", time.Now(), args...)
++			if err != nil || flow == nil {
++				t.Fatal("valid begin", err)
++			}
++			if profile == "3" {
++				if peer.calls != 1 || entry.calls != 1 {
++					t.Fatal("connector profile called legacy address resolver")
++				}
++			} else {
++				if peer.calls != 2 || entry.calls != 2 {
++					t.Fatal("legacy evidence path changed")
++				}
++			}
++			e, err := telemetrywire.DecodeSourceEvent(frames(t, s)[0])
++			if err != nil {
++				t.Fatal(err)
++			}
++			if profile == "3" {
++				if e.Connector == nil || e.Connector.Generation != proof.Generation || flow.identity.Status != "unknown" || flow.identity.Reason != "connector_experiment_unverified" {
++					t.Fatal("connector promoted or changed evidence")
++				}
++			} else if e.Connector != nil || flow.identity.Reason == "connector_experiment_unverified" {
++				t.Fatal("legacy acquired connector")
++			}
++			flow.Close()
++		})
++	}
++}
++
++func TestConnectorCorruptedProofRejectsBeforeOpenedAndReleasesReservation(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "3")
++	s := testSource(t, defaultLimit)
++	for _, mutate := range []func(*hoopaid.Identity){
++		func(p *hoopaid.Identity) { p.CoreGeneration = "other" },
++		func(p *hoopaid.Identity) { p.Raw.Binding = "00" },
++		func(p *hoopaid.Identity) { p.LocalEndpoint.Port++ },
++		func(p *hoopaid.Identity) { p.IdentityCapability = "verified" },
++	} {
++		p := connectorIdentityFixture()
++		mutate(&p)
++		if f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &p); f != nil || err == nil {
++			t.Fatal("corrupt proof accepted")
++		}
++		if len(frames(t, s)) != 0 || len(s.flows) != 0 || s.reserved != 0 || s.poisoned || s.seq != 0 {
++			t.Fatal("prewrite rejection changed source")
++		}
++	}
++	p := connectorIdentityFixture()
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &p)
++	if err != nil {
++		t.Fatal("valid retry", err)
++	}
++	f.Close()
++}
++
++func TestConnectorRawSurvivesQualityCountersAndSourceRecovery(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "3")
++	s := testSource(t, defaultLimit)
++	proof := connectorIdentityFixture()
++	original := proof
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
++	if err != nil {
++		t.Fatal(err)
++	}
++	proof.LeaderComm.Text = "mutated-after-begin"
++	proof.Raw.Connect = "00"
++	if err = f.Decide("MATCH", "", "DIRECT"); err != nil {
++		t.Fatal(err)
++	}
++	a := f.NewAttempt()
++	c := qualityAttach(t, a, "connector:actual", true)
++	a.FinishConnection(nil, "", c, false)
++	a.Bind("connector:tracker")
++	a.AddUpload(9007199254740993)
++	a.AddDownload(73)
++	if err = f.Checkpoint(); err != nil {
++		t.Fatal(err)
++	}
++	f.Close()
++	if err = s.shutdown(); err != nil {
++		t.Fatal(err)
++	}
++	before := frames(t, s)
++	opened, err := telemetrywire.DecodeSourceEvent(before[0])
++	if err != nil || opened.Connector == nil {
++		t.Fatal("opened identity", err)
++	}
++	want, _ := json.Marshal(original)
++	got, _ := json.Marshal(opened.Connector)
++	if !bytes.Equal(want, got) {
++		t.Fatal("Begin retained mutable caller proof")
++	}
++	var quality, closed bool
++	for _, raw := range before {
++		e, err := telemetrywire.DecodeSourceEvent(raw)
++		if err != nil || e.SchemaVersion != 3 {
++			t.Fatal("schema3 decode", err)
++		}
++		if e.Quality != nil {
++			quality = true
++		}
++		if e.Kind == "closed" {
++			closed = true
++			if e.Counter.UploadBytes != 9007199254740993 || e.Counter.DownloadBytes != 73 {
++				t.Fatal("final precision lost")
++			}
++		}
++	}
++	if !quality || !closed || len(s.flows) != 0 || s.reserved != 0 {
++		t.Fatal("incomplete connector lifecycle")
++	}
++	dir, name, epoch := s.root.Name(), filepath.Base(s.file.Name()), s.epoch
++	s.close()
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal("source recovery", err)
++	}
++	defer next.close()
++	if next.epoch == epoch {
++		t.Fatal("reopen reused epoch")
++	}
++	snapshots, err := next.sendSnapshots()
++	if err != nil {
++		t.Fatal(err)
++	}
++	found := false
++	for _, snapshot := range snapshots {
++		if snapshot.name == name {
++			found = true
++			if !reflect.DeepEqual(before, snapshot.frames) {
++				t.Fatal("recovery changed connector raw bytes")
++			}
++		}
++	}
++	if !found {
++		t.Fatal("prior connector frames missing")
++	}
++	reports := next.recoveryReports()
++	if len(reports) != 1 || reports[0].Flows[0].Final.UploadBytes != 9007199254740993 {
++		t.Fatal("recovery lost precise final")
++	}
++	raw, _ := json.Marshal(reports)
++	if bytes.Contains(raw, []byte("connector")) || bytes.Contains(raw, []byte("leader_comm")) {
++		t.Fatal("report claims connector attribution")
++	}
++	old, err := os.ReadFile(filepath.Join(dir, name))
++	if err != nil || len(old) == 0 {
++		t.Fatal("durable source missing", err)
++	}
++}
+diff --git a/component/hoopatrace/guard_linux.go b/component/hoopatrace/guard_linux.go
+index 817938f..5b46ea0 100644
+--- a/component/hoopatrace/guard_linux.go
++++ b/component/hoopatrace/guard_linux.go
+@@ -7,7 +7,7 @@ import "os"
+ // PrepareGuard runs source/mapping admission before a protected entry accepts.
+ // expected maps immutable inline node/group names to the compiled adapter type.
+ func PrepareGuard(generation string, expected map[string]string) error {
+-	if os.Getenv("HOOPA_TRACE_PROFILE") != "2" || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
++	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
+ 		return ErrSource
+ 	}
+ 	global.once.Do(func() {
+diff --git a/component/hoopatrace/quality_linux.go b/component/hoopatrace/quality_linux.go
+index 873b684..c2da74d 100644
+--- a/component/hoopatrace/quality_linux.go
++++ b/component/hoopatrace/quality_linux.go
+@@ -124,7 +124,7 @@ func uniqueJSONValue(d *json.Decoder) bool {
+ }
+ 
+ func (a *Attempt) Attach(c C.Conn) error {
+-	if a == nil || a.f.s.profile != 2 || c == nil {
++	if a == nil || (a.f.s.profile != 2 && a.f.s.profile != 3) || c == nil {
+ 		return nil
+ 	}
+ 	f := a.f
+@@ -235,7 +235,7 @@ func (f *Flow) addSegment(seg *segmentCounter, n int, upload bool) {
+ }
+ func (f *Flow) counterExtra() map[string]any {
+ 	m := map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}
+-	if f.s.profile == 2 {
++	if f.s.profile == 2 || f.s.profile == 3 {
+ 		values := make([]segmentCounter, 0, len(f.segments))
+ 		for _, s := range f.segments {
+ 			values = append(values, *s)
+@@ -247,7 +247,7 @@ func (f *Flow) counterExtra() map[string]any {
+ 	return m
+ }
+ func (f *Flow) bindSegment(id string, a *Attempt) {
+-	if f.s.profile != 2 {
++	if f.s.profile != 2 && f.s.profile != 3 {
+ 		f.Bind(id)
+ 		return
+ 	}
+@@ -308,7 +308,7 @@ func (a *Attempt) FinishConnection(err error, stage string, c C.Conn, legacyRead
+ 	if a == nil {
+ 		return
+ 	}
+-	if a.f.s.profile == 2 {
++	if a.f.s.profile == 2 || a.f.s.profile == 3 {
+ 		a.once.Do(func() { a.finishQuality(err, stage) })
+ 		return
+ 	}
+@@ -323,7 +323,7 @@ func (a *Attempt) FinishConnection(err error, stage string, c C.Conn, legacyRead
+ // Attempt zero is the pre-dial setup interval, starting at target_known. It only
+ // emits a failure when metadata/routing actually aborts before a Dial attempt.
+ func (f *Flow) FailBeforeDial(err error) {
+-	if f == nil || f.s.profile != 2 || err == nil {
++	if f == nil || (f.s.profile != 2 && f.s.profile != 3) || err == nil {
+ 		return
+ 	}
+ 	a := &Attempt{f: f, id: f.id + ":attempt:0", started: f.started}
+diff --git b/component/hoopatrace/telemetrywire/connector_v3.go b/component/hoopatrace/telemetrywire/connector_v3.go
+new file mode 100644
+index 0000000..01697c0
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v3.go
+@@ -0,0 +1,243 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"net/netip"
++	"regexp"
++	"unicode/utf8"
++)
++
++type ConnectorEndpoint struct {
++	IP   string `json:"ip"`
++	Port uint16 `json:"port"`
++}
++
++// TextValid distinguishes invalid UTF-8 from an empty comm without mutable pointers.
++type ConnectorComm struct {
++	RawHex    string `json:"raw_hex"`
++	Text      string `json:"text"`
++	TextValid bool   `json:"text_valid"`
++	Status    string `json:"status"`
++}
++type ConnectorRawIdentity struct {
++	Binding string `json:"binding"`
++	Connect string `json:"connect"`
++	Gate    string `json:"gate"`
++}
++
++// ConnectorEvidence retains experimental connector values; it does not authenticate identity.
++type ConnectorEvidence struct {
++	Schema                string               `json:"schema"`
++	IdentityCapability    string               `json:"identity_capability"`
++	ProcessPath           string               `json:"process_path"`
++	BootID                string               `json:"boot_id"`
++	CoreGeneration        string               `json:"core_generation"`
++	Generation            string               `json:"generation"`
++	SourceCgroupID        string               `json:"source_cgroup_id"`
++	RootCgroupID          string               `json:"root_cgroup_id"`
++	AcceptedCookie        string               `json:"accepted_cookie"`
++	ClientCookie          string               `json:"client_cookie"`
++	SocketNetnsCookie     string               `json:"socket_netns_cookie"`
++	TGID                  uint32               `json:"tgid_initial"`
++	LeaderPID             uint32               `json:"leader_pid_initial"`
++	CallerTID             uint32               `json:"caller_tid_initial"`
++	LeaderStartBoottimeNS string               `json:"leader_start_boottime_ns"`
++	ObservedBootNS        string               `json:"observed_boot_ns"`
++	PIDNSInode            uint32               `json:"active_pidns_inum"`
++	LeaderComm            ConnectorComm        `json:"leader_comm"`
++	CallerComm            ConnectorComm        `json:"caller_comm"`
++	LocalEndpoint         ConnectorEndpoint    `json:"local_endpoint"`
++	RemoteEndpoint        ConnectorEndpoint    `json:"remote_endpoint"`
++	Raw                   ConnectorRawIdentity `json:"raw"`
++}
++
++const connectorScope = "connect_initiator_v1_initial_ns_ipv4_loopback_experimental"
++
++var connectorBootID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
++
++func connectorHex(raw []byte, size int) ([]byte, bool) {
++	s, ok := scalarText(raw)
++	if !ok || len(s) != size*2 {
++		return nil, false
++	}
++	b, err := hex.DecodeString(s)
++	return b, err == nil && hex.EncodeToString(b) == s
++}
++
++func connectorCommValid(raw []byte, abi []byte, status uint32) bool {
++	f, ok := object(raw)
++	if !ok || !exactFields(f, "raw_hex text text_valid status") || status > 1 || len(abi) != 16 || abi[15] != 0 {
++		return false
++	}
++	b, ok := connectorHex(f["raw_hex"], 16)
++	if !ok || !bytes.Equal(b, abi) {
++		return false
++	}
++	end := bytes.IndexByte(abi, 0)
++	valid := utf8.Valid(abi[:end])
++	text := ""
++	if valid {
++		text = string(abi[:end])
++	}
++	s, ok := scalarText(f["text"])
++	wantStatus := "unavailable"
++	if status == 1 {
++		wantStatus = "unverified"
++	}
++	return ok && s == text && bytes.Equal(bytes.TrimSpace(f["text_valid"]), []byte(map[bool]string{true: "true", false: "false"}[valid])) && literal(f, "status", wantStatus)
++}
++
++func connectorEndpoint(raw []byte) (ConnectorEndpoint, bool) {
++	f, ok := object(raw)
++	if !ok || !exactFields(f, "ip port") || !literal(f, "ip", "127.0.0.1") {
++		return ConnectorEndpoint{}, false
++	}
++	n, ok := decimal(f["port"], false, true)
++	return ConnectorEndpoint{IP: "127.0.0.1", Port: uint16(n)}, ok && n <= 65535
++}
++
++func decodeConnector(raw []byte, generation string, entry, source []byte) (*ConnectorEvidence, bool) {
++	f, ok := object(raw)
++	if !ok || !exactFields(f, "schema identity_capability process_path boot_id core_generation generation source_cgroup_id root_cgroup_id accepted_cookie client_cookie socket_netns_cookie tgid_initial leader_pid_initial caller_tid_initial leader_start_boottime_ns observed_boot_ns active_pidns_inum leader_comm caller_comm local_endpoint remote_endpoint raw") || !literal(f, "schema", "sourceidentity-core-admission-v1") || !literal(f, "identity_capability", "unverified") || !literal(f, "process_path", "unknown") || !literal(f, "core_generation", generation) {
++		return nil, false
++	}
++	boot, ok := scalarText(f["boot_id"])
++	if !ok || !connectorBootID.MatchString(boot) {
++		return nil, false
++	}
++	nums := map[string]uint64{}
++	for _, k := range []string{"generation", "source_cgroup_id", "root_cgroup_id", "accepted_cookie", "client_cookie", "socket_netns_cookie", "leader_start_boottime_ns", "observed_boot_ns"} {
++		n, ok := decimal(f[k], true, true)
++		if !ok {
++			return nil, false
++		}
++		nums[k] = n
++	}
++	for _, k := range []string{"tgid_initial", "leader_pid_initial", "caller_tid_initial", "active_pidns_inum"} {
++		n, ok := decimal(f[k], false, true)
++		if !ok || n > 0xffffffff || k != "active_pidns_inum" && n > 0x7fffffff {
++			return nil, false
++		}
++		nums[k] = n
++	}
++	if nums["root_cgroup_id"] == nums["source_cgroup_id"] || nums["accepted_cookie"] == nums["client_cookie"] || nums["leader_pid_initial"] != nums["tgid_initial"] || nums["observed_boot_ns"] < nums["leader_start_boottime_ns"] {
++		return nil, false
++	}
++	local, ok := connectorEndpoint(f["local_endpoint"])
++	if !ok {
++		return nil, false
++	}
++	remote, ok := connectorEndpoint(f["remote_endpoint"])
++	if !ok {
++		return nil, false
++	}
++	for _, p := range []struct {
++		raw      []byte
++		endpoint ConnectorEndpoint
++	}{{entry, local}, {source, remote}} {
++		s, ok := scalarText(p.raw)
++		if !ok {
++			return nil, false
++		}
++		a, err := netip.ParseAddrPort(s)
++		if err != nil || a.Addr().String() != p.endpoint.IP || a.Port() != p.endpoint.Port {
++			return nil, false
++		}
++	}
++	r, ok := object(f["raw"])
++	if !ok || !exactFields(r, "binding connect gate") {
++		return nil, false
++	}
++	b, ok := connectorHex(r["binding"], 56)
++	if !ok {
++		return nil, false
++	}
++	c, ok := connectorHex(r["connect"], 112)
++	if !ok {
++		return nil, false
++	}
++	g, ok := connectorHex(r["gate"], 40)
++	if !ok {
++		return nil, false
++	}
++	le := binary.LittleEndian
++	for _, p := range []struct {
++		offset int
++		want   uint64
++	}{{0, nums["generation"]}, {8, nums["socket_netns_cookie"]}, {16, nums["accepted_cookie"]}, {24, nums["client_cookie"]}} {
++		if le.Uint64(b[p.offset:]) != p.want {
++			return nil, false
++		}
++	}
++	for _, p := range []struct {
++		offset int
++		want   uint32
++	}{{32, 0x0100007f}, {36, 0x0100007f}, {40, uint32(remote.Port)}, {44, uint32(local.Port)}, {48, 1}, {52, 0}} {
++		if le.Uint32(b[p.offset:]) != p.want {
++			return nil, false
++		}
++	}
++	for _, p := range []struct {
++		offset int
++		want   uint64
++	}{{0, nums["generation"]}, {8, nums["observed_boot_ns"]}, {16, nums["client_cookie"]}, {24, nums["socket_netns_cookie"]}, {32, nums["source_cgroup_id"]}, {40, nums["leader_start_boottime_ns"]}} {
++		if le.Uint64(c[p.offset:]) != p.want {
++			return nil, false
++		}
++	}
++	for _, p := range []struct {
++		offset int
++		want   uint32
++	}{{48, 1}, {52, uint32(nums["tgid_initial"])}, {56, uint32(nums["caller_tid_initial"])}, {60, uint32(nums["active_pidns_inum"])}, {64, uint32(nums["leader_pid_initial"])}, {76, 0}} {
++		if le.Uint32(c[p.offset:]) != p.want {
++			return nil, false
++		}
++	}
++	if !connectorCommValid(f["caller_comm"], c[80:96], le.Uint32(c[68:])) || !connectorCommValid(f["leader_comm"], c[96:], le.Uint32(c[72:])) {
++		return nil, false
++	}
++	admitted, completed := le.Uint64(g[16:]), le.Uint64(g[24:])
++	if le.Uint32(g) != 0 || le.Uint32(g[4:]) != 0 || le.Uint32(g[32:]) != 0 || le.Uint32(g[36:]) != 0 || completed > admitted || le.Uint64(g[8:]) != admitted-completed {
++		return nil, false
++	}
++	var out ConnectorEvidence
++	if json.Unmarshal(raw, &out) != nil {
++		return nil, false
++	}
++	return &out, true
++}
++
++func decodeV3(f wireFields, e *SourceEvent) bool {
++	if e.Kind != "opened" {
++		if !decodeV2(f, e) {
++			return false
++		}
++		if e.Counter != nil {
++			e.Counter.SchemaVersion = 3
++		}
++		return true
++	}
++	if !exactFields(f, commonFields+" process source_addr entry_addr target_kind target identity_scope flow_start_ns connector") || !literal(f, "identity_scope", connectorScope) {
++		return false
++	}
++	p, ok := object(f["process"])
++	if !ok || !exactFields(p, "status reason") || !literal(p, "status", "unknown") || !literal(p, "reason", "connector_experiment_unverified") {
++		return false
++	}
++	var valid bool
++	e.Connector, valid = decodeConnector(f["connector"], e.ConfigGeneration, f["entry_addr"], f["source_addr"])
++	if !valid {
++		return false
++	}
++	copy := make(wireFields, len(f)-1)
++	for k, v := range f {
++		if k != "connector" {
++			copy[k] = v
++		}
++	}
++	copy["identity_scope"] = json.RawMessage(`"same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"`)
++	return decodeV2(copy, e)
++}
+diff --git a/component/hoopatrace/telemetrywire/source_event.go b/component/hoopatrace/telemetrywire/source_event.go
+index 64ba253..e8d2f07 100644
+--- a/component/hoopatrace/telemetrywire/source_event.go
++++ b/component/hoopatrace/telemetrywire/source_event.go
+@@ -14,10 +14,11 @@ const SourceInputLimit = 8192
+ 
+ var ErrInvalidSourceEvent = errors.New("invalid experimental source event")
+ 
+-// SourceEvent represents the strict experimental v1/v2 profiles, not proof of identity,
++// SourceEvent represents the strict experimental v1/v2/v3 profiles, not proof of identity,
+ // ready timing or a capability gate. Raw retains the original bytes for replay.
+ // Null flow/attempt are allowed only on the source-scoped epoch_closed marker.
+ type SourceEvent struct {
++	Connector                              *ConnectorEvidence
+ 	SchemaVersion                          uint8
+ 	FlowStartNS                            uint64
+ 	ActualConnectionRef                    string
+@@ -307,7 +308,7 @@ func kindValid(f wireFields, kind string) bool {
+ 	return false
+ }
+ 
+-// DecodeSourceEvent strictly validates v1/v2 candidates, including nested
++// DecodeSourceEvent strictly validates v1/v2/v3 candidates, including nested
+ // ProcessEvidence. It preserves unknown counters as null and candidate timing as
+ // unverified for v1. It does not infer source continuity from one frame.
+ func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
+@@ -322,6 +323,8 @@ func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
+ 	version := uint8(1)
+ 	if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("2")) {
+ 		version = 2
++	} else if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("3")) {
++		version = 3
+ 	} else if !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) {
+ 		return invalid()
+ 	}
+@@ -363,7 +366,11 @@ func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
+ 			return invalid()
+ 		}
+ 	}
+-	if version == 2 {
++	if version == 3 {
++		if !decodeV3(f, &e) {
++			return invalid()
++		}
++	} else if version == 2 {
+ 		if !decodeV2(f, &e) {
+ 			return invalid()
+ 		}
+diff --git a/component/hoopatrace/telemetrywire/state.go b/component/hoopatrace/telemetrywire/state.go
+index 7ca3e60..6f67445 100644
+--- a/component/hoopatrace/telemetrywire/state.go
++++ b/component/hoopatrace/telemetrywire/state.go
+@@ -90,7 +90,7 @@ func (s *State) next(e SourceEvent) (flowState, error) {
+ 	if !exists || f.terminal && e.Kind != "gap" {
+ 		return bad()
+ 	}
+-	if e.SchemaVersion == 2 {
++	if e.SchemaVersion == 2 || e.SchemaVersion == 3 {
+ 		var ok bool
+ 		f.quality, ok = s.nextV2(e, f.quality)
+ 		if !ok {
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+index 47480b2..8c9ddda 100644
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -14,6 +14,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
+ 	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"hash"
+@@ -219,13 +220,13 @@ func openSourceChecked(dir, generation, receiver, secret string, limit int64, ch
+ 	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret, replay: map[string]replayEpoch{}, confirmedHasher: sha256.New()}
+ 	s.profile = 1
+ 	if v := os.Getenv("HOOPA_TRACE_PROFILE"); v != "" && v != "1" {
+-		if v != "2" {
++		if v != "2" && v != "3" {
+ 			s.close()
+ 			return nil, ErrSource
+ 		}
+-		s.profile = 2
++		s.profile, _ = strconv.Atoi(v)
+ 	}
+-	if s.profile == 2 {
++	if s.profile == 2 || s.profile == 3 {
+ 		s.routes, err = loadRouteMapping(os.Getenv("HOOPA_TRACE_ROUTE_MAP"), generation)
+ 		if err != nil {
+ 			s.close()
+@@ -402,7 +403,7 @@ func evidence(peer, local net.Addr) ProcessEvidence {
+ 	}
+ 	return ProcessEvidence{Status: "identified", PID: id.PID, Name: id.Name, NameSource: "linux_proc_comm", StartTicks: id.StartTicks, BootID: id.BootID, PIDNS: pidns, NetNS: id.NetNS, SocketInode: id.SocketInode, Path: path}
+ }
+-func Begin(inName string, peer, local net.Addr, host, dstIP string, started time.Time) (*Flow, error) {
++func Begin(inName string, peer, local net.Addr, host, dstIP string, started time.Time, connector ...*hoopaid.Identity) (*Flow, error) {
+ 	if !Enabled(inName) {
+ 		return nil, nil
+ 	}
+@@ -410,9 +411,9 @@ func Begin(inName string, peer, local net.Addr, host, dstIP string, started time
+ 	if global.err != nil {
+ 		return nil, ErrSource
+ 	}
+-	return global.s.begin(peer, local, host, dstIP, started)
++	return global.s.begin(peer, local, host, dstIP, started, connector...)
+ }
+-func (s *source) begin(peer, local net.Addr, host, dstIP string, started time.Time) (*Flow, error) {
++func (s *source) begin(peer, local net.Addr, host, dstIP string, started time.Time, connector ...*hoopaid.Identity) (*Flow, error) {
+ 	id, err := randomID("flow:")
+ 	if err != nil {
+ 		return nil, err
+@@ -420,7 +421,25 @@ func (s *source) begin(peer, local net.Addr, host, dstIP string, started time.Ti
+ 	if started.IsZero() {
+ 		return nil, ErrSource
+ 	}
+-	ident := evidence(peer, local)
++	if len(connector) > 1 {
++		return nil, ErrSource
++	}
++	var proof *hoopaid.Identity
++	if len(connector) == 1 {
++		proof = connector[0]
++	}
++	var ident ProcessEvidence
++	if s.profile == 3 {
++		if proof == nil {
++			return nil, ErrSource
++		}
++		ident = ProcessEvidence{Status: "unknown", Reason: "connector_experiment_unverified"}
++	} else {
++		if proof != nil {
++			return nil, ErrSource
++		}
++		ident = evidence(peer, local)
++	}
+ 	f := &Flow{s: s, id: id, identity: ident, started: started, reserved: flowBudget}
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+@@ -446,9 +465,13 @@ func (s *source) begin(peer, local net.Addr, host, dstIP string, started time.Ti
+ 		localText = local.String()
+ 	}
+ 	extra := map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"}
+-	if s.profile == 2 {
++	if s.profile == 2 || s.profile == 3 {
+ 		extra["flow_start_ns"] = numberNS(started)
+ 	}
++	if s.profile == 3 {
++		extra["identity_scope"] = "connect_initiator_v1_initial_ns_ipv4_loopback_experimental"
++		extra["connector"] = *proof
++	}
+ 	err = s.append(f, "opened", f.attemptID(), extra)
+ 	if err != nil {
+ 		s.mu.Lock()
+diff --git a/constant/hoopa_quality.go b/constant/hoopa_quality.go
+index 6cc628b..49eef67 100644
+--- a/constant/hoopa_quality.go
++++ b/constant/hoopa_quality.go
+@@ -7,7 +7,7 @@ import (
+ 
+ // This opt-in experimental evidence is local to a concrete returned connection.
+ // It is not a promise for arbitrary protocol wrappers or business requests.
+-var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2"
++var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2" || os.Getenv("HOOPA_TRACE_PROFILE") == "3"
+ var hoopaMonotonicOrigin = time.Now()
+ 
+ func HoopaMonotonicNS(t time.Time) int64 { return t.Sub(hoopaMonotonicOrigin).Nanoseconds() }
+diff --git b/constant/hoopa_quality_profile_test.go b/constant/hoopa_quality_profile_test.go
+new file mode 100644
+index 0000000..c96248d
+--- /dev/null
++++ b/constant/hoopa_quality_profile_test.go
+@@ -0,0 +1,34 @@
++package constant
++
++import (
++	"os"
++	"os/exec"
++	"strings"
++	"testing"
++)
++
++// The capability is selected at package initialization, so each profile needs a
++// fresh test process rather than mutating the exported flag after init.
++func TestHoopaQualityIdentityProfiles(t *testing.T) {
++	if profile, child := os.LookupEnv("HOOPA_QUALITY_PROFILE_CHILD"); child {
++		want := profile == "2" || profile == "3"
++		if HoopaQualityEnabled != want {
++			t.Fatalf("profile %q: quality=%v, want %v", profile, HoopaQualityEnabled, want)
++		}
++		return
++	}
++	for _, profile := range []string{"", "1", "2", "3", "03", "invalid"} {
++		t.Run("profile="+profile, func(t *testing.T) {
++			cmd := exec.Command(os.Args[0], "-test.run=^TestHoopaQualityIdentityProfiles$")
++			for _, kv := range os.Environ() {
++				if !strings.HasPrefix(kv, "HOOPA_TRACE_PROFILE=") && !strings.HasPrefix(kv, "HOOPA_QUALITY_PROFILE_CHILD=") {
++					cmd.Env = append(cmd.Env, kv)
++				}
++			}
++			cmd.Env = append(cmd.Env, "HOOPA_TRACE_PROFILE="+profile, "HOOPA_QUALITY_PROFILE_CHILD="+profile)
++			if output, err := cmd.CombinedOutput(); err != nil {
++				t.Fatalf("fresh profile init: %v\n%s", err, output)
++			}
++		})
++	}
++}
+diff --git a/constant/metadata.go b/constant/metadata.go
+index c9b7d45..f3fa57d 100644
+--- a/constant/metadata.go
++++ b/constant/metadata.go
+@@ -3,6 +3,7 @@ package constant
+ import (
+ 	"encoding/json"
+ 	"fmt"
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
+ 	"net"
+ 	"net/netip"
+ 	"strconv"
+@@ -184,31 +185,32 @@ func (t Type) MarshalJSON() ([]byte, error) {
+ 
+ // Metadata is used to store connection address
+ type Metadata struct {
+-	HoopaFlowID    string     `json:"-"`
+-	HoopaStartedAt time.Time  `json:"-"`
+-	NetWork        NetWork    `json:"network"`
+-	Type           Type       `json:"type"`
+-	SrcIP          netip.Addr `json:"sourceIP"`
+-	DstIP          netip.Addr `json:"destinationIP"`
+-	SrcGeoIP       []string   `json:"sourceGeoIP"`      // can be nil if never queried, empty slice if got no result
+-	DstGeoIP       []string   `json:"destinationGeoIP"` // can be nil if never queried, empty slice if got no result
+-	SrcIPASN       string     `json:"sourceIPASN"`
+-	DstIPASN       string     `json:"destinationIPASN"`
+-	SrcPort        uint16     `json:"sourcePort,string"`      // `,string` is used to compatible with old version json output
+-	DstPort        uint16     `json:"destinationPort,string"` // `,string` is used to compatible with old version json output
+-	InIP           netip.Addr `json:"inboundIP"`
+-	InPort         uint16     `json:"inboundPort,string"` // `,string` is used to compatible with old version json output
+-	InName         string     `json:"inboundName"`
+-	InUser         string     `json:"inboundUser"`
+-	Host           string     `json:"host"`
+-	DNSMode        DNSMode    `json:"dnsMode"`
+-	Uid            uint32     `json:"uid"`
+-	Process        string     `json:"process"`
+-	ProcessPath    string     `json:"processPath"`
+-	SpecialProxy   string     `json:"specialProxy"`
+-	SpecialRules   string     `json:"specialRules"`
+-	RemoteDst      string     `json:"remoteDestination"`
+-	DSCP           uint8      `json:"dscp"`
++	HoopaAdmission *hoopaid.Identity `json:"-"`
++	HoopaFlowID    string            `json:"-"`
++	HoopaStartedAt time.Time         `json:"-"`
++	NetWork        NetWork           `json:"network"`
++	Type           Type              `json:"type"`
++	SrcIP          netip.Addr        `json:"sourceIP"`
++	DstIP          netip.Addr        `json:"destinationIP"`
++	SrcGeoIP       []string          `json:"sourceGeoIP"`      // can be nil if never queried, empty slice if got no result
++	DstGeoIP       []string          `json:"destinationGeoIP"` // can be nil if never queried, empty slice if got no result
++	SrcIPASN       string            `json:"sourceIPASN"`
++	DstIPASN       string            `json:"destinationIPASN"`
++	SrcPort        uint16            `json:"sourcePort,string"`      // `,string` is used to compatible with old version json output
++	DstPort        uint16            `json:"destinationPort,string"` // `,string` is used to compatible with old version json output
++	InIP           netip.Addr        `json:"inboundIP"`
++	InPort         uint16            `json:"inboundPort,string"` // `,string` is used to compatible with old version json output
++	InName         string            `json:"inboundName"`
++	InUser         string            `json:"inboundUser"`
++	Host           string            `json:"host"`
++	DNSMode        DNSMode           `json:"dnsMode"`
++	Uid            uint32            `json:"uid"`
++	Process        string            `json:"process"`
++	ProcessPath    string            `json:"processPath"`
++	SpecialProxy   string            `json:"specialProxy"`
++	SpecialRules   string            `json:"specialRules"`
++	RemoteDst      string            `json:"remoteDestination"`
++	DSCP           uint8             `json:"dscp"`
+ 
+ 	RawSrcAddr net.Addr `json:"-"`
+ 	RawDstAddr net.Addr `json:"-"`
+diff --git a/hoopa_guard_linux.go b/hoopa_guard_linux.go
+index 948e2a8..9dd61b1 100644
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -25,6 +25,7 @@ import (
+ 	"github.com/metacubex/mihomo/component/auth"
+ 	"github.com/metacubex/mihomo/component/hoopaguard"
+ 	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
+ 	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"github.com/metacubex/mihomo/hub/executor"
+@@ -39,7 +40,8 @@ var errHoopaGuard = errors.New("Hoopa protected configuration rejected")
+ func hoopaGuardRequested() bool {
+ 	_, h := os.LookupEnv("HOOPA_GUARD_CONFIG_SHA256")
+ 	_, g := os.LookupEnv("HOOPA_GUARD_GENERATION")
+-	return h || g
++	_, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
++	return h || g || identity
+ }
+ 
+ func guardPrivateDir(path string) bool {
+@@ -98,7 +100,11 @@ func guardTraceConfig(p profile.Config, generation string) (bool, map[string]str
+ 			found = true
+ 		}
+ 	}
+-	if !found || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_PROFILE") != "2" || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
++	wantProfile := "2"
++	if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
++		wantProfile = "3"
++	}
++	if !found || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_PROFILE") != wantProfile || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
+ 		return false, nil, errHoopaGuard
+ 	}
+ 	expected := map[string]string{}
+@@ -111,7 +117,7 @@ func guardTraceConfig(p profile.Config, generation string) (bool, map[string]str
+ 	return true, expected, nil
+ }
+ 
+-func runHoopaGuard() error {
++func runHoopaGuard() (result error) {
+ 	// Protected startup does not enter stock init, CLI override, reload or shell paths.
+ 	log.SetLevel(log.SILENT)
+ 	if configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
+@@ -147,8 +153,26 @@ func runHoopaGuard() error {
+ 		return errHoopaGuard
+ 	}
+ 	if testConfig {
++		if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
++			return errHoopaGuard // Runtime FD adoption cannot be replaced by -t.
++		}
+ 		return nil
+ 	}
++	var identity *hoopaid.Owner
++	if rawHandoff, enabled := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); enabled {
++		if len(p.Listeners) != 1 {
++			return errHoopaGuard
++		}
++		identity, err = hoopaid.Adopt([]byte(rawHandoff), generation, p.Listeners[0].Port)
++		if err != nil {
++			return errors.Join(errHoopaGuard, err)
++		}
++		defer func() {
++			if err := identity.Close(); err != nil {
++				result = errors.Join(result, errHoopaGuard, err)
++			}
++		}()
++	}
+ 	if tracing {
+ 		if err := hoopatrace.PrepareGuard(generation, expected); err != nil {
+ 			return errHoopaGuard
+@@ -160,7 +184,7 @@ func runHoopaGuard() error {
+ 	C.HoopaProtected = true
+ 	executor.ApplyConfig(cfg, true)
+ 	defer executor.Shutdown()
+-	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}}
++	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}, identity: identity}
+ 	defer r.stop()
+ 	// Reserve every socket first. A later bind failure closes the earlier ones;
+ 	// no auth/CONNECT response or payload can be dispatched before all succeed.
+@@ -224,6 +248,7 @@ type hoopaGuardRuntime struct {
+ 	server                          *http.Server
+ 	conns                           map[net.Conn]bool
+ 	accept, workers                 sync.WaitGroup
++	identity                        *hoopaid.Owner
+ }
+ 
+ func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore) {
+@@ -239,13 +264,31 @@ func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.
+ 			c.Close()
+ 			continue
+ 		}
++		additions := []inbound.Addition{inbound.WithInName(name), inbound.WithSpecialRules(""), inbound.WithSpecialProxy("")}
++		if r.identity != nil {
++			tcp, ok := c.(*net.TCPConn)
++			if !ok {
++				r.state = "degraded"
++				r.mu.Unlock()
++				_ = c.Close()
++				continue
++			}
++			proof, err := r.identity.Admit(tcp)
++			if err != nil {
++				r.state = "degraded"
++				r.mu.Unlock()
++				_ = c.Close()
++				continue
++			}
++			additions = append(additions, inbound.WithHoopaAdmission(proof))
++		}
+ 		r.conns[c] = true
+ 		r.workers.Add(1)
+ 		r.mu.Unlock()
+ 		go func() {
+ 			defer r.workers.Done()
+ 			defer func() { c.Close(); r.mu.Lock(); delete(r.conns, c); r.mu.Unlock() }()
+-			mixed.HandleHoopaConn(c, tunnel.Tunnel, store, inbound.WithInName(name), inbound.WithSpecialRules(""), inbound.WithSpecialProxy(""))
++			mixed.HandleHoopaConn(c, tunnel.Tunnel, store, additions...)
+ 		}()
+ 	}
+ }
+@@ -313,15 +356,20 @@ func (r *hoopaGuardRuntime) ServeHTTP(w http.ResponseWriter, q *http.Request) {
+ 	case q.Method == "GET" && q.URL.Path == "/hoopa/status":
+ 		r.mu.Lock()
+ 		result := struct {
+-			Schema           int    `json:"schema_version"`
+-			Generation       string `json:"config_generation"`
+-			Hash             string `json:"config_sha256"`
+-			State            string `json:"state"`
+-			IdentityInstance bool   `json:"identity_instance"`
+-			IdentityName     bool   `json:"identity_name"`
+-			IdentityPath     bool   `json:"identity_path"`
+-			Connections      int    `json:"accepted_tcp_connections"`
++			Schema           int             `json:"schema_version"`
++			Generation       string          `json:"config_generation"`
++			Hash             string          `json:"config_sha256"`
++			State            string          `json:"state"`
++			IdentityInstance bool            `json:"identity_instance"`
++			IdentityName     bool            `json:"identity_name"`
++			IdentityPath     bool            `json:"identity_path"`
++			Connections      int             `json:"accepted_tcp_connections"`
++			Admission        *hoopaid.Status `json:"experimental_admission,omitempty"`
+ 		}{Schema: 1, Generation: r.generation, Hash: r.hash, State: r.state, Connections: len(r.conns)}
++		if r.identity != nil {
++			status := r.identity.Status()
++			result.Admission = &status
++		}
+ 		r.mu.Unlock()
+ 		w.Header().Set("Content-Type", "application/json")
+ 		_ = json.NewEncoder(w).Encode(result)
+diff --git b/hoopa_identity_test.go b/hoopa_identity_test.go
+new file mode 100644
+index 0000000..b95b5a3
+--- /dev/null
++++ b/hoopa_identity_test.go
+@@ -0,0 +1,126 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++)
++
++// main.init parses CLI flags before testing main starts. Register standard
++// test flags during variable initialization so this test binary can start.
++var identityTestFlagsRegistered = func() bool { testing.Init(); return true }()
++
++func identityUnsetEnv(t *testing.T, key string) {
++	t.Helper()
++	old, exists := os.LookupEnv(key)
++	if err := os.Unsetenv(key); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		if exists {
++			_ = os.Setenv(key, old)
++		} else {
++			_ = os.Unsetenv(key)
++		}
++	})
++}
++func identityCleanEnv(t *testing.T) {
++	t.Helper()
++	for _, key := range []string{"HOOPA_GUARD_CONFIG_SHA256", "HOOPA_GUARD_GENERATION", "HOOPA_IDENTITY_HANDOFF"} {
++		identityUnsetEnv(t, key)
++	}
++	for _, kv := range os.Environ() {
++		key := strings.SplitN(kv, "=", 2)[0]
++		if strings.HasPrefix(key, "HOOPA_TRACE_") {
++			identityUnsetEnv(t, key)
++		}
++	}
++}
++func TestIdentityHandoffPresenceAlwaysRequestsProtectedEntry(t *testing.T) {
++	identityCleanEnv(t)
++	if hoopaGuardRequested() {
++		t.Fatal("clean environment requests guard")
++	}
++	for _, key := range []string{"HOOPA_IDENTITY_HANDOFF", "HOOPA_GUARD_CONFIG_SHA256", "HOOPA_GUARD_GENERATION"} {
++		t.Run(key, func(t *testing.T) {
++			t.Setenv(key, "")
++			if !hoopaGuardRequested() {
++				t.Fatal("present empty protected environment bypassed guard")
++			}
++		})
++	}
++}
++func TestIdentityHandoffBindsTraceProfileAndGeneration(t *testing.T) {
++	identityCleanEnv(t)
++	p := profile.Config{Listeners: []profile.Entry{{Name: "entry", Port: 32002}}, Proxies: []profile.Node{{Name: "node:test", Type: "direct"}}}
++	t.Setenv("HOOPA_TRACE_INBOUND", "entry")
++	t.Setenv("HOOPA_TRACE_GENERATION", "generation")
++	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "/private/routes.json")
++	t.Setenv("HOOPA_TRACE_PROFILE", "2")
++	enabled, mapping, err := guardTraceConfig(p, "generation")
++	if err != nil || !enabled || mapping["node:test"] != "Direct" {
++		t.Fatal("legacy profile2 rejected", err)
++	}
++	t.Setenv("HOOPA_IDENTITY_HANDOFF", "")
++	if _, _, err = guardTraceConfig(p, "generation"); !errors.Is(err, errHoopaGuard) {
++		t.Fatal("empty handoff allowed profile2", err)
++	}
++	t.Setenv("HOOPA_TRACE_PROFILE", "3")
++	enabled, _, err = guardTraceConfig(p, "generation")
++	if err != nil || !enabled {
++		t.Fatal("handoff profile3 rejected", err)
++	}
++	for _, tc := range []struct{ key, value string }{{"HOOPA_TRACE_GENERATION", "other"}, {"HOOPA_TRACE_INBOUND", "other"}, {"HOOPA_TRACE_ROUTE_MAP", "relative.json"}, {"HOOPA_TRACE_PROFILE", "1"}} {
++		t.Run(tc.key, func(t *testing.T) {
++			t.Setenv(tc.key, tc.value)
++			if _, _, err := guardTraceConfig(p, "generation"); !errors.Is(err, errHoopaGuard) {
++				t.Fatal("unbound identity trace accepted", err)
++			}
++		})
++	}
++	identityUnsetEnv(t, "HOOPA_IDENTITY_HANDOFF")
++	if _, _, err = guardTraceConfig(p, "generation"); !errors.Is(err, errHoopaGuard) {
++		t.Fatal("profile3 without identity handoff accepted", err)
++	}
++}
++func TestIdentityHandoffCannotUseTestConfigAsFDAdoption(t *testing.T) {
++	identityCleanEnv(t)
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	p := profile.Config{Hosts: map[string]string{}, Groups: []profile.Group{}, Mode: "rule", LogLevel: "silent", FindProcessMode: "off", Controller: "127.0.0.1:32003", Secret: strings.Repeat("a", 32), Listeners: []profile.Entry{{Name: "entry", Type: "mixed", Listen: "127.0.0.1", Port: 32002, Users: []profile.User{{Username: strings.Repeat("u", 32), Password: strings.Repeat("p", 32)}}}}, Proxies: []profile.Node{{Name: "node:test", Type: "direct"}}, Rules: []string{"MATCH,node:test"}}
++	raw, err := json.Marshal(p)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = profile.Validate(raw, "generation"); err != nil {
++		t.Fatal("test profile", err)
++	}
++	path := filepath.Join(dir, "config.json")
++	if err = os.WriteFile(path, raw, 0600); err != nil {
++		t.Fatal(err)
++	}
++	previousHome, previousFile, previousTest := homeDir, configFile, testConfig
++	t.Cleanup(func() { homeDir, configFile, testConfig = previousHome, previousFile, previousTest })
++	homeDir, configFile, testConfig = dir, path, true
++	hash := sha256.Sum256(raw)
++	t.Setenv("HOOPA_GUARD_CONFIG_SHA256", hex.EncodeToString(hash[:]))
++	t.Setenv("HOOPA_GUARD_GENERATION", "generation")
++	if err = runHoopaGuard(); err != nil {
++		t.Fatal("valid legacy -t baseline", err)
++	}
++	t.Setenv("HOOPA_IDENTITY_HANDOFF", "")
++	if err = runHoopaGuard(); !errors.Is(err, errHoopaGuard) {
++		t.Fatal("-t bypassed runtime identity adoption", err)
++	}
++}
+diff --git a/tunnel/tunnel.go b/tunnel/tunnel.go
+index 0cc337a..4a65a08 100644
+--- a/tunnel/tunnel.go
++++ b/tunnel/tunnel.go
+@@ -514,7 +514,7 @@ func handleTCPConn(connCtx C.ConnContext) {
+ 		}
+ 		var beginErr error
+ 		peer, local := hoopaSourceAddrs(metadata, connCtx.Conn())
+-		traceFlow, beginErr = hoopatrace.Begin(metadata.InName, peer, local, metadata.Host, dstIP, metadata.HoopaStartedAt)
++		traceFlow, beginErr = hoopatrace.Begin(metadata.InName, peer, local, metadata.Host, dstIP, metadata.HoopaStartedAt, metadata.HoopaAdmission)
+ 		if beginErr != nil || traceFlow == nil {
+ 			log.Warnln("[Hoopa] trace flow initialization failed")
+ 			return

@@ -1,0 +1,1377 @@
+--- /dev/null
++++ b/component/hoopaid/owner_set.go
+@@ -0,0 +1,366 @@
++package hoopaid
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"strconv"
++	"strings"
++	"sync"
++
++	"github.com/metacubex/mihomo/component/identityprofile"
++)
++
++const HandoffSetSchema = "hoopa-core-identity-handoff-set-v1"
++
++type Entry struct {
++	Name string
++	Port uint16
++}
++type EntryOwner struct {
++	Entry      string
++	Port       uint16
++	Generation string
++	Owner      *Owner
++}
++type parsedEntry struct {
++	binding EntryOwner
++	h       handoff
++	raw     []byte
++}
++
++func entryToken(s string) bool {
++	if len(s) < 1 || len(s) > 128 {
++		return false
++	}
++	for i, c := range []byte(s) {
++		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alpha && (i == 0 || !strings.ContainsRune("._:-", rune(c))) {
++			return false
++		}
++	}
++	return true
++}
++
++// CaptureGeneration is an identifier, never an authorization credential.
++func CaptureGeneration(core, entry string, port uint16) (string, error) {
++	if !entryToken(core) || !entryToken(entry) || port == 0 {
++		return "", errors.New("invalid capture generation coordinates")
++	}
++	digest := sha256.Sum256([]byte("hoopa-entry-capture-v1\x00" + core + "\x00" + entry + "\x00" + strconv.Itoa(int(port))))
++	n := binary.BigEndian.Uint64(digest[:8])
++	if n == 0 {
++		return "", errors.New("zero capture generation")
++	}
++	return strconv.FormatUint(n, 10), nil
++}
++
++// New envelope only: bound recursion before typed parsing or ownership.
++func setJSONValue(d *json.Decoder, depth int) error {
++	if depth > 16 {
++		return errors.New("handoff set nesting limit")
++	}
++	t, err := d.Token()
++	if err != nil {
++		return err
++	}
++	if t == nil {
++		return errors.New("null handoff set value")
++	}
++	delim, ok := t.(json.Delim)
++	if !ok {
++		return nil
++	}
++	switch delim {
++	case '{':
++		seen := map[string]bool{}
++		for d.More() {
++			k, e := d.Token()
++			if e != nil {
++				return e
++			}
++			name, ok := k.(string)
++			if !ok || seen[name] {
++				return errors.New("duplicate JSON key")
++			}
++			seen[name] = true
++			if e = setJSONValue(d, depth+1); e != nil {
++				return e
++			}
++		}
++	case '[':
++		for d.More() {
++			if e := setJSONValue(d, depth+1); e != nil {
++				return e
++			}
++		}
++	default:
++		return errors.New("unexpected JSON delimiter")
++	}
++	_, err = d.Token()
++	return err
++}
++func exactObject(raw []byte, names ...string) (map[string]json.RawMessage, error) {
++	var fields map[string]json.RawMessage
++	if err := json.Unmarshal(raw, &fields); err != nil {
++		return nil, err
++	}
++	if len(fields) != len(names) {
++		return nil, errors.New("unexpected set field count")
++	}
++	for _, name := range names {
++		if _, ok := fields[name]; !ok {
++			return nil, fmt.Errorf("missing set field %s", name)
++		}
++	}
++	return fields, nil
++}
++func parseSet(raw []byte, core string, expected []Entry) ([]parsedEntry, error) {
++	if len(raw) < 1 || len(raw) > 40960 || !entryToken(core) || len(expected) < 2 || len(expected) > 4 {
++		return nil, errors.New("invalid handoff set bounds")
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	if err := setJSONValue(d, 0); err != nil {
++		return nil, err
++	}
++	if _, err := d.Token(); err != io.EOF {
++		return nil, errors.New("trailing set JSON")
++	}
++	fields, err := exactObject(raw, "schema", "core_generation", "entries")
++	if err != nil {
++		return nil, err
++	}
++	var schema, generation string
++	if json.Unmarshal(fields["schema"], &schema) != nil || json.Unmarshal(fields["core_generation"], &generation) != nil || schema != HandoffSetSchema || generation != core {
++		return nil, errors.New("set schema/core generation mismatch")
++	}
++	var rows []json.RawMessage
++	if json.Unmarshal(fields["entries"], &rows) != nil || len(rows) != len(expected) {
++		return nil, errors.New("set entry census mismatch")
++	}
++	expectedByName := map[string]uint16{}
++	ports := map[uint16]bool{}
++	for _, e := range expected {
++		if !entryToken(e.Name) || e.Port == 0 || expectedByName[e.Name] != 0 || ports[e.Port] {
++			return nil, errors.New("invalid expected entry inventory")
++		}
++		expectedByName[e.Name] = e.Port
++		ports[e.Port] = true
++	}
++	byName := map[string]parsedEntry{}
++	allFDs := map[int]bool{}
++	captures := map[string]bool{}
++	var common *handoff
++	for _, rawRow := range rows {
++		row, e := exactObject(rawRow, "entry", "port", "handoff")
++		if e != nil {
++			return nil, e
++		}
++		var name string
++		var port uint16
++		if json.Unmarshal(row["entry"], &name) != nil || json.Unmarshal(row["port"], &port) != nil || !entryToken(name) || port == 0 || expectedByName[name] != port {
++			return nil, errors.New("unexpected entry/port binding")
++		}
++		if _, ok := byName[name]; ok {
++			return nil, errors.New("duplicate entry")
++		}
++		h, e := parse(row["handoff"])
++		if e != nil {
++			return nil, e
++		}
++		capture, e := CaptureGeneration(core, name, port)
++		if e != nil || h.Schema != identityprofile.HandoffSchema || h.CoreGeneration != core || h.Port != port || h.Generation != capture || captures[capture] {
++			return nil, errors.New("child profile/port/generation mismatch")
++		}
++		captures[capture] = true
++		if common != nil && (h.BootID != common.BootID || h.PIDNSInode != common.PIDNSInode || h.UserNSInode != common.UserNSInode || h.MountNSInode != common.MountNSInode || h.SourcePath != common.SourcePath || h.SourceCgroupID != common.SourceCgroupID || h.RootCgroupID != common.RootCgroupID || h.NetnsCookie != common.NetnsCookie) {
++			return nil, errors.New("child common environment mismatch")
++		}
++		if common == nil {
++			copy := h
++			common = &copy
++		}
++		for _, fd := range h.orderedFDs() {
++			if allFDs[fd] {
++				return nil, errors.New("cross-entry FD alias")
++			}
++			allFDs[fd] = true
++		}
++		byName[name] = parsedEntry{binding: EntryOwner{Entry: name, Port: port, Generation: capture}, h: h, raw: append([]byte(nil), row["handoff"]...)}
++	}
++	result := make([]parsedEntry, 0, len(expected))
++	for _, e := range expected {
++		row, ok := byName[e.Name]
++		if !ok {
++			return nil, errors.New("missing entry")
++		}
++		result = append(result, row)
++	}
++	return result, nil
++}
++
++type OwnerSet struct {
++	mu       sync.Mutex
++	entries  []EntryOwner
++	closed   bool
++	closeErr error
++}
++
++func AdoptSet(raw []byte, core string, expected []Entry) (*OwnerSet, error) {
++	return adoptSet(raw, core, expected, func(int) (backend, error) { return newBackend() })
++}
++func adoptSet(raw []byte, core string, expected []Entry, construct func(int) (backend, error)) (*OwnerSet, error) {
++	entries, err := parseSet(raw, core, expected)
++	if err != nil {
++		return nil, err
++	}
++	backends := make([]backend, len(entries))
++	for i := range entries {
++		backends[i], err = construct(i)
++		if err != nil {
++			return nil, err
++		}
++		if backends[i] == nil {
++			return nil, errors.New("nil set backend")
++		}
++	}
++	// Complete parse and all backend construction precede descriptor ownership.
++	rawOwned := make([]bool, len(entries))
++	for i := range rawOwned {
++		rawOwned[i] = true
++	}
++	set := &OwnerSet{}
++	fail := func(primary error) (*OwnerSet, error) {
++		errs := []error{primary}
++		for i := len(entries) - 1; i >= 0; i-- {
++			if rawOwned[i] {
++				rawOwned[i] = false
++				fds := entries[i].h.orderedFDs()
++				for j := len(fds) - 1; j >= 0; j-- {
++					if e := backends[i].close(fds[j]); e != nil {
++						errs = append(errs, fmt.Errorf("raw close fd %d: %w", fds[j], e))
++					}
++				}
++			}
++		}
++		errs = append(errs, set.Close())
++		return nil, errors.Join(errs...)
++	}
++	// Typed object IDs must be read from each actual FD, before legacy adopt's
++	// initialState frozen-write probe or any TEST_RUN. Kernel BTF may be shared.
++	seen := []map[uint32]bool{{}, {}, {}}
++	for i, e := range entries {
++		for kind, group := range []map[string]int{e.h.Maps, e.h.Programs, e.h.Links} {
++			for _, fd := range group {
++				raw, readErr := backends[i].info(fd)
++				if readErr != nil {
++					return fail(readErr)
++				}
++				if len(raw) < 8 {
++					return fail(errors.New("short typed object info"))
++				}
++				id := le.Uint32(raw[4:])
++				if id == 0 || seen[kind][id] {
++					return fail(errors.New("typed kernel object alias"))
++				}
++				seen[kind][id] = true
++			}
++		}
++	}
++	// Validate every declared FD's actual ABI/role read-only before the first
++	// child's freeze probe. A mismatched kind must not hide an object alias in a
++	// different declared group. These temporary inspectors never own/close FDs.
++	for i, e := range entries {
++		inspector := &Owner{h: e.h, b: backends[i], programIDs: map[string]uint32{}, linkIDs: map[string]uint32{}}
++		if err := inspector.verifyObjects(); err != nil {
++			return fail(err)
++		}
++	}
++	for i, e := range entries {
++		rawOwned[i] = false // Existing internal adopt owns this parsed-valid subset.
++		owner, eAdopt := adopt(e.raw, core, e.binding.Port, backends[i])
++		if eAdopt != nil {
++			return fail(eAdopt)
++		}
++		binding := e.binding
++		binding.Owner = owner
++		set.entries = append(set.entries, binding)
++	}
++	return set, nil
++}
++func (s *OwnerSet) Entries() []EntryOwner {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return append([]EntryOwner(nil), s.entries...)
++}
++func (s *OwnerSet) Owner(name string, port uint16) *Owner {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.closed {
++		return nil
++	}
++	for _, e := range s.entries {
++		if e.Entry == name && e.Port == port {
++			return e.Owner
++		}
++	}
++	return nil
++}
++func (s *OwnerSet) Close() error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.closed {
++		return s.closeErr
++	}
++	s.closed = true
++	var errs []error
++	for i := len(s.entries) - 1; i >= 0; i-- {
++		if s.entries[i].Owner != nil {
++			errs = append(errs, s.entries[i].Owner.Close())
++		}
++	}
++	s.closeErr = errors.Join(errs...)
++	return s.closeErr
++}
++
++type EntryObservation struct {
++	Entry             string              `json:"entry"`
++	Port              uint16              `json:"port"`
++	CaptureGeneration string              `json:"capture_generation"`
++	Status            *Status             `json:"status,omitempty"`
++	Diagnostics       *CaptureDiagnostics `json:"diagnostics,omitempty"`
++	Unavailable       string              `json:"unavailable,omitempty"`
++}
++type EntryObservations struct {
++	Schema            string             `json:"schema"`
++	Observation       string             `json:"observation"`
++	Entries           []EntryObservation `json:"entries"`
++	AllUsableObserved bool               `json:"all_usable_observed"`
++}
++
++func (s *OwnerSet) Observe() EntryObservations {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	result := EntryObservations{Schema: "hoopa-entry-admission-observation-v1", Observation: "sequential_reads", Entries: make([]EntryObservation, 0, len(s.entries)), AllUsableObserved: len(s.entries) >= 2 && !s.closed}
++	for _, e := range s.entries {
++		row := EntryObservation{Entry: e.Entry, Port: e.Port, CaptureGeneration: e.Generation}
++		if e.Owner == nil {
++			row.Unavailable = "owner_unavailable"
++			result.AllUsableObserved = false
++		} else {
++			status := e.Owner.Status()
++			diagnostics := e.Owner.Diagnostics()
++			row.Status = &status
++			row.Diagnostics = &diagnostics
++			if status.Revoked || diagnostics.State != "no_fault_observed" || diagnostics.Incomplete {
++				result.AllUsableObserved = false
++			}
++		}
++		result.Entries = append(result.Entries, row)
++	}
++	return result
++}
+--- /dev/null
++++ b/component/hoopaid/owner_set_test.go
+@@ -0,0 +1,432 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"strings"
++	"sync"
++	"testing"
++)
++
++func setFixture() ([]byte, []Entry, []*scopedFake) {
++	return setFixtureFor([]Entry{{Name: "entry-a", Port: 18993}, {Name: "entry-b", Port: 18995}})
++}
++func setFixtureFor(expected []Entry) ([]byte, []Entry, []*scopedFake) {
++	entries := []map[string]any{}
++	backends := []*scopedFake{}
++	for i, e := range expected {
++		h := exampleV4()
++		h.Port = e.Port
++		h.Generation, _ = CaptureGeneration(h.CoreGeneration, e.Name, e.Port)
++		for _, group := range []map[string]int{h.Maps, h.Programs, h.Links} {
++			for name, fd := range group {
++				group[name] = fd + i*100
++			}
++		}
++		f := newScopedFake(h)
++		offset := uint32(i * 100)
++		for _, group := range []map[string]int{h.Maps, h.Programs, h.Links} {
++			for _, fd := range group {
++				le.PutUint32(f.infos[fd][4:], le.Uint32(f.infos[fd][4:])+offset)
++			}
++		}
++		for _, fd := range h.Programs {
++			for j := range f.refs[fd] {
++				f.refs[fd][j] += offset
++			}
++		}
++		for _, fd := range h.Links {
++			le.PutUint32(f.infos[fd][8:], le.Uint32(f.infos[fd][8:])+offset)
++		}
++		backends = append(backends, f)
++		entries = append(entries, map[string]any{"entry": e.Name, "port": e.Port, "handoff": h})
++	}
++	raw, _ := json.Marshal(map[string]any{"schema": HandoffSetSchema, "core_generation": "core-fixed", "entries": entries})
++	return raw, expected, backends
++}
++func factory(fs []*scopedFake) func(int) (backend, error) {
++	return func(i int) (backend, error) { return fs[i], nil }
++}
++func TestOwnerSetReorderedAndConcurrentObserveClose(t *testing.T) {
++	raw, expected, fs := setFixture()
++	var fields map[string]json.RawMessage
++	json.Unmarshal(raw, &fields)
++	var entries []json.RawMessage
++	json.Unmarshal(fields["entries"], &entries)
++	entries[0], entries[1] = entries[1], entries[0]
++	fields["entries"], _ = json.Marshal(entries)
++	raw, _ = json.Marshal(fields)
++	// The factory is config-ordered, not untrusted-array-ordered.
++	set, err := adoptSet(raw, "core-fixed", expected, factory(fs))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if set.Owner("entry-b", 18995) == nil || set.Owner("entry-a", 18995) != nil {
++		t.Fatal("wrong entry binding")
++	}
++	obs := set.Observe()
++	if len(obs.Entries) != 2 || obs.Entries[0].Entry != "entry-a" || !obs.AllUsableObserved {
++		t.Fatalf("%+v", obs)
++	}
++	var wg sync.WaitGroup
++	for i := 0; i < 8; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for j := 0; j < 20; j++ {
++				set.Observe()
++			}
++			set.Close()
++		}()
++	}
++	wg.Wait()
++	if set.Owner("entry-a", 18993) != nil || set.Observe().AllUsableObserved {
++		t.Fatal("closed set usable")
++	}
++	for _, f := range fs {
++		if len(f.closed) != len(f.h.orderedFDs()) {
++			t.Fatal("wrong close count", f.closed)
++		}
++		seen := map[int]bool{}
++		for _, fd := range f.closed {
++			if seen[fd] {
++				t.Fatal("double close")
++			}
++			seen[fd] = true
++		}
++	}
++}
++func TestOwnerSetStructuralFailuresConsumeNone(t *testing.T) {
++	for _, fault := range []string{"missing", "duplicate-entry", "duplicate-port", "wrong-port", "generation", "core", "namespace", "fd", "legacy-child", "null", "extra", "bool", "duplicate-json", "trailing", "depth", "oversize"} {
++		t.Run(fault, func(t *testing.T) {
++			raw, expected, fs := setFixture()
++			var v map[string]any
++			json.Unmarshal(raw, &v)
++			es := v["entries"].([]any)
++			a := es[0].(map[string]any)
++			b := es[1].(map[string]any)
++			h := b["handoff"].(map[string]any)
++			switch fault {
++			case "missing":
++				v["entries"] = es[:1]
++			case "duplicate-entry":
++				b["entry"] = a["entry"]
++			case "duplicate-port":
++				b["port"] = a["port"]
++			case "wrong-port":
++				b["port"] = 19000
++			case "generation":
++				h["generation"] = "1"
++			case "core":
++				h["core_generation"] = "other"
++			case "namespace":
++				h["userns_inode"] = 1
++			case "fd":
++				h["maps"].(map[string]any)["capture_config"] = a["handoff"].(map[string]any)["maps"].(map[string]any)["capture_config"]
++			case "legacy-child":
++				h["schema"] = "hoopa-core-identity-handoff-v3"
++			case "null":
++				b["handoff"] = nil
++			case "extra":
++				b["extra"] = 1
++			case "bool":
++				b["port"] = true
++			}
++			raw, _ = json.Marshal(v)
++			switch fault {
++			case "duplicate-json":
++				raw = bytes.Replace(raw, []byte(`"port":18993`), []byte(`"port":18993,"port":18993`), 1)
++			case "trailing":
++				raw = append(raw, []byte(` {}`)...)
++			case "depth":
++				raw = []byte(strings.Repeat("[", 40) + strings.Repeat("]", 40))
++			case "oversize":
++				raw = bytes.Repeat([]byte(" "), 40961)
++			}
++			calls := 0
++			_, err := adoptSet(raw, "core-fixed", expected, func(i int) (backend, error) { calls++; return fs[i], nil })
++			if err == nil || calls != 0 {
++				t.Fatal("structural failure acquired ownership", err, calls)
++			}
++			for _, f := range fs {
++				if len(f.log) != 0 || len(f.closed) != 0 {
++					t.Fatal("parse had effects")
++				}
++			}
++		})
++	}
++	raw, expected, fs := setFixture()
++	_, err := adoptSet(raw, "core-fixed", expected, func(i int) (backend, error) {
++		if i == 1 {
++			return nil, errors.New("backend failure")
++		}
++		return fs[i], nil
++	})
++	if err == nil {
++		t.Fatal("backend failure passed")
++	}
++	for _, f := range fs {
++		if len(f.closed) != 0 {
++			t.Fatal("backend failure consumed FD")
++		}
++	}
++}
++func TestOwnerSetTypedAliasesReadOnlyBeforeAdopt(t *testing.T) {
++	for _, kind := range []string{"map", "program", "link", "within-map", "info", "wrong-kind"} {
++		t.Run(kind, func(t *testing.T) {
++			raw, expected, fs := setFixture()
++			h0, h1 := fs[0].h, fs[1].h
++			switch kind {
++			case "map":
++				le.PutUint32(fs[1].infos[h1.Maps["capture_config"]][4:], le.Uint32(fs[0].infos[h0.Maps["capture_config"]][4:]))
++			case "program":
++				le.PutUint32(fs[1].infos[h1.Programs["hoopa_connect"]][4:], le.Uint32(fs[0].infos[h0.Programs["hoopa_connect"]][4:]))
++			case "link":
++				le.PutUint32(fs[1].infos[h1.Links["hoopa_connect"]][4:], le.Uint32(fs[0].infos[h0.Links["hoopa_connect"]][4:]))
++			case "within-map":
++				le.PutUint32(fs[0].infos[h0.Maps["capture_config"]][4:], le.Uint32(fs[0].infos[h0.Maps["capture_gate"]][4:]))
++			case "wrong-kind":
++				le.PutUint32(fs[1].infos[h1.Maps["capture_config"]], 999)
++			case "info":
++				fs[1].fail = fmt.Sprintf("info:%d", h1.Maps["capture_config"])
++			}
++			if _, err := adoptSet(raw, "core-fixed", expected, factory(fs)); err == nil {
++				t.Fatal("alias/info failure passed")
++			}
++			for _, f := range fs {
++				if len(f.closed) != 21 {
++					t.Fatal("raw set not closed once", len(f.closed))
++				}
++				for _, call := range f.log {
++					if !strings.HasPrefix(call, "info:") && !strings.HasPrefix(call, "close:") && !strings.HasPrefix(call, "access:") && !strings.HasPrefix(call, "program:") {
++						t.Fatal("alias check was not read-only", call)
++					}
++				}
++			}
++		})
++	}
++}
++func TestOwnerSetPartialAdoptionAndCleanupErrors(t *testing.T) {
++	raw, expected, fs := setFixture()
++	fs[1].writableScope = true
++	fs[0].stopErr = errors.New("stop-failure")
++	fs[0].fail = fmt.Sprintf("close:%d", fs[0].h.Maps["capture_config"])
++	set, err := adoptSet(raw, "core-fixed", expected, factory(fs))
++	if err == nil || set != nil || !strings.Contains(err.Error(), "stop-failure") || !strings.Contains(err.Error(), "close") {
++		t.Fatal(set, err)
++	}
++	for _, f := range fs {
++		seen := map[int]bool{}
++		for _, fd := range f.closed {
++			if seen[fd] {
++				t.Fatal("duplicate cleanup")
++			}
++			seen[fd] = true
++		}
++		if len(seen) != 21 {
++			t.Fatal("lost cleanup", len(seen))
++		}
++	}
++}
++
++func TestCaptureGenerationSharedGolden(t *testing.T) {
++	for _, tc := range []struct {
++		core, name string
++		port       uint16
++		want       string
++	}{{"gen:test", "entry-a", 18993, "5676782476846852221"}, {"gen:test", "entry-b", 18995, "5742284695162361138"}, {"G_1.-:x", "A", 1, "9195417994868614963"}, {"G_1.-:x", "entry:last", 65535, "12348882735155944273"}, {"G_1.-:x", "c", 3, "12069090133057338359"}, {"G_1.-:x", "d", 4, "16111117287818005334"}} {
++		got, err := CaptureGeneration(tc.core, tc.name, tc.port)
++		if err != nil || got != tc.want {
++			t.Fatal(tc, got, err)
++		}
++	}
++	for _, tc := range []struct {
++		core, name string
++		port       uint16
++	}{{"", "a", 1}, {"g", "bad/name", 1}, {"g", "a", 0}, {"g", strings.Repeat("a", 129), 1}, {"é", "a", 1}} {
++		if _, err := CaptureGeneration(tc.core, tc.name, tc.port); err == nil {
++			t.Fatal("invalid capture coordinates accepted")
++		}
++	}
++}
++func TestOwnerSetFourthEntryAndUnavailableObservation(t *testing.T) {
++	raw, expected, fs := setFixture()
++	var v map[string]any
++	json.Unmarshal(raw, &v)
++	entries := v["entries"].([]any)
++	for i := 2; i < 4; i++ {
++		h := exampleV4()
++		json.Unmarshal(encoded(fs[0].h), &h)
++		name := fmt.Sprintf("entry-%d", i)
++		port := uint16(19000 + i)
++		h.Port = port
++		h.Generation, _ = CaptureGeneration("core-fixed", name, port)
++		for _, g := range []map[string]int{h.Maps, h.Programs, h.Links} {
++			for n, fd := range g {
++				g[n] = fd + i*100
++			}
++		}
++		entries = append(entries, map[string]any{"entry": name, "port": port, "handoff": h})
++		expected = append(expected, Entry{Name: name, Port: port})
++	}
++	v["entries"] = entries
++	raw, _ = json.Marshal(v)
++	parsed, err := parseSet(raw, "core-fixed", expected)
++	if err != nil || len(parsed) != 4 {
++		t.Fatal(parsed, err)
++	}
++	set := &OwnerSet{entries: []EntryOwner{{Entry: "entry-a", Port: 18993, Generation: "1"}, {Entry: "entry-b", Port: 18995, Generation: "2"}}}
++	obs := set.Observe()
++	if obs.AllUsableObserved || obs.Entries[0].Unavailable != "owner_unavailable" || obs.Entries[0].Status != nil || obs.Entries[0].Diagnostics != nil {
++		t.Fatal(obs)
++	}
++}
++func TestOwnerSetWrongEntryWitnessRevokesOnlyBoundOwner(t *testing.T) {
++	raw, expected, fs := setFixture()
++	set, err := adoptSet(raw, "core-fixed", expected, factory(fs))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer set.Close()
++	fs[1].w.local.Port = 18993
++	if _, err := set.Owner("entry-b", 18995).Admit(nil); err == nil {
++		t.Fatal("wrong entry port admitted")
++	}
++	obs := set.Observe()
++	if obs.AllUsableObserved || !obs.Entries[1].Status.Revoked || obs.Entries[0].Status.Revoked {
++		t.Fatal(obs)
++	}
++}
++
++func fourOwnerFixture() ([]byte, []Entry, []*scopedFake) {
++	return setFixtureFor([]Entry{{Name: "entry-a", Port: 18993}, {Name: "entry-b", Port: 18995}, {Name: "entry-c", Port: 19002}, {Name: "entry-d", Port: 19003}})
++}
++func assertAllSetFDsClosedOnce(t *testing.T, fs []*scopedFake) {
++	t.Helper()
++	global := map[int]bool{}
++	for _, f := range fs {
++		want := map[int]bool{}
++		for _, fd := range f.h.orderedFDs() {
++			want[fd] = true
++		}
++		if len(f.closed) != len(want) {
++			t.Fatalf("FD close census: got %v want %v", f.closed, want)
++		}
++		for _, fd := range f.closed {
++			if !want[fd] || global[fd] {
++				t.Fatalf("unowned or repeated close %d", fd)
++			}
++			global[fd] = true
++			delete(want, fd)
++		}
++		if len(want) != 0 {
++			t.Fatal("FDs not released", want)
++		}
++	}
++}
++func TestOwnerSetFourCompleteAdoptionAndClose(t *testing.T) {
++	raw, expected, fs := fourOwnerFixture()
++	set, err := adoptSet(raw, "core-fixed", expected, factory(fs))
++	if err != nil {
++		t.Fatal(err)
++	}
++	observed := set.Observe()
++	if len(observed.Entries) != 4 || !observed.AllUsableObserved {
++		t.Fatal(observed)
++	}
++	for i, e := range expected {
++		bound := set.Owner(e.Name, e.Port)
++		if bound == nil || bound != set.Entries()[i].Owner || observed.Entries[i].Entry != e.Name || observed.Entries[i].Port != e.Port {
++			t.Fatal("four-owner config binding changed")
++		}
++		if p, err := bound.FieldProfile(); err != nil || p.Validate(fs[i].h.Generation) != nil {
++			t.Fatal("four-owner profile", p, err)
++		}
++	}
++	if err := set.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := set.Close(); err != nil {
++		t.Fatal(err)
++	}
++	assertAllSetFDsClosedOnce(t, fs)
++	for _, f := range fs {
++		stops := 0
++		for _, call := range f.log {
++			if call == "stop" {
++				stops++
++			}
++		}
++		if stops != 1 {
++			t.Fatal("adopted owner stop count", stops)
++		}
++	}
++}
++
++// Additional close errors exercise every cleanup ledger without replacing the
++// initial-probe/CLOEXEC initiating failure. Only one owned FD per backend fails.
++type setCloseFault struct {
++	*scopedFake
++	label string
++}
++
++func (f *setCloseFault) close(fd int) error {
++	err := f.scopedFake.close(fd)
++	if fd == f.h.orderedFDs()[0] {
++		return errors.Join(err, errors.New(f.label))
++	}
++	return err
++}
++func TestOwnerSetFourPartialAdoptionAllOwnershipPartitions(t *testing.T) {
++	for _, at := range []int{0, 1, 3} {
++		for _, stage := range []string{"initial-probe", "cloexec"} {
++			t.Run(fmt.Sprintf("owner-%d/%s", at+1, stage), func(t *testing.T) {
++				raw, expected, fs := fourOwnerFixture()
++				primary := ""
++				if stage == "initial-probe" {
++					fs[at].writableScope = true
++					primary = "scope freeze"
++				} else {
++					fs[at].fail = fmt.Sprintf("cloexec:%d", fs[at].h.orderedFDs()[0])
++					primary = "restore CLOEXEC"
++				}
++				for i, f := range fs {
++					f.stopErr = fmt.Errorf("stop-owner-%d", i)
++				}
++				set, err := adoptSet(raw, "core-fixed", expected, func(i int) (backend, error) {
++					return &setCloseFault{scopedFake: fs[i], label: fmt.Sprintf("cleanup-owner-%d", i)}, nil
++				})
++				if set != nil || err == nil || !strings.Contains(err.Error(), primary) {
++					t.Fatal("primary failure lost", set, err)
++				}
++				for i, f := range fs {
++					if !strings.Contains(err.Error(), fmt.Sprintf("cleanup-owner-%d", i)) {
++						t.Fatal("cleanup error lost", i, err)
++					}
++					stops := 0
++					for _, call := range f.log {
++						if call == "stop" {
++							stops++
++						}
++						if i > at && !strings.HasPrefix(call, "info:") && !strings.HasPrefix(call, "program:") && !strings.HasPrefix(call, "access:") && !strings.HasPrefix(call, "close:") {
++							t.Fatal("raw subset ran non-read-only validation or TEST_RUN", i, call)
++						}
++					}
++					wantStops := 0
++					if i < at {
++						wantStops = 1
++						if !strings.Contains(err.Error(), fmt.Sprintf("stop-owner-%d", i)) {
++							t.Fatal("adopted stop error lost", err)
++						}
++					}
++					if stops != wantStops {
++						t.Fatal("TEST_RUN on failed/raw owner or missing adopted stop", i, stops, wantStops)
++					}
++				}
++				assertAllSetFDsClosedOnce(t, fs)
++			})
++		}
++	}
++}
+--- /dev/null
++++ b/component/hoopatrace/guard_entries_linux.go
+@@ -0,0 +1,69 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"os"
++	"sync/atomic"
++)
++
++type entrySelection struct {
++	names                    map[string]bool
++	generation, programRules string
++}
++
++var guardSelection atomic.Pointer[entrySelection]
++
++// PrepareGuardEntries is called only with the guard-validated immutable owner
++// inventory. Selection and optional program-rule grant bind inside source.once;
++// legacy/lazy initialization can never acquire this grant afterwards.
++func PrepareGuardEntries(generation string, expected map[string]string, entries []string, programRules string) error {
++	_, newMode := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET")
++	_, legacy := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
++	if !newMode || legacy || os.Getenv("HOOPA_TRACE_INBOUND") != "" || os.Getenv("HOOPA_TRACE_PROFILE") != "5" || os.Getenv("HOOPA_TRACE_GENERATION") != generation || !token(generation) || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" || (programRules != "" && programRules != ProgramRuleProfileID) || len(entries) < 2 || len(entries) > 4 {
++		return ErrSource
++	}
++	names := make(map[string]bool, len(entries))
++	for _, name := range entries {
++		if !token(name) || names[name] {
++			return ErrSource
++		}
++		names[name] = true
++	}
++	checkRoutes := func(routes map[string]routeEntry) error {
++		if len(routes) != len(expected) {
++			return ErrSource
++		}
++		for name, typ := range expected {
++			r, ok := routes[name]
++			if !ok || r.AdapterType != typ || r.ProviderName != "" || r.ProviderID != nil {
++				return ErrSource
++			}
++		}
++		return nil
++	}
++	global.once.Do(func() {
++		initializeWithRoutes(checkRoutes)
++		if global.err == nil && global.s != nil {
++			global.s.programRules = programRules
++			if guardReady(global.s, generation) != nil {
++				global.err = ErrSource
++				return
++			}
++			guardSelection.Store(&entrySelection{names: names, generation: generation, programRules: programRules})
++		}
++	})
++	selection := guardSelection.Load()
++	if global.err != nil || global.s == nil || selection == nil || selection.generation != generation || selection.programRules != programRules || len(selection.names) != len(names) {
++		return ErrSource
++	}
++	for name := range names {
++		if !selection.names[name] {
++			return ErrSource
++		}
++	}
++	if checkRoutes(global.s.routes) != nil {
++		return ErrSource
++	}
++	return guardReady(global.s, generation)
++}
+--- /dev/null
++++ b/component/hoopatrace/guard_entries_linux_test.go
+@@ -0,0 +1,158 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"context"
++	"encoding/json"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++)
++
++func TestGuardEntriesOnceSelection(t *testing.T) {
++	const key = "HOOPA_ENTRY_SELECTION_TEST"
++	if mode := os.Getenv(key); mode != "" {
++		guardEntriesChild(t, mode)
++		return
++	}
++	exe, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, mode := range []string{"success", "changed-entries", "changed-generation", "changed-routes", "changed-optin", "legacy-first", "lazy-first", "new-then-legacy", "failed-init", "bad-input", "program-rules"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++			defer cancel()
++			cmd := exec.CommandContext(ctx, exe, "-test.run=^TestGuardEntriesOnceSelection$", "-test.count=1")
++			cmd.Env = append(os.Environ(), key+"="+mode)
++			out, err := cmd.CombinedOutput()
++			if err != nil {
++				t.Fatalf("%v %s", err, out)
++			}
++		})
++	}
++}
++func guardEntriesChild(t *testing.T, mode string) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0700)
++	sourceDir := filepath.Join(dir, "source")
++	os.Mkdir(sourceDir, 0700)
++	node := "node:a"
++	mapping := routeMapping{SchemaVersion: 1, ConfigGeneration: "gen:entries", Entries: []routeEntry{{InternalName: node, AdapterType: "Http", NodeID: &node, DisplayAlias: "Node A"}}}
++	raw, _ := json.Marshal(mapping)
++	routeFile := filepath.Join(dir, "routes.json")
++	os.WriteFile(routeFile, raw, 0600)
++	for k, v := range map[string]string{"HOOPA_IDENTITY_HANDOFF_SET": "synthetic-unit-declaration", "HOOPA_TRACE_INBOUND": "", "HOOPA_TRACE_DIR": sourceDir, "HOOPA_TRACE_GENERATION": mapping.ConfigGeneration, "HOOPA_TRACE_PROFILE": "5", "HOOPA_TRACE_ROUTE_MAP": routeFile, "HOOPA_TRACE_RECEIVER": "", "HOOPA_TRACE_SECRET": "", "HOOPA_TRACE_MAX_BYTES": ""} {
++		t.Setenv(k, v)
++	}
++	os.Unsetenv("HOOPA_IDENTITY_HANDOFF")
++	t.Cleanup(func() {
++		if global.s != nil {
++			global.s.close()
++		}
++	})
++	entries := []string{"entry-a", "entry-b"}
++	expected := map[string]string{node: "Http"}
++	generation := mapping.ConfigGeneration
++	opt := ""
++	if mode == "program-rules" {
++		opt = ProgramRuleProfileID
++	}
++	if Enabled("entry-a") {
++		t.Fatal("enabled before preparation")
++	}
++	flow, err := Begin("entry-a", nil, nil, "", "", time.Now())
++	if err != nil || flow != nil || global.s != nil {
++		t.Fatal("Begin initialized before preparation")
++	}
++	prepare := func() error { return PrepareGuardEntries(generation, expected, entries, opt) }
++	if mode == "legacy-first" || mode == "lazy-first" {
++		if mode == "lazy-first" {
++			global.once.Do(initialize)
++		} else {
++			if err := PrepareGuard(generation, expected); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if prepare() == nil || Enabled("entry-a") {
++			t.Fatal("legacy/lazy upgraded")
++		}
++		return
++	}
++	if mode == "failed-init" {
++		t.Setenv("HOOPA_TRACE_ROUTE_MAP", filepath.Join(dir, "missing"))
++		if prepare() == nil || Enabled("entry-a") {
++			t.Fatal("failed initialization published")
++		}
++		return
++	}
++	if mode == "bad-input" {
++		for _, bad := range [][]string{nil, {"entry-a"}, {"entry-a", "entry-a"}, {"entry-a", "bad/name"}} {
++			if PrepareGuardEntries(generation, expected, bad, opt) == nil || global.s != nil {
++				t.Fatal("bad selection initialized")
++			}
++		}
++		return
++	}
++	if err := prepare(); err != nil {
++		t.Fatal(err)
++	}
++	if !Enabled("entry-a") || !Enabled("entry-b") || Enabled("unknown") {
++		t.Fatal("selection wrong")
++	}
++	if f, err := Begin("unknown", nil, nil, "", "", time.Now()); f != nil || err != nil {
++		t.Fatal("unknown Begin selected")
++	}
++	if f, err := Begin("entry-b", nil, nil, "", "", time.Now()); f != nil || err == nil {
++		t.Fatal("selected Begin bypassed source5 proof requirement")
++	}
++
++	if mode == "new-then-legacy" {
++		if PrepareGuard(generation, expected) == nil {
++			t.Fatal("new selection accepted legacy preparation")
++		}
++		return
++	}
++	switch mode {
++	case "changed-entries":
++		entries = []string{"entry-a", "entry-c"}
++	case "changed-generation":
++		generation = "other"
++	case "changed-routes":
++		expected[node] = "Direct"
++	case "changed-optin":
++		opt = ProgramRuleProfileID
++	}
++	if strings.HasPrefix(mode, "changed-") {
++		if prepare() == nil {
++			t.Fatal("changed preparation admitted")
++		}
++		return
++	}
++	entries[0] = "mutated-after-call"
++	if !Enabled("entry-a") || Enabled(entries[0]) {
++		t.Fatal("selection not cloned")
++	}
++	entries = []string{"entry-b", "entry-a"}
++	var wg sync.WaitGroup
++	for i := 0; i < 12; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for j := 0; j < 30; j++ {
++				if err := prepare(); err != nil {
++					t.Error(err)
++				}
++				if !Enabled("entry-a") || Enabled("mutated-after-call") {
++					t.Error("bad concurrent selection")
++				}
++			}
++		}()
++	}
++	wg.Wait()
++}
+--- a/component/hoopatrace/guard_linux.go
++++ b/component/hoopatrace/guard_linux.go
+@@ -21,6 +21,9 @@
+ }
+ 
+ func prepareGuard(generation string, expected map[string]string, programRules string) error {
++	if guardSelection.Load() != nil {
++		return ErrSource
++	}
+ 	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3" && os.Getenv("HOOPA_TRACE_PROFILE") != "4" && os.Getenv("HOOPA_TRACE_PROFILE") != "5") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
+ 		return ErrSource
+ 	}
+@@ -42,7 +45,7 @@
+ 			global.s.programRules = programRules
+ 		}
+ 	})
+-	if global.err != nil || global.s == nil || global.s.programRules != programRules {
++	if global.err != nil || global.s == nil || guardSelection.Load() != nil || global.s.programRules != programRules {
+ 		return ErrSource
+ 	}
+ 	// The admitted route map is immutable. Repeated preparation must compare
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -123,6 +123,12 @@
+ }
+ 
+ func Enabled(inName string) bool {
++	if selection := guardSelection.Load(); selection != nil {
++		return selection.names[inName]
++	}
++	if _, newMode := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET"); newMode {
++		return false
++	}
+ 	name := os.Getenv("HOOPA_TRACE_INBOUND")
+ 	return name != "" && name == inName
+ }
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -41,7 +41,8 @@
+ 	_, h := os.LookupEnv("HOOPA_GUARD_CONFIG_SHA256")
+ 	_, g := os.LookupEnv("HOOPA_GUARD_GENERATION")
+ 	_, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
+-	return h || g || identity
++	_, set := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET")
++	return h || g || identity || set
+ }
+ 
+ func guardPrivateDir(path string) bool {
+@@ -85,6 +86,22 @@
+ }
+ 
+ func guardTraceConfig(p profile.Config, generation string) (bool, map[string]string, error) {
++	if _, set := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET"); set {
++		if _, legacy := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); legacy {
++			return false, nil, errHoopaGuard
++		}
++		if len(p.Listeners) < 2 || len(p.Listeners) > 4 || os.Getenv("HOOPA_TRACE_INBOUND") != "" || os.Getenv("HOOPA_TRACE_PROFILE") != "5" || os.Getenv("HOOPA_TRACE_GENERATION") != generation || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
++			return false, nil, errHoopaGuard
++		}
++		expected := map[string]string{}
++		for _, n := range p.Proxies {
++			expected[n.Name] = map[string]string{"direct": "Direct", "http": "Http", "socks5": "Socks5"}[n.Type]
++		}
++		for _, g := range p.Groups {
++			expected[g.Name] = "Selector"
++		}
++		return true, expected, nil
++	}
+ 	name := os.Getenv("HOOPA_TRACE_INBOUND")
+ 	if name == "" {
+ 		for _, kv := range os.Environ() {
+@@ -123,6 +140,11 @@
+ func runHoopaGuard() (result error) {
+ 	// Protected startup does not enter stock init, CLI override, reload or shell paths.
+ 	log.SetLevel(log.SILENT)
++	_, legacyHandoff := os.LookupEnv("HOOPA_IDENTITY_HANDOFF")
++	rawSet, setEnabled := os.LookupEnv("HOOPA_IDENTITY_HANDOFF_SET")
++	if legacyHandoff && setEnabled {
++		return errHoopaGuard
++	}
+ 	if configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
+ 		return errHoopaGuard
+ 	}
+@@ -167,11 +189,13 @@
+ 		if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
+ 			return errHoopaGuard
+ 		}
+-		if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
++		if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity || setEnabled {
+ 			return errHoopaGuard // Runtime FD adoption cannot be replaced by -t.
+ 		}
+ 		return nil
+ 	}
++	var identitySet *hoopaid.OwnerSet
++
+ 	var identity *hoopaid.Owner
+ 	if rawHandoff, enabled := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); enabled {
+ 		if len(p.Listeners) != 1 {
+@@ -190,21 +214,66 @@
+ 			return errHoopaGuard
+ 		}
+ 	}
++	if setEnabled {
++		expectedEntries := make([]hoopaid.Entry, 0, len(p.Listeners))
++		for _, e := range p.Listeners {
++			expectedEntries = append(expectedEntries, hoopaid.Entry{Name: e.Name, Port: e.Port})
++		}
++		identitySet, err = hoopaid.AdoptSet([]byte(rawSet), generation, expectedEntries)
++		if err != nil {
++			return errors.Join(errHoopaGuard, err)
++		}
++		defer func() {
++			if e := identitySet.Close(); e != nil {
++				result = errors.Join(result, errHoopaGuard, e)
++			}
++		}()
++		for _, bound := range identitySet.Entries() {
++			if bound.Owner == nil || bound.Owner.EventSchemaVersion() != 5 {
++				return errHoopaGuard
++			}
++			actual, e := bound.Owner.FieldProfile()
++			if e != nil {
++				return errHoopaGuard
++			}
++			if _, e = profile.ValidateWithProgramIdentity(raw, generation, actual); e != nil {
++				return errHoopaGuard
++			}
++		}
++	}
+ 	if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
+-		if identity == nil {
+-			return errHoopaGuard
+-		}
+-		actual, e := identity.FieldProfile()
+-		if e != nil {
+-			return errHoopaGuard
+-		}
+-		if _, e = profile.ValidateWithProgramIdentity(raw, generation, actual); e != nil {
+-			return errHoopaGuard
++		if identity == nil && identitySet == nil {
++			return errHoopaGuard
++		}
++		if identity != nil {
++			actual, e := identity.FieldProfile()
++			if e != nil {
++				return errHoopaGuard
++			}
++			if _, e = profile.ValidateWithProgramIdentity(raw, generation, actual); e != nil {
++				return errHoopaGuard
++			}
++		}
++	}
++	entryOwners := make([]*hoopaid.Owner, len(p.Listeners))
++	for i, e := range p.Listeners {
++		entryOwners[i] = identity
++		if identitySet != nil {
++			entryOwners[i] = identitySet.Owner(e.Name, e.Port)
++			if entryOwners[i] == nil {
++				return errHoopaGuard
++			}
+ 		}
+ 	}
+ 	if tracing {
+ 		var prepareErr error
+-		if p.ProgramRules != "" {
++		if identitySet != nil {
++			names := make([]string, 0, len(p.Listeners))
++			for _, e := range p.Listeners {
++				names = append(names, e.Name)
++			}
++			prepareErr = hoopatrace.PrepareGuardEntries(generation, expected, names, p.ProgramRules)
++		} else if p.ProgramRules != "" {
+ 			prepareErr = hoopatrace.PrepareGuardWithProgramRules(generation, expected, p.ProgramRules)
+ 		} else {
+ 			prepareErr = hoopatrace.PrepareGuard(generation, expected)
+@@ -219,7 +288,7 @@
+ 	C.HoopaProtected = true
+ 	executor.ApplyConfig(cfg, true)
+ 	defer executor.Shutdown()
+-	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}, identity: identity, programRules: p.ProgramRules}
++	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}, identity: identity, identitySet: identitySet, programRules: p.ProgramRules}
+ 	defer r.stop()
+ 	// Reserve every socket first. A later bind failure closes the earlier ones;
+ 	// no auth/CONNECT response or payload can be dispatched before all succeed.
+@@ -257,7 +326,7 @@
+ 	for i, e := range p.Listeners {
+ 		store := authStore.NewAuthStore(auth.NewAuthenticator([]auth.AuthUser{{User: e.Users[0].Username, Pass: e.Users[0].Password}}))
+ 		r.accept.Add(1)
+-		go r.serveEntry(r.entries[i], e.Name, store)
++		go r.serveEntry(r.entries[i], e.Name, store, entryOwners[i])
+ 	}
+ 	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 8192}
+ 	serve := make(chan error, 1)
+@@ -284,10 +353,11 @@
+ 	conns                           map[net.Conn]bool
+ 	accept, workers                 sync.WaitGroup
+ 	identity                        *hoopaid.Owner
++	identitySet                     *hoopaid.OwnerSet
+ 	programRules                    string
+ }
+ 
+-func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore) {
++func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore, owner *hoopaid.Owner) {
+ 	defer r.accept.Done()
+ 	for {
+ 		c, err := ln.Accept()
+@@ -301,7 +371,13 @@
+ 			continue
+ 		}
+ 		additions := []inbound.Addition{inbound.WithInName(name), inbound.WithSpecialRules(""), inbound.WithSpecialProxy("")}
+-		if r.identity != nil {
++		if r.identitySet != nil && owner == nil {
++			r.state = "degraded"
++			r.mu.Unlock()
++			_ = c.Close()
++			continue
++		}
++		if owner != nil {
+ 			tcp, ok := c.(*net.TCPConn)
+ 			if !ok {
+ 				r.state = "degraded"
+@@ -309,7 +385,7 @@
+ 				_ = c.Close()
+ 				continue
+ 			}
+-			proof, err := r.identity.Admit(tcp)
++			proof, err := owner.Admit(tcp)
+ 			if err != nil {
+ 				r.state = "degraded"
+ 				r.mu.Unlock()
+@@ -407,6 +483,25 @@
+ 		_ = json.NewEncoder(w).Encode(result)
+ 	case q.Method == "GET" && q.URL.Path == "/hoopa/status":
+ 		r.mu.Lock()
++		if r.identitySet != nil {
++			result := struct {
++				Schema           int                       `json:"schema_version"`
++				Generation       string                    `json:"config_generation"`
++				Hash             string                    `json:"config_sha256"`
++				State            string                    `json:"state"`
++				IdentityInstance bool                      `json:"identity_instance"`
++				IdentityName     bool                      `json:"identity_name"`
++				IdentityPath     bool                      `json:"identity_path"`
++				Connections      int                       `json:"accepted_tcp_connections"`
++				Admissions       hoopaid.EntryObservations `json:"experimental_admissions"`
++			}{Schema: 2, Generation: r.generation, Hash: r.hash, State: r.state, Connections: len(r.conns)}
++			owners := r.identitySet
++			r.mu.Unlock()
++			result.Admissions = owners.Observe()
++			w.Header().Set("Content-Type", "application/json")
++			_ = json.NewEncoder(w).Encode(result)
++			return
++		}
+ 		result := struct {
+ 			Schema           int             `json:"schema_version"`
+ 			Generation       string          `json:"config_generation"`
+@@ -430,7 +525,13 @@
+ 		// serializes observation with admission and descriptor release itself.
+ 		r.mu.Lock()
+ 		owner := r.identity
++		owners := r.identitySet
+ 		r.mu.Unlock()
++		if owners != nil {
++			w.Header().Set("Content-Type", "application/json")
++			_ = json.NewEncoder(w).Encode(owners.Observe())
++			return
++		}
+ 		if owner == nil {
+ 			http.Error(w, "capture diagnostics unavailable", http.StatusServiceUnavailable)
+ 			return
+--- /dev/null
++++ b/hoopa_multi_entry_test.go
+@@ -0,0 +1,67 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"encoding/json"
++	"net"
++	"net/http/httptest"
++	"testing"
++
++	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
++)
++
++func TestMultiEntryGuardEnvAndTraceBinding(t *testing.T) {
++	identityCleanEnv(t)
++	identityUnsetEnv(t, "HOOPA_IDENTITY_HANDOFF_SET")
++	t.Setenv("HOOPA_IDENTITY_HANDOFF_SET", "")
++	if !hoopaGuardRequested() {
++		t.Fatal("empty set bypassed protected entry")
++	}
++	p := profile.Config{Listeners: []profile.Entry{{Name: "entry-a", Port: 18993}, {Name: "entry-b", Port: 18995}}, Proxies: []profile.Node{{Name: "node:a", Type: "direct"}}}
++	for k, v := range map[string]string{"HOOPA_TRACE_GENERATION": "generation", "HOOPA_TRACE_PROFILE": "5", "HOOPA_TRACE_ROUTE_MAP": "/private/routes.json"} {
++		t.Setenv(k, v)
++	}
++	if enabled, _, err := guardTraceConfig(p, "generation"); err != nil || !enabled {
++		t.Fatal(err)
++	}
++	for _, pair := range [][2]string{{"HOOPA_IDENTITY_HANDOFF", ""}, {"HOOPA_TRACE_INBOUND", "entry-a"}, {"HOOPA_TRACE_PROFILE", "4"}, {"HOOPA_TRACE_GENERATION", "other"}, {"HOOPA_TRACE_ROUTE_MAP", "relative"}} {
++		t.Run(pair[0], func(t *testing.T) {
++			t.Setenv(pair[0], pair[1])
++			if _, _, err := guardTraceConfig(p, "generation"); err == nil {
++				t.Fatal("invalid new tracing admitted")
++			}
++		})
++	}
++}
++func TestMultiEntryObservationSurfaceUnavailableAndLegacyUnchanged(t *testing.T) {
++	// The empty OwnerSet explicitly reports no usable owners; actual original
++	// Status/Diagnostics success is exercised by hoopaid's fully adopted fakes.
++	set := &hoopaid.OwnerSet{}
++	r := &hoopaGuardRuntime{state: "running", generation: "g", hash: "h", secret: "fixed-test-token", conns: map[net.Conn]bool{}, identitySet: set}
++	for _, path := range []string{"/hoopa/status", "/hoopa/capture-health"} {
++		q := httptest.NewRequest("GET", path, nil)
++		q.RemoteAddr = "127.0.0.1:1234"
++		q.Header.Set("Authorization", "Bearer fixed-test-token")
++		w := httptest.NewRecorder()
++		r.ServeHTTP(w, q)
++		if w.Code != 200 {
++			t.Fatal(w.Code, w.Body.String())
++		}
++		var v map[string]any
++		json.Unmarshal(w.Body.Bytes(), &v)
++		if path == "/hoopa/status" {
++			if v["schema_version"] != float64(2) || v["experimental_admission"] != nil {
++				t.Fatal(v)
++			}
++			v = v["experimental_admissions"].(map[string]any)
++		}
++		if v["schema"] != "hoopa-entry-admission-observation-v1" || v["observation"] != "sequential_reads" || v["all_usable_observed"] != false {
++			t.Fatal(v)
++		}
++	}
++	if r.state != "running" {
++		t.Fatal("read mutated runtime")
++	}
++}

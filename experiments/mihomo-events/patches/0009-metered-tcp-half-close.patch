@@ -1,0 +1,238 @@
+diff --git b/tunnel/statistic/hoopa_halfclose_test.go b/tunnel/statistic/hoopa_halfclose_test.go
+new file mode 100644
+index 0000000..e7c1de5
+--- /dev/null
++++ b/tunnel/statistic/hoopa_halfclose_test.go
+@@ -0,0 +1,197 @@
++package statistic
++
++import (
++	"errors"
++	"io"
++	"net"
++	"sync"
++	"testing"
++	"time"
++
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/sing/common"
++	"github.com/metacubex/sing/common/network"
++)
++
++type hoopaHalfCloseFake struct {
++	*hoopaConnFake
++	halfErr                                   error
++	halfCalls                                 int
++	halfStarted, halfInterrupted, halfRelease chan struct{}
++}
++
++func (c *hoopaHalfCloseFake) CloseWrite() error {
++	c.halfCalls++
++	if c.halfStarted != nil {
++		close(c.halfStarted)
++		<-c.closed
++		close(c.halfInterrupted)
++		<-c.halfRelease
++	}
++	return c.halfErr
++}
++
++// This intermediary exercises the same optional-interface traversal as Relay.
++// Only the inner wrapper exposes Upstream; Hoopa's boundary must not do so.
++type hoopaHalfCloseUpstream struct {
++	C.Conn
++	target any
++}
++
++func (c *hoopaHalfCloseUpstream) Upstream() any { return c.target }
++
++func hoopaHalfCounter(counter *hoopaCounterFake) (upload, download, closed, atClose int) {
++	counter.mu.Lock()
++	defer counter.mu.Unlock()
++	return counter.upload, counter.download, counter.closed, counter.atClose
++}
++func hoopaHalfWait(t *testing.T, ch <-chan struct{}, what string) {
++	t.Helper()
++	select {
++	case <-ch:
++	case <-time.After(2 * time.Second):
++		t.Fatal("timeout waiting for " + what)
++	}
++}
++
++func TestHoopaHalfCloseRetainsDownloadAndFinalizesOnlyAtFullClose(t *testing.T) {
++	for _, nested := range []bool{false, true} {
++		t.Run(map[bool]string{false: "direct", true: "upstream-inner"}[nested], func(t *testing.T) {
++			inner := &hoopaHalfCloseFake{hoopaConnFake: &hoopaConnFake{closed: make(chan struct{})}}
++			var upstream C.Conn = inner
++			if nested {
++				upstream = &hoopaHalfCloseUpstream{Conn: inner, target: inner}
++			}
++			counter := &hoopaCounterFake{}
++			conn := NewHoopaTCPConn(upstream, counter)
++			if _, ok := conn.(interface{ Upstream() any }); ok {
++				t.Fatal("upstream escape exposed")
++			}
++			writer, ok := common.Cast[network.WriteCloser](conn)
++			if !ok {
++				t.Fatal("Relay cannot find half-close")
++			}
++			if n, err := conn.Write([]byte("up")); n != 2 || err != nil {
++				t.Fatal(n, err)
++			}
++			if err := writer.CloseWrite(); err != nil {
++				t.Fatal(err)
++			}
++			if inner.halfCalls != 1 {
++				t.Fatal("underlying half-close not forwarded once")
++			}
++			select {
++			case <-inner.closed:
++				t.Fatal("half-close performed full close")
++			default:
++			}
++			if _, _, closed, _ := hoopaHalfCounter(counter); closed != 0 {
++				t.Fatal("source finalized on write EOF")
++			}
++			p := make([]byte, 8)
++			if n, err := conn.Read(p); n != 3 || err != io.EOF || string(p[:n]) != "abc" {
++				t.Fatal(n, err)
++			}
++			if upload, download, closed, _ := hoopaHalfCounter(counter); upload != 2 || download != 3 || closed != 0 {
++				t.Fatal("downstream accounting lost after half-close", upload, download, closed)
++			}
++			if err := conn.Close(); err != nil {
++				t.Fatal(err)
++			}
++			if err := conn.Close(); err != nil {
++				t.Fatal(err)
++			}
++			if _, _, closed, atClose := hoopaHalfCounter(counter); closed != 1 || atClose != 3 {
++				t.Fatal("final count/order", closed, atClose)
++			}
++			if err := writer.CloseWrite(); !errors.Is(err, net.ErrClosed) {
++				t.Fatal("half-close admitted after full close", err)
++			}
++			if inner.halfCalls != 1 {
++				t.Fatal("closed connection reached underlying half-close")
++			}
++		})
++	}
++}
++func TestHoopaHalfCloseUnsupportedFallbackDoesNotWaitOnItself(t *testing.T) {
++	inner := &hoopaConnFake{closed: make(chan struct{})}
++	counter := &hoopaCounterFake{}
++	conn := NewHoopaTCPConn(inner, counter)
++	writer := conn.(network.WriteCloser)
++	done := make(chan struct{})
++	go func() { defer close(done); _ = writer.CloseWrite() }()
++	hoopaHalfWait(t, done, "unsupported fallback full close")
++	if _, _, closed, _ := hoopaHalfCounter(counter); closed != 1 {
++		t.Fatal("fallback missing final", closed)
++	}
++	if err := writer.CloseWrite(); err != nil {
++		t.Fatal("fallback full close changed idempotence", err)
++	}
++	if err := conn.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if _, _, closed, _ := hoopaHalfCounter(counter); closed != 1 {
++		t.Fatal("fallback duplicate final", closed)
++	}
++	if n, err := conn.Read(make([]byte, 3)); n != 0 || !errors.Is(err, net.ErrClosed) {
++		t.Fatal("read admitted after fallback", n, err)
++	}
++}
++func TestHoopaHalfCloseErrorDoesNotFinalizeReadDirection(t *testing.T) {
++	sentinel := errors.New("half-close failed")
++	inner := &hoopaHalfCloseFake{hoopaConnFake: &hoopaConnFake{closed: make(chan struct{})}, halfErr: sentinel}
++	counter := &hoopaCounterFake{}
++	conn := NewHoopaTCPConn(inner, counter)
++	if err := conn.(network.WriteCloser).CloseWrite(); !errors.Is(err, sentinel) {
++		t.Fatal(err)
++	}
++	if _, _, closed, _ := hoopaHalfCounter(counter); closed != 0 {
++		t.Fatal("error finalized read side")
++	}
++	if n, err := conn.Read(make([]byte, 8)); n != 3 || err != io.EOF {
++		t.Fatal(n, err)
++	}
++	_ = conn.Close()
++	if _, download, closed, _ := hoopaHalfCounter(counter); download != 3 || closed != 1 {
++		t.Fatal(download, closed)
++	}
++}
++func TestHoopaHalfCloseConcurrentFullCloseInterruptsThenWaitsForActive(t *testing.T) {
++	release := make(chan struct{})
++	var releaseOnce sync.Once
++	defer releaseOnce.Do(func() { close(release) })
++	inner := &hoopaHalfCloseFake{hoopaConnFake: &hoopaConnFake{closed: make(chan struct{})}, halfErr: net.ErrClosed,
++		halfStarted: make(chan struct{}), halfInterrupted: make(chan struct{}), halfRelease: release}
++	counter := &hoopaCounterFake{}
++	conn := NewHoopaTCPConn(inner, counter)
++	halfDone, closeDone := make(chan struct{}), make(chan struct{})
++	var halfErr, closeErr error
++	go func() { defer close(halfDone); halfErr = conn.(network.WriteCloser).CloseWrite() }()
++	hoopaHalfWait(t, inner.halfStarted, "active half-close")
++	go func() { defer close(closeDone); closeErr = conn.Close() }()
++	hoopaHalfWait(t, inner.halfInterrupted, "full close interrupting half-close")
++	if _, _, closed, _ := hoopaHalfCounter(counter); closed != 0 {
++		t.Fatal("final before active half-close exit")
++	}
++	select {
++	case <-closeDone:
++		t.Fatal("full close did not wait for active half-close")
++	default:
++	}
++	if err := conn.(network.WriteCloser).CloseWrite(); !errors.Is(err, net.ErrClosed) {
++		t.Fatal("new half-close during shutdown", err)
++	}
++	releaseOnce.Do(func() { close(release) })
++	hoopaHalfWait(t, halfDone, "half-close exit")
++	hoopaHalfWait(t, closeDone, "full close exit")
++	if !errors.Is(halfErr, net.ErrClosed) || closeErr != nil {
++		t.Fatal(halfErr, closeErr)
++	}
++	if _, _, closed, _ := hoopaHalfCounter(counter); closed != 1 {
++		t.Fatal("final missing or duplicated", closed)
++	}
++	_ = conn.Close()
++	if inner.halfCalls != 1 {
++		t.Fatal("extra half-close reached inner", inner.halfCalls)
++	}
++}
+diff --git a/tunnel/statistic/hoopa_tcp.go b/tunnel/statistic/hoopa_tcp.go
+index cec3a1e..1fc738c 100644
+--- a/tunnel/statistic/hoopa_tcp.go
++++ b/tunnel/statistic/hoopa_tcp.go
+@@ -8,6 +8,9 @@ import (
+ 
+ 	"github.com/metacubex/mihomo/common/buf"
+ 	C "github.com/metacubex/mihomo/constant"
++
++	"github.com/metacubex/sing/common"
++	"github.com/metacubex/sing/common/network"
+ )
+ 
+ // HoopaTCPCounter is the same-flow stream boundary, not wire/TLS byte accounting.
+@@ -89,6 +92,20 @@ func (c *hoopaTCPConn) WriteBuffer(buffer *buf.Buffer) error {
+ 	}
+ 	return err
+ }
++
++// CloseWrite preserves downstream reads and accounting after upload EOF.
++func (c *hoopaTCPConn) CloseWrite() error {
++	writer, ok := common.Cast[network.WriteCloser](c.inner)
++	if !ok {
++		// Select fallback before begin: Close must not wait for its own operation.
++		return c.Close()
++	}
++	if !c.begin() {
++		return net.ErrClosed
++	}
++	defer c.end()
++	return writer.CloseWrite()
++}
+ func (c *hoopaTCPConn) Close() error {
+ 	c.once.Do(func() {
+ 		c.mu.Lock()

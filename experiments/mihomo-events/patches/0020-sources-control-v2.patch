@@ -1,0 +1,3144 @@
+diff --git a/adapter/adapter.go b/adapter/adapter.go
+--- a/adapter/adapter.go
++++ b/adapter/adapter.go
+@@ -33,9 +33,10 @@
+ 
+ type Proxy struct {
+ 	C.ProxyAdapter
+-	alive   atomic.Bool
+-	history *queue.Queue[C.DelayHistory]
+-	extra   xsync.Map[string, *internalProxyState]
++	alive      atomic.Bool
++	history    *queue.Queue[C.DelayHistory]
++	extra      xsync.Map[string, *internalProxyState]
++	hoopaProbe hoopaProbeRegistry
+ }
+ 
+ // Adapter implements C.Proxy
+@@ -165,8 +166,14 @@
+ // implements C.Proxy
+ func (p *Proxy) URLTest(ctx context.Context, url string, expectedStatus utils.IntRanges[uint16]) (t uint16, err error) {
+ 	var satisfied bool
++	hoopaStarted := time.Now().Round(0)
+ 
+ 	defer func() {
++		completed := time.Now()
++		wallElapsed := completed.Round(0).Sub(hoopaStarted)
++		// Protected timeouts are at most 60 seconds. A suspend, clock rollback
++		// or delayed cancellation cannot turn a wrapped uint16 into a fast probe.
++		p.recordHoopaProbe(url, expectedStatus.String(), err == nil && ctx.Err() == nil && satisfied && wallElapsed >= 0 && wallElapsed <= 60*time.Second, t, completed)
+ 		alive := err == nil
+ 		record := C.DelayHistory{Time: time.Now()}
+ 		if alive {
+diff --git a/adapter/hoopa_probe.go b/adapter/hoopa_probe.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/hoopa_probe.go
+@@ -0,0 +1,59 @@
++package adapter
++
++import (
++	"sync"
++	"time"
++
++	C "github.com/metacubex/mihomo/constant"
++)
++
++type hoopaProbeKey struct{ url, expectedStatus string }
++type hoopaProbeRegistry struct {
++	mu           sync.Mutex
++	observations map[hoopaProbeKey]C.HoopaProbeObservation
++}
++
++// EnableHoopaProbe is idempotent and never resets an existing observation.
++// It only registers the v2 status range; there is no network operation here.
++func (p *Proxy) EnableHoopaProbe(url, expectedStatus string) bool {
++	if p == nil || url == "" || len(url) > 4096 || expectedStatus != C.HoopaProbeAcceptedStatus {
++		return false
++	}
++	p.hoopaProbe.mu.Lock()
++	defer p.hoopaProbe.mu.Unlock()
++	if p.hoopaProbe.observations == nil {
++		p.hoopaProbe.observations = make(map[hoopaProbeKey]C.HoopaProbeObservation)
++	}
++	key := hoopaProbeKey{url, expectedStatus}
++	if _, ok := p.hoopaProbe.observations[key]; !ok {
++		if len(p.hoopaProbe.observations) >= 64 {
++			return false
++		}
++		p.hoopaProbe.observations[key] = C.HoopaProbeObservation{}
++	}
++	return true
++}
++
++func (p *Proxy) HoopaProbeObservation(url, expectedStatus string) C.HoopaProbeObservation {
++	if p == nil {
++		return C.HoopaProbeObservation{}
++	}
++	p.hoopaProbe.mu.Lock()
++	defer p.hoopaProbe.mu.Unlock()
++	return p.hoopaProbe.observations[hoopaProbeKey{url, expectedStatus}]
++}
++
++func (p *Proxy) recordHoopaProbe(url, expectedStatus string, success bool, delay uint16, completed time.Time) {
++	p.hoopaProbe.mu.Lock()
++	defer p.hoopaProbe.mu.Unlock()
++	key := hoopaProbeKey{url, expectedStatus}
++	if _, registered := p.hoopaProbe.observations[key]; !registered {
++		return
++	}
++	if !success {
++		delay = 0
++	}
++	// Strip monotonic data: real suspend elapsed time expires old observations;
++	// clock rollback produces a negative age and is conservatively unavailable.
++	p.hoopaProbe.observations[key] = C.HoopaProbeObservation{Known: true, Success: success, CompletedAt: completed.Round(0).UTC(), DelayMS: delay}
++}
+diff --git a/adapter/hoopa_probe_test.go b/adapter/hoopa_probe_test.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/hoopa_probe_test.go
+@@ -0,0 +1,205 @@
++package adapter
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"net/http/httptest"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/outbound"
++	"github.com/metacubex/mihomo/common/utils"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++func TestHoopaProbeRegistryIsolationAndCapacity(t *testing.T) {
++	p := NewProxy(outbound.NewDirect())
++	status := C.HoopaProbeAcceptedStatus
++	url := "http://probe.invalid/one"
++	completed := time.Now()
++	p.recordHoopaProbe(url, status, true, 0, completed)
++	if p.HoopaProbeObservation(url, status).Known {
++		t.Fatal("unregistered observation recorded")
++	}
++	if p.EnableHoopaProbe("", status) || p.EnableHoopaProbe(url, "200") || p.EnableHoopaProbe(fmt.Sprintf("%04097d", 1), status) {
++		t.Fatal("invalid registration accepted")
++	}
++	if !p.EnableHoopaProbe(url, status) {
++		t.Fatal("registration failed")
++	}
++	p.recordHoopaProbe(url, status, true, 0, completed)
++	success := p.HoopaProbeObservation(url, status)
++	if !success.Known || !success.Success || success.DelayMS != 0 || success.CompletedAt != completed.Round(0).UTC() {
++		t.Fatal("zero-ms atomic success lost")
++	}
++	if !p.EnableHoopaProbe(url, status) || p.HoopaProbeObservation(url, status) != success {
++		t.Fatal("idempotent enable reset observation")
++	}
++	p.recordHoopaProbe(url, "200", false, 99, completed)
++	p.recordHoopaProbe(url+"/other", status, false, 99, completed)
++	if p.HoopaProbeObservation(url, status) != success || p.HoopaProbeObservation(url, "200").Known || p.HoopaProbeObservation(url+"/other", status).Known {
++		t.Fatal("URL/status isolation violated")
++	}
++	p.recordHoopaProbe(url, status, false, 65535, completed)
++	failure := p.HoopaProbeObservation(url, status)
++	if !failure.Known || failure.Success || failure.DelayMS != 0 || failure == success {
++		t.Fatal("failure conflated with zero-ms success")
++	}
++	for i := 1; i < 64; i++ {
++		if !p.EnableHoopaProbe(fmt.Sprintf("http://probe.invalid/%d", i), status) {
++			t.Fatal("64-entry capacity rejected")
++		}
++	}
++	if p.EnableHoopaProbe("http://probe.invalid/overflow", status) || !p.EnableHoopaProbe(url, status) {
++		t.Fatal("capacity or full-registry idempotence violated")
++	}
++	var missing *Proxy
++	if missing.EnableHoopaProbe(url, status) || missing.HoopaProbeObservation(url, status).Known {
++		t.Fatal("nil receiver not conservative")
++	}
++}
++func TestHoopaProbeAtomicPublication(t *testing.T) {
++	p := NewProxy(outbound.NewDirect())
++	url := "http://probe.invalid/atomic"
++	status := C.HoopaProbeAcceptedStatus
++	p.EnableHoopaProbe(url, status)
++	first := time.Unix(1000, 123).UTC()
++	second := time.Unix(2000, 456).UTC()
++	p.recordHoopaProbe(url, status, true, 17, first)
++	begin := make(chan struct{})
++	var workers sync.WaitGroup
++	for writer := 0; writer < 2; writer++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			<-begin
++			for i := 0; i < 3000; i++ {
++				p.recordHoopaProbe(url, status, true, 17, first)
++				p.recordHoopaProbe(url, status, false, 99, second)
++			}
++		}()
++	}
++	for reader := 0; reader < 4; reader++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			<-begin
++			for i := 0; i < 3000; i++ {
++				o := p.HoopaProbeObservation(url, status)
++				if !o.Known || !(o.Success && o.DelayMS == 17 && o.CompletedAt == first || !o.Success && o.DelayMS == 0 && o.CompletedAt == second) {
++					t.Error("torn atomic observation")
++					return
++				}
++				if !p.EnableHoopaProbe(url, status) {
++					t.Error("idempotent concurrent registration failed")
++					return
++				}
++			}
++		}()
++	}
++	close(begin)
++	workers.Wait()
++}
++func TestHoopaURLTestRealHEADPublication(t *testing.T) {
++	old := UnifiedDelay.Load()
++	UnifiedDelay.Store(false)
++	defer UnifiedDelay.Store(old)
++	methods := make(chan string, 16)
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		methods <- r.Method
++		switch r.URL.Path {
++		case "/accepted":
++			w.WriteHeader(299)
++		case "/rejected":
++			w.WriteHeader(503)
++		default:
++			w.WriteHeader(204)
++		}
++	}))
++	defer server.Close()
++	expected, err := utils.NewUnsignedRanges[uint16](C.HoopaProbeAcceptedStatus)
++	if err != nil {
++		t.Fatal(err)
++	}
++	p := NewProxy(outbound.NewDirect())
++	if _, err := p.URLTest(context.Background(), server.URL+"/unregistered", expected); err != nil {
++		t.Fatal("local HEAD failed", err)
++	}
++	if p.HoopaProbeObservation(server.URL+"/unregistered", C.HoopaProbeAcceptedStatus).Known {
++		t.Fatal("real but unregistered HEAD recorded")
++	}
++	for _, path := range []string{"/ok", "/accepted", "/rejected"} {
++		url := server.URL + path
++		if !p.EnableHoopaProbe(url, C.HoopaProbeAcceptedStatus) {
++			t.Fatal("registration failed")
++		}
++		started := time.Now()
++		delay, err := p.URLTest(context.Background(), url, expected)
++		if err != nil {
++			t.Fatal("local status response unexpectedly returned transport error", err)
++		}
++		o := p.HoopaProbeObservation(url, C.HoopaProbeAcceptedStatus)
++		if !o.Known || o.CompletedAt.Before(started.Round(0)) || o.CompletedAt.After(time.Now()) || o.Success != (path != "/rejected") {
++			t.Fatal("actual HEAD completion publication mismatch")
++		}
++		if o.Success && o.DelayMS != delay || !o.Success && o.DelayMS != 0 {
++			t.Fatal("actual delay/status mismatch")
++		}
++		if p.HoopaProbeObservation(url, "200").Known {
++			t.Fatal("actual observation crossed status policy")
++		}
++	}
++	for i := 0; i < 4; i++ {
++		if <-methods != http.MethodHead {
++			t.Fatal("URLTest did not issue HEAD")
++		}
++	}
++}
++func TestHoopaURLTestTimeoutAndCancellation(t *testing.T) {
++	for _, timeout := range []bool{false, true} {
++		name := "cancel"
++		if timeout {
++			name = "timeout"
++		}
++		t.Run(name, func(t *testing.T) {
++			entered := make(chan struct{})
++			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(entered); <-r.Context().Done() }))
++			defer server.Close()
++			p := NewProxy(outbound.NewDirect())
++			p.EnableHoopaProbe(server.URL, C.HoopaProbeAcceptedStatus)
++			expected, _ := utils.NewUnsignedRanges[uint16](C.HoopaProbeAcceptedStatus)
++			var ctx context.Context
++			var cancel context.CancelFunc
++			if timeout {
++				ctx, cancel = context.WithTimeout(context.Background(), time.Second)
++			} else {
++				ctx, cancel = context.WithCancel(context.Background())
++			}
++			defer cancel()
++			result := make(chan error, 1)
++			go func() { _, err := p.URLTest(ctx, server.URL, expected); result <- err }()
++			select {
++			case <-entered:
++			case <-time.After(5 * time.Second):
++				t.Fatal("local request never started")
++			}
++			if !timeout {
++				cancel()
++			}
++			select {
++			case err := <-result:
++				if err == nil {
++					t.Fatal("interrupted URLTest succeeded")
++				}
++			case <-time.After(5 * time.Second):
++				t.Fatal("URLTest failed to join after cancellation")
++			}
++			o := p.HoopaProbeObservation(server.URL, C.HoopaProbeAcceptedStatus)
++			if !o.Known || o.Success || o.DelayMS != 0 || o.CompletedAt.IsZero() {
++				t.Fatal("interrupted actual probe not recorded as failure")
++			}
++		})
++	}
++}
+diff --git a/adapter/outboundgroup/hoopa_probe.go b/adapter/outboundgroup/hoopa_probe.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/outboundgroup/hoopa_probe.go
+@@ -0,0 +1,145 @@
++package outboundgroup
++
++import (
++	"errors"
++	"strings"
++	"sync"
++	"time"
++
++	C "github.com/metacubex/mihomo/constant"
++)
++
++var errHoopaProbePolicy = errors.New("protected probe policy invalid")
++
++type hoopaURLTestState struct {
++	mu       sync.Mutex
++	policy   *C.HoopaProbePolicy
++	reject   C.Proxy
++	members  []C.Proxy
++	previous string
++}
++
++// ConfigureHoopaProbe verifies actual immutable native health-check settings,
++// then enables qualified selection once. It performs no probe or other IO.
++func (u *URLTest) ConfigureHoopaProbe(policy C.HoopaProbePolicy, reject C.Proxy) error {
++	if policy.URL == "" || len(policy.URL) > 4096 || policy.IntervalSeconds < 1 || policy.IntervalSeconds > 86400 || policy.TimeoutMS < 1 || policy.TimeoutMS > 60000 || policy.ToleranceMS > 65534 || reject == nil || reject.Name() != "REJECT" || reject.Type() != C.Reject {
++		return errHoopaProbePolicy
++	}
++	u.hoopa.mu.Lock()
++	defer u.hoopa.mu.Unlock()
++	if u.hoopa.policy != nil {
++		if *u.hoopa.policy == policy {
++			return nil
++		}
++		return errHoopaProbePolicy
++	}
++	if u.testUrl != policy.URL || u.expectedStatus != C.HoopaProbeAcceptedStatus || uint64(u.tolerance) != policy.ToleranceMS || u.testTimeout < 0 || uint64(u.testTimeout) != policy.TimeoutMS || len(u.providers) != 1 {
++		return errHoopaProbePolicy
++	}
++	pd, ok := u.providers[0].(interface {
++		HoopaHealthCheckPolicy() C.HoopaHealthCheckPolicy
++	})
++	if !ok {
++		return errHoopaProbePolicy
++	}
++	h := pd.HoopaHealthCheckPolicy()
++	if h.URL != policy.URL || h.ExpectedStatus != C.HoopaProbeAcceptedStatus || h.IntervalSeconds != policy.IntervalSeconds || h.TimeoutMS != policy.TimeoutMS || h.Lazy {
++		return errHoopaProbePolicy
++	}
++	proxies := u.GetProxies(false)
++	if len(proxies) < 1 || len(proxies) > 64 {
++		return errHoopaProbePolicy
++	}
++	seen := map[string]bool{}
++	for _, p := range proxies {
++		if p == nil || !strings.HasPrefix(p.Name(), "node:") || seen[p.Name()] || p.ProxyInfo().DialerProxy != "" {
++			return errHoopaProbePolicy
++		}
++		seen[p.Name()] = true
++		switch p.Type() {
++		case C.Http, C.Socks5, C.Shadowsocks, C.Trojan, C.Vmess, C.Vless, C.Hysteria2:
++		default:
++			return errHoopaProbePolicy
++		}
++		observer, ok := p.(C.HoopaProbeSource)
++		if !ok || !observer.EnableHoopaProbe(policy.URL, C.HoopaProbeAcceptedStatus) {
++			return errHoopaProbePolicy
++		}
++	}
++	copy := policy
++	u.hoopa.policy = &copy
++	u.hoopa.reject = reject
++	// Retain the exact verified leaf objects. Even unexpected provider drift
++	// cannot introduce another route into a protected connection decision.
++	u.hoopa.members = append([]C.Proxy(nil), proxies...)
++	return nil
++}
++
++// HoopaProbePolicy reports only declared settings, never a dynamic best node.
++func (u *URLTest) HoopaProbePolicy() (C.HoopaProbePolicy, bool) {
++	u.hoopa.mu.Lock()
++	defer u.hoopa.mu.Unlock()
++	if u.hoopa.policy == nil {
++		return C.HoopaProbePolicy{}, false
++	}
++	return *u.hoopa.policy, true
++}
++
++func (u *URLTest) hoopaFast(touch bool) (C.Proxy, bool) {
++	u.hoopa.mu.Lock()
++	defer u.hoopa.mu.Unlock()
++	if u.hoopa.policy == nil {
++		return nil, false
++	}
++	policy := *u.hoopa.policy
++	if touch {
++		u.Touch()
++	}
++	proxies := u.hoopa.members
++	now := time.Now().Round(0).UTC()
++	maxAge := time.Duration(2*policy.IntervalSeconds)*time.Second + time.Duration(policy.TimeoutMS)*time.Millisecond
++	var best, previous C.Proxy
++	var bestDelay, previousDelay uint32
++	for _, p := range proxies {
++		observer, ok := p.(C.HoopaProbeSource)
++		if !ok {
++			continue
++		}
++		observation := observer.HoopaProbeObservation(policy.URL, C.HoopaProbeAcceptedStatus)
++		if !qualifiedHoopaProbe(observation, now, maxAge) {
++			continue
++		}
++		delay := uint32(observation.DelayMS)
++		if best == nil || delay < bestDelay {
++			best, bestDelay = p, delay
++		}
++		if p.Name() == u.hoopa.previous {
++			previous, previousDelay = p, delay
++		}
++	}
++	if best == nil {
++		u.hoopa.previous = ""
++		return u.hoopa.reject, true
++	}
++	if previous != nil && previousDelay <= bestDelay+uint32(policy.ToleranceMS) {
++		best = previous
++	}
++	// A probe can complete during the scan. Require a still-qualified atomic
++	// observation at the final chosen-node decision; a concurrent failure causes
++	// conservative rejection, never a first-node or cross-source substitute.
++	observation := best.(C.HoopaProbeSource).HoopaProbeObservation(policy.URL, C.HoopaProbeAcceptedStatus)
++	if !qualifiedHoopaProbe(observation, time.Now().Round(0).UTC(), maxAge) {
++		u.hoopa.previous = ""
++		return u.hoopa.reject, true
++	}
++	u.hoopa.previous = best.Name()
++	return best, true
++}
++
++func qualifiedHoopaProbe(o C.HoopaProbeObservation, now time.Time, maxAge time.Duration) bool {
++	if !o.Known || !o.Success || o.CompletedAt.IsZero() {
++		return false
++	}
++	age := now.Sub(o.CompletedAt)
++	return age >= 0 && age <= maxAge
++}
+diff --git a/adapter/outboundgroup/hoopa_probe_test.go b/adapter/outboundgroup/hoopa_probe_test.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/outboundgroup/hoopa_probe_test.go
+@@ -0,0 +1,362 @@
++package outboundgroup
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"io"
++	"math"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter"
++	"github.com/metacubex/mihomo/adapter/outbound"
++	C "github.com/metacubex/mihomo/constant"
++	P "github.com/metacubex/mihomo/constant/provider"
++)
++
++type hoopaTestLeaf struct {
++	C.Proxy
++	name        string
++	kind        C.AdapterType
++	dialer      string
++	mu          sync.Mutex
++	observation C.HoopaProbeObservation
++	sequence    []C.HoopaProbeObservation
++	enabled     bool
++	refuse      bool
++}
++
++func (p *hoopaTestLeaf) Name() string                      { return p.name }
++func (p *hoopaTestLeaf) Type() C.AdapterType               { return p.kind }
++func (p *hoopaTestLeaf) ProxyInfo() C.ProxyInfo            { return C.ProxyInfo{DialerProxy: p.dialer} }
++func (p *hoopaTestLeaf) AliveForTestUrl(string) bool       { return true }
++func (p *hoopaTestLeaf) LastDelayForTestUrl(string) uint16 { return 1 }
++func (p *hoopaTestLeaf) EnableHoopaProbe(url, status string) bool {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	if p.refuse {
++		return false
++	}
++	p.enabled = url != "" && status == C.HoopaProbeAcceptedStatus
++	return p.enabled
++}
++func (p *hoopaTestLeaf) HoopaProbeObservation(url, status string) C.HoopaProbeObservation {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	if !p.enabled || url != "https://probe.invalid/check" || status != C.HoopaProbeAcceptedStatus {
++		return C.HoopaProbeObservation{}
++	}
++	if len(p.sequence) > 0 {
++		o := p.sequence[0]
++		p.sequence = p.sequence[1:]
++		return o
++	}
++	return p.observation
++}
++func (p *hoopaTestLeaf) publish(o C.HoopaProbeObservation) {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	p.observation = o
++}
++func hoopaLeaf(name string) *hoopaTestLeaf { return &hoopaTestLeaf{name: name, kind: C.Http} }
++func hoopaSuccess(delay uint16) C.HoopaProbeObservation {
++	return C.HoopaProbeObservation{Known: true, Success: true, CompletedAt: time.Now().Round(0).UTC(), DelayMS: delay}
++}
++
++type hoopaTestProvider struct {
++	P.ProxyProvider
++	mu      sync.RWMutex
++	nodes   []C.Proxy
++	version uint32
++	health  C.HoopaHealthCheckPolicy
++	touches int
++}
++
++func (p *hoopaTestProvider) Version() uint32 { p.mu.RLock(); defer p.mu.RUnlock(); return p.version }
++func (p *hoopaTestProvider) Proxies() []C.Proxy {
++	p.mu.RLock()
++	defer p.mu.RUnlock()
++	return append([]C.Proxy{}, p.nodes...)
++}
++func (p *hoopaTestProvider) Touch() { p.mu.Lock(); defer p.mu.Unlock(); p.touches++ }
++func (p *hoopaTestProvider) HoopaHealthCheckPolicy() C.HoopaHealthCheckPolicy {
++	p.mu.RLock()
++	defer p.mu.RUnlock()
++	return p.health
++}
++func (p *hoopaTestProvider) replace(nodes []C.Proxy) {
++	p.mu.Lock()
++	defer p.mu.Unlock()
++	p.nodes = append([]C.Proxy{}, nodes...)
++	p.version++
++}
++
++type hoopaNoHealthProvider struct{ P.ProxyProvider }
++type hoopaBareLeaf struct{ C.Proxy }
++
++func (p hoopaBareLeaf) Name() string           { return "node:bare" }
++func (p hoopaBareLeaf) Type() C.AdapterType    { return C.Http }
++func (p hoopaBareLeaf) ProxyInfo() C.ProxyInfo { return C.ProxyInfo{} }
++
++func hoopaFixture(t *testing.T, nodes ...C.Proxy) (*URLTest, *hoopaTestProvider, C.Proxy, C.HoopaProbePolicy) {
++	t.Helper()
++	policy := C.HoopaProbePolicy{URL: "https://probe.invalid/check", IntervalSeconds: 60, TimeoutMS: 1000, ToleranceMS: 0}
++	pd := &hoopaTestProvider{nodes: nodes, version: 1, health: C.HoopaHealthCheckPolicy{URL: policy.URL, ExpectedStatus: C.HoopaProbeAcceptedStatus, IntervalSeconds: policy.IntervalSeconds, TimeoutMS: policy.TimeoutMS}}
++	u := NewURLTest(&GroupCommonOption{Name: "group:auto", URL: policy.URL, ExpectedStatus: C.HoopaProbeAcceptedStatus, TestTimeout: int(policy.TimeoutMS)}, []P.ProxyProvider{pd})
++	reject := adapter.NewProxy(outbound.NewReject())
++	return u, pd, reject, policy
++}
++func hoopaConfigure(t *testing.T, nodes ...C.Proxy) (*URLTest, *hoopaTestProvider, C.Proxy) {
++	t.Helper()
++	u, pd, reject, policy := hoopaFixture(t, nodes...)
++	if err := u.ConfigureHoopaProbe(policy, reject); err != nil {
++		t.Fatal("valid protected policy failed", err)
++	}
++	return u, pd, reject
++}
++func hoopaWantReject(t *testing.T, u *URLTest, reject C.Proxy) {
++	t.Helper()
++	if selected := u.Unwrap(nil, false); selected != reject || selected.Type() != C.Reject {
++		t.Fatal("unqualified selection did not use exact builtin REJECT")
++	}
++	conn, err := reject.DialContext(context.Background(), &C.Metadata{Host: "never-resolved.invalid", DstPort: 443})
++	if err != nil || conn == nil {
++		t.Fatal("builtin REJECT connection unavailable")
++	}
++	defer conn.Close()
++	// Native REJECT returns a nop connection; rejection is EOF on actual IO,
++	// rather than a DialContext error.
++	if n, err := conn.Write([]byte("must-not-forward")); n != 0 || !errors.Is(err, io.EOF) {
++		t.Fatal("builtin REJECT allowed application write")
++	}
++	if n, err := conn.Read(make([]byte, 1)); n != 0 || !errors.Is(err, io.EOF) {
++		t.Fatal("builtin REJECT allowed application read")
++	}
++}
++
++func TestHoopaUnknownFailedStaleAndFutureReject(t *testing.T) {
++	for name, observation := range map[string]C.HoopaProbeObservation{"unknown": {}, "failed": {Known: true, Success: false, CompletedAt: time.Now(), DelayMS: 0}, "stale": {Known: true, Success: true, CompletedAt: time.Now().Add(-time.Hour), DelayMS: 1}, "future": {Known: true, Success: true, CompletedAt: time.Now().Add(time.Hour), DelayMS: 1}, "missing-time": {Known: true, Success: true, DelayMS: 1}} {
++		t.Run(name, func(t *testing.T) {
++			a, b := hoopaLeaf("node:a"), hoopaLeaf("node:b")
++			a.publish(observation)
++			b.publish(observation)
++			u, _, reject := hoopaConfigure(t, a, b)
++			hoopaWantReject(t, u, reject)
++		})
++	}
++	fixed := time.Unix(10000, 0).UTC()
++	age := 121 * time.Second
++	for _, tc := range []struct {
++		at   time.Time
++		want bool
++	}{{fixed, true}, {fixed.Add(-age), true}, {fixed.Add(-age - time.Nanosecond), false}, {fixed.Add(time.Nanosecond), false}} {
++		o := C.HoopaProbeObservation{Known: true, Success: true, CompletedAt: tc.at, DelayMS: 0}
++		if qualifiedHoopaProbe(o, fixed, age) != tc.want {
++			t.Fatal("freshness wall boundary mismatch")
++		}
++	}
++}
++func TestHoopaMinimumZeroToleranceAndSwitching(t *testing.T) {
++	a, b := hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	u, _, reject := hoopaConfigure(t, a, b)
++	a.publish(hoopaSuccess(40))
++	b.publish(hoopaSuccess(10))
++	if u.Now() != "node:b" {
++		t.Fatal("minimum valid delay not selected")
++	}
++	a.publish(hoopaSuccess(0))
++	if u.Now() != "node:a" {
++		t.Fatal("zero-ms success not selected")
++	}
++	a.publish(C.HoopaProbeObservation{Known: true, CompletedAt: time.Now()})
++	if u.Now() != "node:b" {
++		t.Fatal("failed prior candidate did not switch")
++	}
++	b.publish(C.HoopaProbeObservation{Known: true, CompletedAt: time.Now()})
++	hoopaWantReject(t, u, reject)
++	// Widened arithmetic: 65530+10 must not wrap to4 and discard the prior.
++	a, b = hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	u, _, reject, policy := hoopaFixture(t, a, b)
++	policy.ToleranceMS = 10
++	u.tolerance = 10
++	if err := u.ConfigureHoopaProbe(policy, reject); err != nil {
++		t.Fatal(err)
++	}
++	a.publish(hoopaSuccess(math.MaxUint16))
++	if u.Now() != "node:a" {
++		t.Fatal("initial successful prior not selected")
++	}
++	b.publish(hoopaSuccess(65530))
++	if u.Now() != "node:a" {
++		t.Fatal("tolerance uint16 overflow changed valid previous selection")
++	}
++	a.publish(hoopaSuccess(65535))
++	b.publish(hoopaSuccess(65520))
++	if u.Now() != "node:b" {
++		t.Fatal("candidate outside tolerance did not switch")
++	}
++}
++func TestHoopaFrozenMembersAndFinalReread(t *testing.T) {
++	a, b := hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	u, pd, reject := hoopaConfigure(t, a, b)
++	// A different object with the same opaque name cannot acquire authority via
++	// later provider publication; only the originally verified leaf can qualify.
++	replacement := hoopaLeaf("node:a")
++	replacement.enabled = true
++	replacement.publish(hoopaSuccess(0))
++	pd.replace([]C.Proxy{replacement})
++	hoopaWantReject(t, u, reject)
++	a.publish(hoopaSuccess(5))
++	if u.Unwrap(nil, false) != a {
++		t.Fatal("provider drift replaced frozen exact leaf")
++	}
++	pd.replace(nil)
++	if u.Unwrap(nil, false) != a {
++		t.Fatal("empty provider introduced native fallback")
++	}
++	a, b = hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	a.sequence = []C.HoopaProbeObservation{hoopaSuccess(0), {Known: true, Success: false, CompletedAt: time.Now()}}
++	b.publish(hoopaSuccess(20))
++	u, _, reject = hoopaConfigure(t, a, b)
++	hoopaWantReject(t, u, reject)
++}
++func TestHoopaConfigureActualPolicyAndOverrides(t *testing.T) {
++	for name, mutate := range map[string]func(*URLTest, *hoopaTestProvider, *C.HoopaProbePolicy){
++		"native-url": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { u.testUrl = "https://other.invalid/" }, "native-status": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { u.expectedStatus = "*" }, "native-timeout": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { u.testTimeout++ }, "native-tolerance": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { u.tolerance++ },
++		"provider-url": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { p.health.URL = "https://other.invalid/" }, "provider-status": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { p.health.ExpectedStatus = "*" }, "provider-interval": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { p.health.IntervalSeconds++ }, "provider-timeout": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { p.health.TimeoutMS++ }, "provider-lazy": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { p.health.Lazy = true },
++		"zero-interval": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { w.IntervalSeconds = 0 }, "large-interval": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { w.IntervalSeconds = 86401 }, "zero-timeout": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { w.TimeoutMS = 0 }, "large-timeout": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { w.TimeoutMS = 60001 }, "large-tolerance": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { w.ToleranceMS = 65535 },
++		"extra-provider": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) { u.providers = append(u.providers, p) }, "missing-health-accessor": func(u *URLTest, p *hoopaTestProvider, w *C.HoopaProbePolicy) {
++			u.providers = []P.ProxyProvider{hoopaNoHealthProvider{p}}
++		},
++	} {
++		t.Run(name, func(t *testing.T) {
++			u, pd, reject, want := hoopaFixture(t, hoopaLeaf("node:a"))
++			mutate(u, pd, &want)
++			if u.ConfigureHoopaProbe(want, reject) == nil {
++				t.Fatal("native/policy drift accepted")
++			}
++			if _, ok := u.HoopaProbePolicy(); ok {
++				t.Fatal("invalid configuration published protected policy")
++			}
++		})
++	}
++	for name, leaf := range map[string]C.Proxy{"nil": nil, "direct": &hoopaTestLeaf{name: "node:a", kind: C.Direct}, "group": &hoopaTestLeaf{name: "node:a", kind: C.Selector}, "unscoped": hoopaLeaf("ordinary"), "dialer": &hoopaTestLeaf{name: "node:a", kind: C.Http, dialer: "other"}, "observer-refuses": &hoopaTestLeaf{name: "node:a", kind: C.Http, refuse: true}, "no-observer": hoopaBareLeaf{}} {
++		t.Run(name, func(t *testing.T) {
++			u, _, reject, want := hoopaFixture(t, leaf)
++			if u.ConfigureHoopaProbe(want, reject) == nil {
++				t.Fatal("inappropriate leaf accepted")
++			}
++		})
++	}
++	duplicate := hoopaLeaf("node:a")
++	u, _, reject, want := hoopaFixture(t, duplicate, hoopaLeaf("node:a"))
++	if u.ConfigureHoopaProbe(want, reject) == nil {
++		t.Fatal("duplicate leaf accepted")
++	}
++	leaves := make([]C.Proxy, 65)
++	for i := range leaves {
++		leaves[i] = hoopaLeaf(fmt.Sprintf("node:%d", i))
++	}
++	u, _, reject, want = hoopaFixture(t, leaves...)
++	if u.ConfigureHoopaProbe(want, reject) == nil {
++		t.Fatal("65 leaves accepted")
++	}
++	u, _, reject, want = hoopaFixture(t, leaves[:64]...)
++	if err := u.ConfigureHoopaProbe(want, reject); err != nil {
++		t.Fatal("64-member boundary rejected", err)
++	}
++	hoopaWantReject(t, u, reject)
++
++	a := hoopaLeaf("node:a")
++	u, _, reject, want = hoopaFixture(t, a)
++	if err := u.ConfigureHoopaProbe(want, reject); err != nil {
++		t.Fatal(err)
++	}
++	a.publish(hoopaSuccess(0))
++	if u.ConfigureHoopaProbe(want, reject) != nil || u.Now() != "node:a" {
++		t.Fatal("idempotent policy reset qualification")
++	}
++	copy, ok := u.HoopaProbePolicy()
++	if !ok || copy != want {
++		t.Fatal("declared policy missing")
++	}
++	copy.URL = "changed"
++	if actual, _ := u.HoopaProbePolicy(); actual != want {
++		t.Fatal("policy getter aliases input")
++	}
++	changed := want
++	changed.TimeoutMS++
++	if u.ConfigureHoopaProbe(changed, reject) == nil {
++		t.Fatal("conflicting protected policy replaced original")
++	}
++	if u.Set("node:a") == nil {
++		t.Fatal("Set overrode protected policy")
++	}
++	u.ForceSet("other")
++	if u.selected != "" || u.Now() != "node:a" {
++		t.Fatal("ForceSet overrode protected policy")
++	}
++}
++func TestHoopaUnconfiguredNativeAndConcurrentSelection(t *testing.T) {
++	a, b := hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	native, _, _, _ := hoopaFixture(t, a, b)
++	if _, protected := native.hoopaFast(false); protected {
++		t.Fatal("unconfigured native group enabled protection")
++	}
++	if native.Now() != "node:a" {
++		t.Fatal("unconfigured native initial choice changed")
++	}
++	if err := native.Set("node:b"); err != nil || native.Now() != "node:b" {
++		t.Fatal("unconfigured native Set behavior changed", err)
++	}
++	a, b = hoopaLeaf("node:a"), hoopaLeaf("node:b")
++	u, _, reject := hoopaConfigure(t, a, b)
++	start := make(chan struct{})
++	var wg sync.WaitGroup
++	wg.Add(1)
++	go func() {
++		defer wg.Done()
++		<-start
++		for i := 0; i < 2000; i++ {
++			a.publish(hoopaSuccess(0))
++			b.publish(hoopaSuccess(1))
++			a.publish(C.HoopaProbeObservation{Known: true, CompletedAt: time.Now()})
++			b.publish(C.HoopaProbeObservation{Known: true, CompletedAt: time.Now()})
++		}
++	}()
++	for i := 0; i < 4; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			<-start
++			for j := 0; j < 2000; j++ {
++				selected := u.Unwrap(nil, false)
++				if selected != a && selected != b && selected != reject {
++					t.Error("concurrent selection escaped exact candidates/reject")
++					return
++				}
++			}
++		}()
++	}
++	close(start)
++	wg.Wait()
++}
++
++func TestHoopaConfigureAllRemoteKindsAndRejectIdentity(t *testing.T) {
++	for _, kind := range []C.AdapterType{C.Http, C.Socks5, C.Shadowsocks, C.Trojan, C.Vmess, C.Vless, C.Hysteria2} {
++		leaf := hoopaLeaf("node:remote")
++		leaf.kind = kind
++		u, _, reject, want := hoopaFixture(t, leaf)
++		if err := u.ConfigureHoopaProbe(want, reject); err != nil {
++			t.Fatal("allowed remote leaf kind rejected", err)
++		}
++	}
++	for _, reject := range []C.Proxy{nil, &hoopaTestLeaf{name: "not-reject", kind: C.Reject}, &hoopaTestLeaf{name: "REJECT", kind: C.Direct}} {
++		u, _, _, want := hoopaFixture(t, hoopaLeaf("node:a"))
++		if u.ConfigureHoopaProbe(want, reject) == nil {
++			t.Fatal("inappropriate reject identity accepted")
++		}
++	}
++}
+diff --git a/adapter/outboundgroup/urltest.go b/adapter/outboundgroup/urltest.go
+--- a/adapter/outboundgroup/urltest.go
++++ b/adapter/outboundgroup/urltest.go
+@@ -31,6 +31,7 @@
+ 	disableUDP     bool
+ 	fastNode       C.Proxy
+ 	fastSingle     *singledo.Single[C.Proxy]
++	hoopa          hoopaURLTestState
+ }
+ 
+ func (u *URLTest) Now() string {
+@@ -38,6 +39,9 @@
+ }
+ 
+ func (u *URLTest) Set(name string) error {
++	if _, protected := u.HoopaProbePolicy(); protected {
++		return errHoopaProbePolicy
++	}
+ 	var p C.Proxy
+ 	for _, proxy := range u.GetProxies(false) {
+ 		if proxy.Name() == name {
+@@ -53,6 +57,9 @@
+ }
+ 
+ func (u *URLTest) ForceSet(name string) {
++	if _, protected := u.HoopaProbePolicy(); protected {
++		return
++	}
+ 	u.selected = name
+ 	u.fastSingle.Reset()
+ }
+@@ -105,6 +112,9 @@
+ }
+ 
+ func (u *URLTest) fast(touch bool) C.Proxy {
++	if proxy, protected := u.hoopaFast(touch); protected {
++		return proxy
++	}
+ 	elm, _, shared := u.fastSingle.Do(func() (C.Proxy, error) {
+ 		proxies := u.GetProxies(touch)
+ 		if u.selected != "" {
+diff --git a/adapter/provider/hoopa_probe.go b/adapter/provider/hoopa_probe.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/provider/hoopa_probe.go
+@@ -0,0 +1,19 @@
++package provider
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"time"
++)
++
++// Configuration fields are immutable after NewHealthCheck. This accessor does
++// not touch a provider, trigger a probe, or read mutable results.
++func (bp *baseProvider) HoopaHealthCheckPolicy() C.HoopaHealthCheckPolicy {
++	if bp == nil || bp.healthCheck == nil {
++		return C.HoopaHealthCheckPolicy{}
++	}
++	h := bp.healthCheck
++	if h.interval <= 0 || h.timeout <= 0 || h.interval%time.Second != 0 || h.timeout%time.Millisecond != 0 {
++		return C.HoopaHealthCheckPolicy{}
++	}
++	return C.HoopaHealthCheckPolicy{URL: h.url, ExpectedStatus: h.expectedStatus.String(), IntervalSeconds: uint64(h.interval / time.Second), TimeoutMS: uint64(h.timeout / time.Millisecond), Lazy: h.lazy}
++}
+diff --git a/adapter/provider/hoopa_probe_test.go b/adapter/provider/hoopa_probe_test.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/provider/hoopa_probe_test.go
+@@ -0,0 +1,49 @@
++package provider
++
++import (
++	"reflect"
++	"testing"
++	"time"
++
++	"github.com/metacubex/mihomo/common/utils"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++func TestHoopaActualHealthCheckPolicy(t *testing.T) {
++	expected, _ := utils.NewUnsignedRanges[uint16](C.HoopaProbeAcceptedStatus)
++	hc := NewHealthCheck(nil, "https://probe.invalid/check", 1234, 321, true, expected)
++	defer hc.close()
++	base := baseProvider{healthCheck: hc}
++	want := C.HoopaHealthCheckPolicy{URL: "https://probe.invalid/check", ExpectedStatus: C.HoopaProbeAcceptedStatus, IntervalSeconds: 321, TimeoutMS: 1234, Lazy: true}
++	if got := base.HoopaHealthCheckPolicy(); got != want {
++		t.Fatalf("actual immutable health check not projected: %#v", got)
++	}
++	got := base.HoopaHealthCheckPolicy()
++	got.URL = "changed"
++	if base.HoopaHealthCheckPolicy() != want {
++		t.Fatal("getter aliases mutable config")
++	}
++	if !reflect.DeepEqual(hc.lastTouch.Load(), time.Time{}) {
++		t.Fatal("getter touched health check")
++	}
++	var missing *baseProvider
++	if missing.HoopaHealthCheckPolicy() != (C.HoopaHealthCheckPolicy{}) || (&baseProvider{}).HoopaHealthCheckPolicy() != (C.HoopaHealthCheckPolicy{}) {
++		t.Fatal("missing healthcheck policy not empty")
++	}
++	for _, mutate := range []func(*HealthCheck){func(h *HealthCheck) { h.interval = 0 }, func(h *HealthCheck) { h.interval = -time.Second }, func(h *HealthCheck) { h.interval = time.Second + time.Nanosecond }, func(h *HealthCheck) { h.timeout = 0 }, func(h *HealthCheck) { h.timeout = -time.Millisecond }, func(h *HealthCheck) { h.timeout = time.Millisecond + time.Nanosecond }} {
++		h := NewHealthCheck(nil, "https://probe.invalid/", 1000, 60, false, expected)
++		mutate(h)
++		b := baseProvider{healthCheck: h}
++		if b.HoopaHealthCheckPolicy() != (C.HoopaHealthCheckPolicy{}) {
++			t.Fatal("unrepresentable native setting projected")
++		}
++		h.close()
++	}
++	// Native constructor defaults remain actual values, rather than desired input.
++	defaults := NewHealthCheck(nil, "https://probe.invalid/", 0, 60, false, expected)
++	defer defaults.close()
++	b := baseProvider{healthCheck: defaults}
++	if b.HoopaHealthCheckPolicy().TimeoutMS != 5000 {
++		t.Fatal("native timeout default not observed")
++	}
++}
+diff --git a/component/sourcecontrol/decode.go b/component/sourcecontrol/decode.go
+new file mode 100644
+--- /dev/null
++++ b/component/sourcecontrol/decode.go
+@@ -0,0 +1,220 @@
++package sourcecontrol
++
++import (
++	"bytes"
++	"encoding/json"
++	"io"
++	"reflect"
++	"strconv"
++	"strings"
++	"unicode/utf8"
++)
++
++// validUnicode rejects encoding/json's replacement of malformed UTF-8 or lone
++// UTF-16 surrogate escapes. Valid escaped keys are allowed; duplicate detection
++// below compares decoded key values, including equivalent escape spellings.
++func validUnicode(raw []byte) bool {
++	if !utf8.Valid(raw) {
++		return false
++	}
++	hex4 := func(value []byte) (uint16, bool) {
++		if len(value) < 4 {
++			return 0, false
++		}
++		var result uint16
++		for _, c := range value[:4] {
++			result <<= 4
++			switch {
++			case c >= '0' && c <= '9':
++				result |= uint16(c - '0')
++			case c >= 'a' && c <= 'f':
++				result |= uint16(c - 'a' + 10)
++			case c >= 'A' && c <= 'F':
++				result |= uint16(c - 'A' + 10)
++			default:
++				return 0, false
++			}
++		}
++		return result, true
++	}
++	for i := 0; i < len(raw); i++ {
++		if raw[i] != '"' {
++			continue
++		}
++		i++
++		for ; i < len(raw) && raw[i] != '"'; i++ {
++			if raw[i] != '\\' {
++				continue
++			}
++			i++
++			if i >= len(raw) {
++				return false
++			}
++			if raw[i] != 'u' {
++				continue
++			}
++			code, ok := hex4(raw[i+1:])
++			if !ok {
++				return false
++			}
++			i += 4
++			if code >= 0xdc00 && code <= 0xdfff {
++				return false
++			}
++			if code >= 0xd800 && code <= 0xdbff {
++				if i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
++					return false
++				}
++				low, ok := hex4(raw[i+3:])
++				if !ok || low < 0xdc00 || low > 0xdfff {
++					return false
++				}
++				i += 6
++			}
++		}
++		if i >= len(raw) {
++			return false
++		}
++	}
++	return true
++}
++
++// wireShape is confined to these wire structs: every field is required except
++// the explicitly omitempty receipt and probe pointers. It never infers requiredness
++// from zero values and rejects ambiguity before encoding/json populates values.
++func wireShape(raw []byte, t reflect.Type) error {
++	raw = bytes.TrimSpace(raw)
++	if bytes.Equal(raw, []byte("null")) {
++		return ErrInvalid
++	}
++	if t.Kind() == reflect.Pointer {
++		t = t.Elem()
++	}
++	switch t.Kind() {
++	case reflect.Int:
++		if string(raw) != "2" {
++			return ErrInvalid
++		}
++		return nil
++	case reflect.Uint64:
++		// Probe numbers must be literal canonical unsigned decimal integers, never
++		// floats/exponents/signs. Check safe range before assignment and narrower
++		// profile limits in Probe.Validate after decoding.
++		if len(raw) < 1 || len(raw) > 16 || len(raw) > 1 && raw[0] == '0' {
++			return ErrInvalid
++		}
++		for _, c := range raw {
++			if c < '0' || c > '9' {
++				return ErrInvalid
++			}
++		}
++		value, err := strconv.ParseUint(string(raw), 10, 64)
++		if err != nil || value > 9007199254740991 {
++			return ErrInvalid
++		}
++		return nil
++	case reflect.String:
++		var value string
++		if json.Unmarshal(raw, &value) != nil {
++			return ErrInvalid
++		}
++		return nil
++	case reflect.Struct:
++		fields := map[string]reflect.StructField{}
++		required := map[string]bool{}
++		for i := 0; i < t.NumField(); i++ {
++			field := t.Field(i)
++			tag := strings.Split(field.Tag.Get("json"), ",")
++			fields[tag[0]] = field
++			if len(tag) == 1 {
++				required[tag[0]] = true
++			}
++		}
++		d := json.NewDecoder(bytes.NewReader(raw))
++		token, err := d.Token()
++		if err != nil || token != json.Delim('{') {
++			return ErrInvalid
++		}
++		seen := map[string]bool{}
++		for d.More() {
++			token, err := d.Token()
++			key, ok := token.(string)
++			field, known := fields[key]
++			if err != nil || !ok || !known || seen[key] {
++				return ErrInvalid
++			}
++			seen[key] = true
++			var value json.RawMessage
++			if d.Decode(&value) != nil || wireShape(value, field.Type) != nil {
++				return ErrInvalid
++			}
++		}
++		if token, err = d.Token(); err != nil || token != json.Delim('}') {
++			return ErrInvalid
++		}
++		if _, err = d.Token(); err != io.EOF {
++			return ErrInvalid
++		}
++		for key := range required {
++			if !seen[key] {
++				return ErrInvalid
++			}
++		}
++		return nil
++	case reflect.Slice:
++		d := json.NewDecoder(bytes.NewReader(raw))
++		token, err := d.Token()
++		if err != nil || token != json.Delim('[') {
++			return ErrInvalid
++		}
++		for d.More() {
++			var value json.RawMessage
++			if d.Decode(&value) != nil || wireShape(value, t.Elem()) != nil {
++				return ErrInvalid
++			}
++		}
++		if token, err = d.Token(); err != nil || token != json.Delim(']') {
++			return ErrInvalid
++		}
++		if _, err = d.Token(); err != io.EOF {
++			return ErrInvalid
++		}
++		return nil
++	default:
++		return ErrInvalid
++	}
++}
++func strict(raw []byte, out any) error {
++	if len(raw) == 0 || len(raw) > MaxJSONBytes || !validUnicode(raw) || wireShape(raw, reflect.TypeOf(out).Elem()) != nil || json.Unmarshal(raw, out) != nil {
++		return ErrInvalid
++	}
++	return nil
++}
++func DecodeSnapshot(raw []byte) (Snapshot, error) {
++	var value Snapshot
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Snapshot{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeStatus(raw []byte) (Status, error) {
++	var value Status
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Status{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeMutation(raw []byte) (Mutation, error) {
++	var value Mutation
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Mutation{}, ErrInvalid
++	}
++	return value, nil
++}
++func DecodeResult(raw []byte) (Result, error) {
++	var value Result
++	if strict(raw, &value) != nil || value.Validate() != nil {
++		return Result{}, ErrInvalid
++	}
++	return value, nil
++}
+diff --git a/component/sourcecontrol/types.go b/component/sourcecontrol/types.go
+new file mode 100644
+--- /dev/null
++++ b/component/sourcecontrol/types.go
+@@ -0,0 +1,465 @@
++// Package sourcecontrol defines the candidate basic-sources v2 wire codec only.
++// It grants no core capability and performs no IO, probing or state transitions.
++package sourcecontrol
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"net"
++	"net/netip"
++	"net/url"
++	"strconv"
++	"strings"
++	"unicode"
++	"unicode/utf8"
++)
++
++const SchemaVersion = 2
++const MaxJSONBytes = 64 << 10
++const MaxPayloadBytes = 4096
++const MaxBinaryVersionBytes = 128
++
++// ErrInvalid never incorporates untrusted configuration or request contents.
++var ErrInvalid = errors.New("invalid basic sources control v2 message")
++
++type Snapshot struct {
++	SchemaVersion int     `json:"schema_version"`
++	ConfigSHA256  string  `json:"config_sha256"`
++	Controller    string  `json:"controller"`
++	Entries       []Entry `json:"entries"`
++	Proxies       []Proxy `json:"proxies"`
++	Rules         []Rule  `json:"rules"`
++}
++type Entry struct {
++	Name       string `json:"name"`
++	Type       string `json:"type"`
++	Address    string `json:"address"`
++	AuthSHA256 string `json:"auth_sha256"`
++}
++type Proxy struct {
++	Name        string   `json:"name"`
++	Type        string   `json:"type"`
++	Address     string   `json:"address"`
++	DialerProxy string   `json:"dialer_proxy"`
++	Members     []string `json:"members"`
++	Selected    string   `json:"selected"`
++	Probe       *Probe   `json:"probe,omitempty"`
++}
++
++// Probe is immutable intent. V2 URLTest qualification requires an observed
++// successful probe with HTTP status 200..299; delay/current-best are not wire
++// fields. Runtime enforcement belongs to the separately integrated core.
++type Probe struct {
++	URL             string `json:"url"`
++	IntervalSeconds uint64 `json:"interval_seconds"`
++	TimeoutMS       uint64 `json:"timeout_ms"`
++	ToleranceMS     uint64 `json:"tolerance_ms"`
++}
++type Rule struct {
++	Type    string `json:"type"`
++	Payload string `json:"payload"`
++	Target  string `json:"target"`
++}
++type Status struct {
++	SchemaVersion    int      `json:"schema_version"`
++	RunID            string   `json:"run_id"`
++	ConfigGeneration string   `json:"config_generation"`
++	ConfigSHA256     string   `json:"config_sha256"`
++	BinaryVersion    string   `json:"binary_version"`
++	Mode             string   `json:"mode"`
++	Capabilities     []string `json:"capabilities"`
++	State            string   `json:"state"`
++	SnapshotSHA256   string   `json:"snapshot_sha256"`
++	Activation       *Result  `json:"activation,omitempty"`
++	Drain            *Result  `json:"drain,omitempty"`
++}
++type Mutation struct {
++	SchemaVersion      int    `json:"schema_version"`
++	Operation          string `json:"operation"`
++	OperationID        string `json:"operation_id"`
++	RunID              string `json:"run_id"`
++	ConfigGeneration   string `json:"config_generation"`
++	ConfigSHA256       string `json:"config_sha256"`
++	SnapshotSHA256     string `json:"snapshot_sha256"`
++	RegistrationSHA256 string `json:"registration_sha256"`
++}
++type Result struct {
++	SchemaVersion int    `json:"schema_version"`
++	OperationID   string `json:"operation_id"`
++	RequestSHA256 string `json:"request_sha256"`
++	RunID         string `json:"run_id"`
++	Result        string `json:"result"`
++}
++
++// IDs use [A-Za-z0-9][A-Za-z0-9._:-]{0,127}, measured in ASCII bytes.
++func validID(value string) bool {
++	if len(value) < 1 || len(value) > 128 {
++		return false
++	}
++	for i, c := range []byte(value) {
++		alnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alnum && (i == 0 || c != '.' && c != '_' && c != ':' && c != '-') {
++			return false
++		}
++	}
++	return true
++}
++func declared(value, prefix string) bool {
++	return strings.HasPrefix(value, prefix) && validID(value) && validID(strings.TrimPrefix(value, prefix))
++}
++func digestShape(value string) bool {
++	b, err := hex.DecodeString(value)
++	return err == nil && len(b) == 32 && hex.EncodeToString(b) == value
++}
++func endpoint(value string) bool {
++	address, err := netip.ParseAddrPort(value)
++	return err == nil && address.Port() != 0 && address.Addr() == netip.MustParseAddr("127.0.0.1") && address.String() == value
++}
++
++// All free text is bounded UTF-8 without NUL. IDs, enum strings, addresses and
++// digests have stricter shapes; rule payload is a projection, not reparsed AND.
++func text(value string, min, max int) bool {
++	return len(value) >= min && len(value) <= max && utf8.ValidString(value) && !strings.ContainsRune(value, 0)
++}
++func encodedSize(value any) error {
++	raw, err := json.Marshal(value)
++	if err != nil || len(raw) > MaxJSONBytes {
++		return ErrInvalid
++	}
++	return nil
++}
++func hash(value any) (string, error) {
++	raw, err := json.Marshal(value)
++	if err != nil || len(raw) > MaxJSONBytes {
++		return "", ErrInvalid
++	}
++	sum := sha256.Sum256(raw)
++	return hex.EncodeToString(sum[:]), nil
++}
++
++func (s Snapshot) Validate() error {
++	if s.SchemaVersion != SchemaVersion || !digestShape(s.ConfigSHA256) || !endpoint(s.Controller) || s.Entries == nil || len(s.Entries) < 1 || len(s.Entries) > 4 || s.Proxies == nil || len(s.Proxies) < 6 || len(s.Proxies) > 70 || s.Rules == nil || len(s.Rules) < 1 || len(s.Rules) > 64 {
++		return ErrInvalid
++	}
++	entries := map[string]bool{}
++	addresses := map[string]bool{s.Controller: true}
++	for i, e := range s.Entries {
++		if !validID(e.Name) || i > 0 && s.Entries[i-1].Name >= e.Name || e.Type != "mixed" || !endpoint(e.Address) || addresses[e.Address] || !digestShape(e.AuthSHA256) {
++			return ErrInvalid
++		}
++		entries[e.Name] = true
++		addresses[e.Address] = true
++	}
++	builtins := map[string]string{"DIRECT": "Direct", "REJECT": "Reject", "REJECT-DROP": "RejectDrop", "COMPATIBLE": "Compatible", "PASS": "Pass", "GLOBAL": "Selector"}
++	proxies := map[string]Proxy{}
++	custom := map[string]bool{}
++	for i, p := range s.Proxies {
++		if !validID(p.Name) || i > 0 && s.Proxies[i-1].Name >= p.Name || p.Members == nil {
++			return ErrInvalid
++		}
++		if kind, ok := builtins[p.Name]; ok {
++			if p.Type != kind {
++				return ErrInvalid
++			}
++		} else {
++			if !(declared(p.Name, "node:") && (p.Type == "Direct" || remoteType(p.Type)) || declared(p.Name, "group:") && (p.Type == "Selector" || p.Type == "URLTest")) {
++				return ErrInvalid
++			}
++			custom[p.Name] = true
++		}
++		if p.DialerProxy != "" {
++			return ErrInvalid
++		}
++		if remoteType(p.Type) {
++			if !remoteEndpoint(p.Address) {
++				return ErrInvalid
++			}
++		} else if p.Address != "" {
++			return ErrInvalid
++		}
++		if p.Type != "Selector" && p.Type != "URLTest" && (len(p.Members) != 0 || p.Selected != "" || p.Probe != nil) {
++			return ErrInvalid
++		}
++		if p.Type == "Selector" && p.Probe != nil {
++			return ErrInvalid
++		}
++		if p.Type == "URLTest" && (p.Selected != "" || p.Probe == nil || p.Probe.Validate() != nil) {
++			return ErrInvalid
++		}
++		proxies[p.Name] = p
++	}
++	for name := range builtins {
++		if _, ok := proxies[name]; !ok {
++			return ErrInvalid
++		}
++	}
++	if len(custom) > 64 {
++		return ErrInvalid
++	}
++	edges := map[string][]string{}
++	for _, p := range s.Proxies {
++		if p.Type != "Selector" && p.Type != "URLTest" {
++			continue
++		}
++		limit := 64
++		if p.Type == "Selector" {
++			limit = 1
++			if p.Name == "GLOBAL" {
++				limit = 66
++			}
++		}
++		if len(p.Members) < 1 || len(p.Members) > limit {
++			return ErrInvalid
++		}
++		seen := map[string]bool{}
++		selected := false
++		for _, member := range p.Members {
++			allowed := custom[member]
++			if p.Type == "URLTest" {
++				allowed = custom[member] && declared(member, "node:") && remoteType(proxies[member].Type)
++			} else {
++				allowed = allowed || member == "REJECT" || p.Name == "GLOBAL" && member == "DIRECT"
++			}
++			if !allowed || seen[member] {
++				return ErrInvalid
++			}
++			seen[member] = true
++			selected = selected || member == p.Selected
++			edges[p.Name] = append(edges[p.Name], member)
++		}
++		if p.Type == "Selector" && !selected {
++			return ErrInvalid
++		}
++	}
++
++	// At most 70 bounded nodes; no artificial depth cap beyond cycle rejection.
++	visited := map[string]uint8{}
++	var visit func(string) bool
++	visit = func(name string) bool {
++		if visited[name] == 1 {
++			return false
++		}
++		if visited[name] == 2 {
++			return true
++		}
++		visited[name] = 1
++		for _, next := range edges[name] {
++			if !visit(next) {
++				return false
++			}
++		}
++		visited[name] = 2
++		return true
++	}
++	for name := range proxies {
++		if !visit(name) {
++			return ErrInvalid
++		}
++	}
++	for i, r := range s.Rules {
++		if !(r.Target == "REJECT" || custom[r.Target]) || !text(r.Payload, 0, MaxPayloadBytes) {
++			return ErrInvalid
++		}
++		switch r.Type {
++		case "Match":
++			if r.Payload != "" || i != len(s.Rules)-1 {
++				return ErrInvalid
++			}
++		case "Domain", "DomainSuffix", "IPCIDR", "AND":
++			if r.Payload == "" {
++				return ErrInvalid
++			}
++		case "InName":
++			if !entries[r.Payload] {
++				return ErrInvalid
++			}
++		default:
++			return ErrInvalid
++		}
++	}
++	if s.Rules[len(s.Rules)-1].Type != "Match" {
++		return ErrInvalid
++	}
++	return encodedSize(s)
++}
++func (s Snapshot) Digest() (string, error) {
++	if s.Validate() != nil {
++		return "", ErrInvalid
++	}
++	return hash(s)
++}
++
++func (s Status) Validate() error {
++	if s.SchemaVersion != SchemaVersion || !validID(s.RunID) || !validID(s.ConfigGeneration) || !digestShape(s.ConfigSHA256) || !text(s.BinaryVersion, 1, MaxBinaryVersionBytes) || s.Mode != "basic-sources" || !digestShape(s.SnapshotSHA256) {
++		return ErrInvalid
++	}
++	expected := []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "probe-qualified-groups-v1"}
++	if len(s.Capabilities) != len(expected) {
++		return ErrInvalid
++	}
++	for i, c := range s.Capabilities {
++		if c != expected[i] {
++			return ErrInvalid
++		}
++	}
++	if s.State != "closed" && s.State != "open" && s.State != "draining" && s.State != "degraded" {
++		return ErrInvalid
++	}
++	if s.Activation != nil {
++		if s.Activation.Validate() != nil || s.Activation.RunID != s.RunID || s.Activation.Result != "opened" && s.Activation.Result != "failed" {
++			return ErrInvalid
++		}
++	}
++	if s.Drain != nil {
++		if s.Drain.Validate() != nil || s.Drain.RunID != s.RunID || s.Drain.Result != "draining" && s.Drain.Result != "failed" {
++			return ErrInvalid
++		}
++	}
++	if s.Activation != nil && s.Drain != nil && s.Activation.OperationID == s.Drain.OperationID {
++		return ErrInvalid
++	}
++	// Historical receipts must still describe a reachable single-RunID history.
++	activation, drain := "", ""
++	if s.Activation != nil {
++		activation = s.Activation.Result
++	}
++	if s.Drain != nil {
++		drain = s.Drain.Result
++	}
++	valid := false
++	switch s.State {
++	case "closed":
++		valid = activation == "" && drain == ""
++	case "open":
++		valid = activation == "opened" && drain == ""
++	case "draining":
++		valid = (activation == "" || activation == "opened") && drain == "draining"
++	case "degraded":
++		valid = activation == "failed" && drain == "" || activation == "opened" && (drain == "" || drain == "failed") || activation == "" && drain == "failed"
++	}
++	if !valid {
++		return ErrInvalid
++	}
++	return encodedSize(s)
++}
++func (m Mutation) Validate() error {
++	if m.SchemaVersion != SchemaVersion || m.Operation != "activate" && m.Operation != "drain" || !validID(m.OperationID) || !validID(m.RunID) || !validID(m.ConfigGeneration) || !digestShape(m.ConfigSHA256) || !digestShape(m.SnapshotSHA256) || !digestShape(m.RegistrationSHA256) {
++		return ErrInvalid
++	}
++	return encodedSize(m)
++}
++func (m Mutation) Digest() (string, error) {
++	if m.Validate() != nil {
++		return "", ErrInvalid
++	}
++	return hash(m)
++}
++func (r Result) Validate() error {
++	if r.SchemaVersion != SchemaVersion || !validID(r.OperationID) || !validID(r.RunID) || !digestShape(r.RequestSHA256) || r.Result != "opened" && r.Result != "draining" && r.Result != "failed" {
++		return ErrInvalid
++	}
++	return encodedSize(r)
++}
++
++func remoteType(kind string) bool {
++	switch kind {
++	case "Http", "Socks5", "Shadowsocks", "Trojan", "Vmess", "Vless", "Hysteria2":
++		return true
++	}
++	return false
++}
++func canonicalHost(host string) (string, bool) {
++	if addr, err := netip.ParseAddr(host); err == nil {
++		if addr.Zone() != "" {
++			return "", false
++		}
++		return addr.String(), true
++	}
++	host = strings.TrimSuffix(strings.ToLower(host), ".")
++	if len(host) == 0 || len(host) > 253 {
++		return "", false
++	}
++	numericDotted := strings.Contains(host, ".")
++	for _, c := range host {
++		if c != '.' && (c < '0' || c > '9') {
++			numericDotted = false
++			break
++		}
++	}
++	if numericDotted {
++		return "", false
++	}
++	for _, label := range strings.Split(host, ".") {
++		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
++			return "", false
++		}
++		for _, c := range []byte(label) {
++			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
++				return "", false
++			}
++		}
++	}
++	return host, true
++}
++func remoteEndpoint(address string) bool {
++	host, port, err := net.SplitHostPort(address)
++	if err != nil {
++		return false
++	}
++	normalized, ok := canonicalHost(host)
++	if !ok {
++		return false
++	}
++	number, err := strconv.ParseUint(port, 10, 16)
++	return err == nil && number > 0 && address == net.JoinHostPort(normalized, strconv.FormatUint(number, 10))
++}
++func (p Probe) Validate() error {
++	if !probeURL(p.URL) || p.IntervalSeconds < 1 || p.IntervalSeconds > 86400 || p.TimeoutMS < 1 || p.TimeoutMS > 60000 || p.ToleranceMS > 65534 {
++		return ErrInvalid
++	}
++	return nil
++}
++func probeURL(raw string) bool {
++	if !utf8.ValidString(raw) || strings.ContainsAny(raw, "#\\") {
++		return false
++	}
++	for _, c := range raw {
++		if unicode.IsControl(c) || unicode.IsSpace(c) {
++			return false
++		}
++	}
++	u, err := url.Parse(raw)
++	if err != nil || !strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https") || u.Opaque != "" || u.User != nil {
++		return false
++	}
++	host := u.Hostname()
++	if _, ok := canonicalHost(host); !ok {
++		return false
++	}
++	bracketed := strings.HasPrefix(u.Host, "[")
++	addr, ipErr := netip.ParseAddr(host)
++	if bracketed {
++		if ipErr != nil || !addr.Is6() || addr.Zone() != "" {
++			return false
++		}
++	} else if strings.Contains(host, ":") {
++		return false
++	}
++	authority := u.Host
++	if bracketed {
++		end := strings.IndexByte(authority, ']')
++		if end < 0 {
++			return false
++		}
++		authority = authority[end+1:]
++	}
++	if strings.Contains(authority, ":") {
++		number, err := strconv.ParseUint(u.Port(), 10, 16)
++		if err != nil || number == 0 {
++			return false
++		}
++	}
++	return true
++}
+diff --git a/component/sourceprofile/connection.go b/component/sourceprofile/connection.go
+new file mode 100644
+--- /dev/null
++++ b/component/sourceprofile/connection.go
+@@ -0,0 +1,486 @@
++// Finite connection parser derived from internal/subscription/protocol.go.
++// It validates canonical generated material; provider parsing remains separate.
++package sourceprofile
++
++import (
++	"encoding/json"
++	"net/netip"
++	"net/url"
++	"regexp"
++	"strconv"
++	"strings"
++	"unicode"
++)
++
++// A protocol is an explicit finite profile, not an upstream option pass-through.
++// Rendering uses exactly the normalized values used by connection identity.
++func parseConnection(value any) (string, map[string]any, error) {
++	p := nodeParser{}
++	in, ok := value.(map[string]any)
++	if !ok {
++		return "", nil, ErrProfile
++	}
++	kind := p.text(in["type"], 4096, true)
++	options := ""
++	required := ""
++	switch kind {
++	case "socks5":
++		options = "username password udp tls skip-cert-verify"
++	case "http":
++		options = "username password tls sni skip-cert-verify"
++	case "ss":
++		options = "udp"
++		required = "cipher password"
++	case "trojan":
++		options = "network sni alpn skip-cert-verify udp ws-opts"
++		required = "password"
++	case "vmess":
++		options = "network tls servername alpn skip-cert-verify udp ws-opts"
++		required = "uuid cipher alterId"
++	case "vless":
++		options = "network tls servername alpn skip-cert-verify udp ws-opts"
++		required = "uuid"
++	case "hysteria2":
++		options = "sni alpn skip-cert-verify"
++		required = "password"
++	default:
++		if p.err != nil {
++			return "", nil, p.err
++		}
++		return "", nil, ErrProfile
++	}
++	p.object(in, "name type server port "+required, options)
++	name := p.text(in["name"], 1024, true)
++	if hasControl(name) {
++		p.invalid()
++	}
++	server := p.host(in["server"])
++	port := p.integer(in["port"], 1, 65535)
++	out := map[string]any{"type": kind, "server": server, "port": port}
++	if kind == "socks5" || kind == "http" {
++		_, userPresent := in["username"]
++		_, passPresent := in["password"]
++		user, password := "", ""
++		max := 4096
++		if kind == "socks5" {
++			max = 255
++		}
++		if userPresent {
++			user = p.text(in["username"], max, true)
++		}
++		if passPresent {
++			password = p.text(in["password"], max, true)
++		}
++		if userPresent != passPresent {
++			p.invalid()
++		}
++		out["username"] = user
++		out["password"] = password
++	}
++	if kind == "ss" || kind == "trojan" || kind == "hysteria2" {
++		out["password"] = p.text(in["password"], 4096, true)
++	}
++	if kind == "ss" {
++		out["cipher"] = p.choice(in["cipher"], "aes-128-gcm", "aes-192-gcm", "aes-256-gcm", "chacha20-ietf-poly1305")
++	}
++	if kind == "vmess" || kind == "vless" {
++		uuid := p.text(in["uuid"], 36, true)
++		if !uuidForm.MatchString(uuid) {
++			p.invalid()
++		}
++		out["uuid"] = strings.ToLower(uuid)
++	}
++	if kind == "vmess" {
++		out["cipher"] = p.choice(in["cipher"], "auto", "aes-128-gcm", "chacha20-poly1305", "none")
++		alter := p.integer(in["alterId"], 0, 9007199254740991)
++		if alter != 0 {
++			p.unsupported()
++		}
++		out["alterId"] = alter
++	}
++	if kind != "http" && kind != "hysteria2" {
++		out["udp"] = p.optionalBool(in, "udp", false)
++	}
++	network := ""
++	if kind == "trojan" || kind == "vmess" || kind == "vless" {
++		network = "tcp"
++		if value, ok := in["network"]; ok {
++			network = p.choice(value, "tcp", "ws")
++		}
++		out["network"] = network
++		if network == "ws" {
++			out["ws-opts"] = p.websocket(in)
++		} else if _, ok := in["ws-opts"]; ok {
++			p.invalid()
++		}
++	}
++	tls := kind == "trojan" || kind == "hysteria2"
++	if kind == "socks5" || kind == "http" || kind == "vmess" || kind == "vless" {
++		tls = p.optionalBool(in, "tls", false)
++		out["tls"] = tls
++	}
++	if kind == "socks5" {
++		skip := p.optionalBool(in, "skip-cert-verify", false)
++		if skip {
++			p.unsupported()
++		}
++		out["skip-cert-verify"] = false
++	} else if kind != "ss" {
++		sniKey := "sni"
++		if kind == "vmess" || kind == "vless" {
++			sniKey = "servername"
++		}
++		if tls {
++			sni := server
++			if value, ok := in[sniKey]; ok {
++				sni = p.host(value)
++			} else if network == "ws" && (kind == "vmess" || kind == "vless") {
++				// Match native TLS WS fallback: explicit servername, then WS Host,
++				// then server. A Host authority with a port requires explicit SNI.
++				ws, _ := out["ws-opts"].(map[string]any)
++				headers, _ := ws["headers"].(map[string]any)
++				if host, ok := headers["Host"].(string); ok {
++					var hasPort bool
++					sni, hasPort = authorityHostname(host)
++					if hasPort {
++						p.invalid()
++					}
++				}
++			}
++			out[sniKey] = sni
++			skip := p.optionalBool(in, "skip-cert-verify", false)
++			if skip {
++				p.unsupported()
++			}
++			out["skip-cert-verify"] = false
++			if kind != "http" {
++				p.alpn(in, out, kind, network)
++			}
++		} else {
++			for _, key := range []string{sniKey, "alpn", "skip-cert-verify"} {
++				if _, ok := in[key]; ok {
++					p.invalid()
++				}
++			}
++		}
++	}
++
++	if p.err != nil {
++		return "", nil, p.err
++	}
++	return name, out, nil
++}
++
++type nodeParser struct{ err error }
++
++func (p *nodeParser) invalid() {
++	if p.err == nil {
++		p.err = ErrProfile
++	}
++}
++func (p *nodeParser) unsupported() {
++	if p.err == nil {
++		p.err = ErrProfile
++	}
++}
++func (p *nodeParser) object(m map[string]any, required, optional string) {
++	allowed := map[string]bool{}
++	for _, key := range strings.Fields(required) {
++		allowed[key] = true
++		if _, ok := m[key]; !ok {
++			p.invalid()
++		}
++	}
++	for _, key := range strings.Fields(optional) {
++		allowed[key] = true
++	}
++	for key := range m {
++		if !allowed[key] {
++			p.invalid()
++		}
++	}
++}
++func (p *nodeParser) text(v any, max int, nonempty bool) string {
++	s, ok := v.(string)
++	if !ok || !boundedText(s, max, nonempty) || strings.ContainsAny(s, "\x00\r\n") {
++		p.invalid()
++	}
++	return s
++}
++func (p *nodeParser) optionalBool(m map[string]any, key string, fallback bool) bool {
++	v, present := m[key]
++	if !present {
++		return fallback
++	}
++	b, ok := v.(bool)
++	if !ok {
++		p.invalid()
++	}
++	return b
++}
++func (p *nodeParser) choice(v any, values ...string) string {
++	s := p.text(v, 4096, true)
++	for _, value := range values {
++		if s == value {
++			return s
++		}
++	}
++	p.unsupported()
++	return s
++}
++func (p *nodeParser) host(v any) string {
++	s := p.text(v, 4096, true)
++	host, ok := canonicalHost(s)
++	if !ok {
++		p.invalid()
++	}
++	return host
++}
++func (p *nodeParser) integer(v any, min, max uint64) uint64 {
++	n, ok := v.(json.Number)
++	if !ok {
++		p.invalid()
++		return 0
++	}
++	s := n.String()
++	negative := strings.HasPrefix(s, "-")
++	s = strings.TrimPrefix(s, "-")
++	mantissa, exponent, hasExponent := strings.Cut(strings.ToLower(s), "e")
++	fraction := 0
++	if i := strings.IndexByte(mantissa, '.'); i >= 0 {
++		fraction = len(mantissa) - i - 1
++		mantissa = mantissa[:i] + mantissa[i+1:]
++	}
++	digits := strings.TrimLeft(mantissa, "0")
++	if digits == "" {
++		if min > 0 {
++			p.invalid()
++		}
++		return 0
++	}
++	if negative {
++		p.invalid()
++		return 0
++	}
++	exp := int64(0)
++	if hasExponent {
++		var err error
++		exp, err = strconv.ParseInt(exponent, 10, 32)
++		if err != nil {
++			p.invalid()
++			return 0
++		}
++	}
++	scale := exp - int64(fraction)
++	for strings.HasSuffix(digits, "0") {
++		digits = strings.TrimSuffix(digits, "0")
++		scale++
++	}
++	if scale < 0 || scale > 16 || int64(len(digits))+scale > 16 {
++		p.invalid()
++		return 0
++	}
++	result, err := strconv.ParseUint(digits+strings.Repeat("0", int(scale)), 10, 64)
++	if err != nil || result < min || result > max {
++		p.invalid()
++		return 0
++	}
++	return result
++}
++func hasControl(s string) bool {
++	for _, c := range s {
++		if unicode.IsControl(c) {
++			return true
++		}
++	}
++	return false
++}
++
++var uuidForm = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
++
++func canonicalHost(s string) (string, bool) {
++	// Brackets and zones are authority syntax, never part of a provider server.
++	if s == "" || strings.ContainsAny(s, "[]%/\\:@ \t\r\n\x00") {
++		if addr, err := netip.ParseAddr(s); err == nil && addr.Zone() == "" {
++			return addr.String(), true
++		}
++		return "", false
++	}
++	s = strings.TrimSuffix(strings.ToLower(s), ".")
++	if addr, err := netip.ParseAddr(s); err == nil && addr.Zone() == "" {
++		return addr.String(), true
++	}
++	if len(s) == 0 || len(s) > 253 {
++		return "", false
++	}
++	numericDotted := strings.Contains(s, ".")
++	for _, c := range s {
++		if c != '.' && (c < '0' || c > '9') {
++			numericDotted = false
++			break
++		}
++	}
++	if numericDotted {
++		return "", false
++	}
++	for _, label := range strings.Split(s, ".") {
++		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
++			return "", false
++		}
++		for _, c := range []byte(label) {
++			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
++				return "", false
++			}
++		}
++	}
++	return s, true
++}
++func (p *nodeParser) websocket(in map[string]any) map[string]any {
++	path := "/"
++	headers := map[string]any{}
++	if value, present := in["ws-opts"]; present {
++		m, ok := value.(map[string]any)
++		if !ok {
++			p.invalid()
++			return nil
++		}
++		p.object(m, "", "path headers")
++		if value, present := m["path"]; present {
++			path = p.text(value, 4096, true)
++			p.websocketPath(path)
++		}
++		if value, present := m["headers"]; present {
++			h, ok := value.(map[string]any)
++			if !ok {
++				p.invalid()
++				return nil
++			}
++			p.object(h, "", "Host")
++			if value, present := h["Host"]; present {
++				host := p.text(value, 4096, true)
++				normalized, ok := canonicalAuthority(host)
++				if !ok {
++					p.invalid()
++				}
++				headers["Host"] = normalized
++			}
++		}
++	}
++	return map[string]any{"path": path, "headers": headers}
++}
++func canonicalAuthority(s string) (string, bool) {
++	host, port, hasPort := s, "", false
++	if strings.HasPrefix(s, "[") {
++		end := strings.IndexByte(s, ']')
++		if end < 0 {
++			return "", false
++		}
++		host = s[1:end]
++		rest := s[end+1:]
++		if rest != "" {
++			if !strings.HasPrefix(rest, ":") {
++				return "", false
++			}
++			hasPort = true
++			port = rest[1:]
++		}
++		addr, err := netip.ParseAddr(host)
++		if err != nil || !addr.Is6() || addr.Zone() != "" {
++			return "", false
++		}
++		host = "[" + addr.String() + "]"
++	} else {
++		if strings.Count(s, ":") > 1 {
++			return "", false
++		}
++		if i := strings.IndexByte(s, ':'); i >= 0 {
++			host, port, hasPort = s[:i], s[i+1:], true
++		}
++		var ok bool
++		host, ok = canonicalHost(host)
++		if !ok {
++			return "", false
++		}
++	}
++	if hasPort {
++		value, err := strconv.ParseUint(port, 10, 16)
++		if err != nil || value == 0 {
++			return "", false
++		}
++		host += ":" + strconv.FormatUint(value, 10)
++	}
++	return host, true
++}
++
++// authorityHostname receives only a previously validated normalized authority.
++func authorityHostname(authority string) (string, bool) {
++	if strings.HasPrefix(authority, "[") {
++		end := strings.IndexByte(authority, ']')
++		return authority[1:end], len(authority) > end+1
++	}
++	host, _, hasPort := strings.Cut(authority, ":")
++	return host, hasPort
++}
++func (p *nodeParser) alpn(in, out map[string]any, kind, network string) {
++	tlsWS := network == "ws"
++	allowEmpty := (kind == "vmess" || kind == "vless") && !tlsWS
++	alpn := []any{}
++	if tlsWS {
++		alpn = []any{"http/1.1"}
++	} else if kind == "trojan" {
++		alpn = []any{"h2", "http/1.1"}
++	}
++	value, present := in["alpn"]
++	if present {
++		values, ok := value.([]any)
++		if !ok || len(values) > 16 || len(values) == 0 && !allowEmpty && !tlsWS {
++			p.invalid()
++		}
++		alpn = []any{}
++		for _, value := range values {
++			protocol := p.text(value, 255, true)
++			if hasControl(protocol) {
++				p.invalid()
++			}
++			alpn = append(alpn, protocol)
++		}
++		if tlsWS && (len(alpn) != 1 || alpn[0] != "http/1.1") {
++			p.unsupported()
++		}
++	}
++	// HY2 must preserve nil so its downstream native defaults remain effective.
++	if kind != "hysteria2" || present {
++		out["alpn"] = alpn
++	}
++}
++func (p *nodeParser) websocketPath(path string) {
++	if !strings.HasPrefix(path, "/") || hasControl(path) || strings.Contains(path, "#") {
++		p.invalid()
++		return
++	}
++	u, err := url.Parse(path)
++	if err != nil || u.Scheme != "" || u.Host != "" || u.Opaque != "" || u.Fragment != "" || hasControl(u.Path) {
++		p.invalid()
++		return
++	}
++	query, err := url.ParseQuery(u.RawQuery)
++	if err != nil {
++		p.invalid()
++		return
++	}
++	for key, values := range query {
++		if hasControl(key) {
++			p.invalid()
++		}
++		for _, value := range values {
++			if hasControl(value) {
++				p.invalid()
++			}
++		}
++	}
++	// The pinned core interprets decoded query key ed as early-data settings and
++	// rewrites the path. Reject every occurrence, including escaped key spellings.
++	if _, present := query["ed"]; present {
++		p.unsupported()
++	}
++}
+diff --git a/component/sourceprofile/profile.go b/component/sourceprofile/profile.go
+new file mode 100644
+--- /dev/null
++++ b/component/sourceprofile/profile.go
+@@ -0,0 +1,324 @@
++// Package sourceprofile validates the finite generated basic-sources profile.
++// It performs no IO and does not grant a binary any capability. Provider input
++// is parsed separately; only fully canonical connection maps are accepted here.
++package sourceprofile
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"net/netip"
++	"strconv"
++	"strings"
++
++	wire "github.com/metacubex/mihomo/component/sourcecontrol"
++)
++
++var ErrProfile = errors.New("invalid protected sources profile")
++
++type Config struct {
++	Mode            string            `json:"mode"`
++	LogLevel        string            `json:"log-level"`
++	IPv6            bool              `json:"ipv6"`
++	FindProcessMode string            `json:"find-process-mode"`
++	Controller      string            `json:"external-controller"`
++	Secret          string            `json:"secret"`
++	Listeners       []Entry           `json:"listeners"`
++	Hosts           map[string]string `json:"hosts,omitempty"`
++	Proxies         []map[string]any  `json:"proxies"`
++	Groups          []Group           `json:"proxy-groups"`
++	Rules           []string          `json:"rules"`
++	Profile         CacheProfile      `json:"profile"`
++}
++type Entry struct {
++	Name   string `json:"name"`
++	Type   string `json:"type"`
++	Listen string `json:"listen"`
++	Port   uint16 `json:"port"`
++	UDP    bool   `json:"udp"`
++	Users  []User `json:"users"`
++}
++type User struct {
++	Username string `json:"username"`
++	Password string `json:"password"`
++}
++type CacheProfile struct {
++	StoreSelected bool `json:"store-selected"`
++	StoreFakeIP   bool `json:"store-fake-ip"`
++}
++type Group struct {
++	Name           string   `json:"name"`
++	Type           string   `json:"type"`
++	Proxies        []string `json:"proxies"`
++	URL            string   `json:"url,omitempty"`
++	Interval       uint64   `json:"interval,omitempty"`
++	Timeout        uint64   `json:"timeout,omitempty"`
++	Tolerance      *uint64  `json:"tolerance,omitempty"`
++	Lazy           *bool    `json:"lazy,omitempty"`
++	ExpectedStatus string   `json:"expected-status,omitempty"`
++}
++
++func (g Group) Probe() wire.Probe {
++	p := wire.Probe{URL: g.URL, IntervalSeconds: g.Interval, TimeoutMS: g.Timeout}
++	if g.Tolerance != nil {
++		p.ToleranceMS = *g.Tolerance
++	}
++	return p
++}
++
++func Validate(raw []byte, generation string) (Config, error) {
++	bad := func() (Config, error) { return Config{}, ErrProfile }
++	if len(raw) == 0 || len(raw) > wire.MaxJSONBytes || !validUnicode(raw) || !token(generation) {
++		return bad()
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	d.UseNumber()
++	v, err := readValue(d, 0)
++	if err != nil {
++		return bad()
++	}
++	if _, err = d.Token(); err != io.EOF {
++		return bad()
++	}
++	root, ok := object(v, "mode log-level ipv6 find-process-mode external-controller secret listeners proxies proxy-groups rules profile", "hosts")
++	if !ok {
++		return bad()
++	}
++	if _, ok = object(root["profile"], "store-selected store-fake-ip", ""); !ok {
++		return bad()
++	}
++	if !sourceShapes(root) {
++		return bad()
++	}
++	var c Config
++	d = json.NewDecoder(bytes.NewReader(raw))
++	d.UseNumber()
++	if d.Decode(&c) != nil || c.Mode != "rule" || c.LogLevel != "silent" || c.IPv6 || c.FindProcessMode != "off" || c.Profile.StoreSelected || c.Profile.StoreFakeIP || !credential(c.Secret) {
++		return bad()
++	}
++	controller, e := netip.ParseAddrPort(c.Controller)
++	if e != nil || controller.Addr() != netip.MustParseAddr("127.0.0.1") || controller.Port() == 0 || controller.String() != c.Controller {
++		return bad()
++	}
++	endpoints := map[string]bool{c.Controller: true}
++	entries := map[string]bool{}
++	credentials := map[User]bool{}
++	if len(c.Listeners) < 1 || len(c.Listeners) > 4 {
++		return bad()
++	}
++	for _, l := range c.Listeners {
++		ep := net.JoinHostPort(l.Listen, strconv.Itoa(int(l.Port)))
++		if !token(l.Name) || entries[l.Name] || l.Type != "mixed" || l.Listen != "127.0.0.1" || l.Port == 0 || l.UDP || endpoints[ep] || len(l.Users) != 1 {
++			return bad()
++		}
++		u := l.Users[0]
++		if !token(u.Username) || strings.Contains(u.Username, ":") || !credential(u.Password) || u.Password == c.Secret || credentials[u] {
++			return bad()
++		}
++		entries[l.Name], endpoints[ep], credentials[u] = true, true, true
++	}
++	for domain, addr := range c.Hosts {
++		if !domainToken(domain) || addr != "127.0.0.1" {
++			return bad()
++		}
++	}
++	if len(c.Proxies)+len(c.Groups) > 64 {
++		return bad()
++	}
++	refs := map[string]bool{}
++	remote := map[string]bool{}
++	edges := map[string][]string{}
++	for _, n := range c.Proxies {
++		name, _ := n["name"].(string)
++		kind, _ := n["type"].(string)
++		if !id(name, "node:") || refs[name] {
++			return bad()
++		}
++		refs[name] = true
++		if kind == "direct" {
++			if len(n) != 2 {
++				return bad()
++			}
++			continue
++		}
++		if !canonicalConnection(n) {
++			return bad()
++		}
++		server, _ := n["server"].(string)
++		port, _ := n["port"].(json.Number)
++		// A source may expose several credentials for one endpoint. It must not
++		// recurse into our own controller or application listeners.
++		if endpoints[net.JoinHostPort(server, port.String())] {
++			return bad()
++		}
++		// The finite hosts map is known at compilation time. Reject a declared
++		// hostname alias of one of our own endpoints as well as a literal IP.
++		for host, address := range c.Hosts {
++			if strings.EqualFold(server, host) && endpoints[net.JoinHostPort(address, port.String())] {
++				return bad()
++			}
++		}
++		remote[name] = true
++	}
++	for _, g := range c.Groups {
++		if !id(g.Name, "group:") || refs[g.Name] || len(g.Proxies) < 1 || len(g.Proxies) > 64 {
++			return bad()
++		}
++		refs[g.Name] = true
++		edges[g.Name] = g.Proxies
++		if g.Type == "select" {
++			if len(g.Proxies) != 1 {
++				return bad()
++			}
++		} else if g.Type == "url-test" {
++			if g.Probe().Validate() != nil || g.Tolerance == nil || g.Lazy == nil || *g.Lazy || g.ExpectedStatus != "200-299" {
++				return bad()
++			}
++		} else {
++			return bad()
++		}
++		seen := map[string]bool{}
++		for _, member := range g.Proxies {
++			if seen[member] || g.Type == "url-test" && !remote[member] {
++				return bad()
++			}
++			seen[member] = true
++		}
++	}
++	states := map[string]uint8{}
++	depth := map[string]int{}
++	var visit func(string) bool
++	visit = func(name string) bool {
++		if name == "REJECT" {
++			return true
++		}
++		if !refs[name] || states[name] == 1 {
++			return false
++		}
++		if states[name] == 2 {
++			return true
++		}
++		states[name] = 1
++		depth[name] = 1
++		for _, member := range edges[name] {
++			if !visit(member) {
++				return false
++			}
++			if depth[member]+1 > depth[name] {
++				depth[name] = depth[member] + 1
++			}
++		}
++		if depth[name] > 8 {
++			return false
++		}
++		states[name] = 2
++		return true
++	}
++	for name := range refs {
++		if !visit(name) {
++			return bad()
++		}
++	}
++	if len(c.Rules) < 1 || len(c.Rules) > 64 {
++		return bad()
++	}
++	target := func(s string) bool { return s == "REJECT" || refs[s] }
++	for i, r := range c.Rules {
++		if len(r) > wire.MaxPayloadBytes {
++			return bad()
++		}
++		if i == len(c.Rules)-1 {
++			parts := strings.Split(r, ",")
++			if len(parts) != 2 || parts[0] != "MATCH" || !target(parts[1]) {
++				return bad()
++			}
++		} else if !validRule(r, target, entries) {
++			return bad()
++		}
++	}
++	return c, nil
++}
++
++func sourceShapes(root map[string]any) bool {
++	listeners, ok := root["listeners"].([]any)
++	if !ok {
++		return false
++	}
++	for _, v := range listeners {
++		l, ok := object(v, "name type listen port udp users", "")
++		if !ok {
++			return false
++		}
++		users, ok := l["users"].([]any)
++		if !ok {
++			return false
++		}
++		for _, u := range users {
++			if _, ok = object(u, "username password", ""); !ok {
++				return false
++			}
++		}
++	}
++	nodes, ok := root["proxies"].([]any)
++	if !ok {
++		return false
++	}
++	for _, n := range nodes {
++		if _, ok := n.(map[string]any); !ok {
++			return false
++		}
++	}
++	groups, ok := root["proxy-groups"].([]any)
++	if !ok {
++		return false
++	}
++	for _, v := range groups {
++		g, ok := v.(map[string]any)
++		if !ok {
++			return false
++		}
++		extra := ""
++		if g["type"] == "url-test" {
++			extra = "url interval timeout tolerance lazy expected-status"
++		}
++		if _, ok = object(g, "name type proxies "+extra, ""); !ok {
++			return false
++		}
++		for _, key := range []string{"interval", "timeout", "tolerance"} {
++			if x, exists := g[key]; exists {
++				n, ok := x.(json.Number)
++				if !ok {
++					return false
++				}
++				u, e := strconv.ParseUint(n.String(), 10, 64)
++				if e != nil || strconv.FormatUint(u, 10) != n.String() {
++					return false
++				}
++			}
++		}
++	}
++	return true
++}
++
++func canonicalConnection(n map[string]any) bool {
++	// The provider parser normalizes absent credentials to an explicit empty
++	// pair. Reconstruct only that absence, then require byte-equivalent maps.
++	in := make(map[string]any, len(n))
++	for k, v := range n {
++		in[k] = v
++	}
++	if n["username"] == "" && n["password"] == "" {
++		delete(in, "username")
++		delete(in, "password")
++	}
++	name, normalized, err := parseConnection(in)
++	if err != nil {
++		return false
++	}
++	normalized["name"] = name
++	a, e1 := json.Marshal(n)
++	b, e2 := json.Marshal(normalized)
++	return e1 == nil && e2 == nil && bytes.Equal(a, b)
++}
+diff --git a/component/sourceprofile/syntax.go b/component/sourceprofile/syntax.go
+new file mode 100644
+--- /dev/null
++++ b/component/sourceprofile/syntax.go
+@@ -0,0 +1,256 @@
++package sourceprofile
++
++import (
++	"encoding/json"
++	"net/netip"
++	"strings"
++	"unicode/utf8"
++)
++
++// validUnicode rejects encoding/json's replacement of malformed UTF-8 or lone
++// UTF-16 surrogate escapes. Valid escaped keys are allowed; duplicate detection
++// below compares decoded key values, including equivalent escape spellings.
++func validUnicode(raw []byte) bool {
++	if !utf8.Valid(raw) {
++		return false
++	}
++	hex4 := func(value []byte) (uint16, bool) {
++		if len(value) < 4 {
++			return 0, false
++		}
++		var result uint16
++		for _, c := range value[:4] {
++			result <<= 4
++			switch {
++			case c >= '0' && c <= '9':
++				result |= uint16(c - '0')
++			case c >= 'a' && c <= 'f':
++				result |= uint16(c - 'a' + 10)
++			case c >= 'A' && c <= 'F':
++				result |= uint16(c - 'A' + 10)
++			default:
++				return 0, false
++			}
++		}
++		return result, true
++	}
++	for i := 0; i < len(raw); i++ {
++		if raw[i] != '"' {
++			continue
++		}
++		i++
++		for ; i < len(raw) && raw[i] != '"'; i++ {
++			if raw[i] != '\\' {
++				continue
++			}
++			i++
++			if i >= len(raw) {
++				return false
++			}
++			if raw[i] != 'u' {
++				continue
++			}
++			code, ok := hex4(raw[i+1:])
++			if !ok {
++				return false
++			}
++			i += 4
++			if code >= 0xdc00 && code <= 0xdfff {
++				return false
++			}
++			if code >= 0xd800 && code <= 0xdbff {
++				if i+6 >= len(raw) || raw[i+1] != '\\' || raw[i+2] != 'u' {
++					return false
++				}
++				low, ok := hex4(raw[i+3:])
++				if !ok || low < 0xdc00 || low > 0xdfff {
++					return false
++				}
++				i += 6
++			}
++		}
++		if i >= len(raw) {
++			return false
++		}
++	}
++	return true
++}
++
++// readValue rejects duplicate keys and null at every depth, before Go's normal
++// decoder can silently replace duplicates or convert null to a zero value.
++func readValue(d *json.Decoder, depth int) (any, error) {
++	if depth > 32 {
++		return nil, ErrProfile
++	}
++	t, e := d.Token()
++	if e != nil || t == nil {
++		return nil, ErrProfile
++	}
++	delim, compound := t.(json.Delim)
++	if !compound {
++		return t, nil
++	}
++	switch delim {
++	case '{':
++		v := map[string]any{}
++		for d.More() {
++			k, e := d.Token()
++			if e != nil {
++				return nil, ErrProfile
++			}
++			key, ok := k.(string)
++			if !ok {
++				return nil, ErrProfile
++			}
++			if _, ok = v[key]; ok {
++				return nil, ErrProfile
++			}
++			child, e := readValue(d, depth+1)
++			if e != nil {
++				return nil, e
++			}
++			v[key] = child
++		}
++		end, e := d.Token()
++		if e != nil || end != json.Delim('}') {
++			return nil, ErrProfile
++		}
++		return v, nil
++	case '[':
++		v := []any{}
++		for d.More() {
++			child, e := readValue(d, depth+1)
++			if e != nil {
++				return nil, e
++			}
++			v = append(v, child)
++		}
++		end, e := d.Token()
++		if e != nil || end != json.Delim(']') {
++			return nil, ErrProfile
++		}
++		return v, nil
++	}
++	return nil, ErrProfile
++}
++func object(v any, required, optional string) (map[string]any, bool) {
++	m, ok := v.(map[string]any)
++	if !ok {
++		return nil, false
++	}
++	allowed := map[string]bool{}
++	for _, k := range strings.Fields(required) {
++		if !has(m, k) {
++			return nil, false
++		}
++		allowed[k] = true
++	}
++	for _, k := range strings.Fields(optional) {
++		allowed[k] = true
++	}
++	for k := range m {
++		if !allowed[k] {
++			return nil, false
++		}
++	}
++	return m, true
++}
++func has(m map[string]any, k string) bool { _, ok := m[k]; return ok }
++func token(s string) bool {
++	if len(s) == 0 || len(s) > 128 {
++		return false
++	}
++	for i, c := range []byte(s) {
++		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alpha && (i == 0 || !strings.ContainsRune("._:-", rune(c))) {
++			return false
++		}
++	}
++	return true
++}
++func id(s, prefix string) bool {
++	return token(s) && strings.HasPrefix(s, prefix) && token(strings.TrimPrefix(s, prefix))
++}
++func credential(s string) bool {
++	if len(s) < 32 || len(s) > 128 {
++		return false
++	}
++	for _, c := range []byte(s) {
++		if c < 33 || c > 126 || c == ':' {
++			return false
++		}
++	}
++	return true
++}
++func domainToken(s string) bool {
++	if len(s) == 0 || len(s) > 253 {
++		return false
++	}
++	for _, label := range strings.Split(s, ".") {
++		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
++			return false
++		}
++		for _, c := range []byte(label) {
++			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
++				return false
++			}
++		}
++	}
++	return true
++}
++func atom(parts []string, entries map[string]bool) bool {
++	if len(parts) < 2 || len(parts) > 3 || parts[1] == "" || strings.ContainsAny(parts[1], ",() \t\n\r\v\f") {
++		return false
++	}
++	switch parts[0] {
++	case "DOMAIN", "DOMAIN-SUFFIX":
++		return len(parts) == 2 && domainToken(parts[1])
++	case "IN-NAME":
++		return len(parts) == 2 && entries[parts[1]]
++	case "IP-CIDR":
++		p, e := netip.ParsePrefix(parts[1])
++		return e == nil && p.Addr().Is4() && (len(parts) == 2 || parts[2] == "no-resolve")
++	}
++	return false
++}
++func validRule(rule string, target func(string) bool, entries map[string]bool) bool {
++	return validRuleWithAtom(rule, target, entries, atom)
++}
++
++func validRuleWithAtom(rule string, target func(string) bool, entries map[string]bool, checkAtom func([]string, map[string]bool) bool) bool {
++	if strings.HasPrefix(rule, "AND,(") {
++		// The grammar is AND,((atom),(atom)),target. Splitting at the
++		// outer close keeps no-resolve inside an IP-CIDR atom intact.
++		end := strings.LastIndex(rule, ")),")
++		if end < 0 || !target(rule[end+3:]) {
++			return false
++		}
++		if !strings.HasPrefix(rule, "AND,((") || end < len("AND,((") {
++			return false
++		}
++		body := rule[len("AND,(("):end]
++		atoms := strings.Split(body, "),(")
++		if len(atoms) < 2 || len(atoms) > 8 {
++			return false
++		}
++		for _, a := range atoms {
++			if !checkAtom(strings.Split(a, ","), entries) {
++				return false
++			}
++		}
++		return true
++	}
++	parts := strings.Split(rule, ",")
++	if len(parts) < 3 {
++		return false
++	}
++	// no-resolve is the sole supported rule option and follows the target.
++	if parts[0] == "IP-CIDR" && len(parts) == 4 {
++		return target(parts[2]) && checkAtom([]string{parts[0], parts[1], parts[3]}, entries)
++	}
++	return len(parts) == 3 && target(parts[2]) && checkAtom(parts[:2], entries)
++}
++
++func boundedText(s string, max int, nonempty bool) bool {
++	return utf8.ValidString(s) && len(s) <= max && (!nonempty || len(s) > 0)
++}
+diff --git a/constant/hoopa_probe.go b/constant/hoopa_probe.go
+new file mode 100644
+--- /dev/null
++++ b/constant/hoopa_probe.go
+@@ -0,0 +1,38 @@
++package constant
++
++import "time"
++
++// HoopaProbeObservation is an atomic completion record, not native alive/history
++// guesses. Zero-millisecond success is distinct from missing or failed probes.
++type HoopaProbeObservation struct {
++	Known       bool
++	Success     bool
++	CompletedAt time.Time
++	DelayMS     uint16
++}
++
++// HoopaProbePolicy is configured once before protected core publication.
++// AcceptedStatus is fixed by sourcecontrol-v2, not a provider-controlled default.
++type HoopaProbePolicy struct {
++	URL             string
++	IntervalSeconds uint64
++	TimeoutMS       uint64
++	ToleranceMS     uint64
++}
++
++const HoopaProbeAcceptedStatus = "200-299"
++
++// HoopaProbeSource is deliberately separate from the native Proxy interface.
++// A protected group refuses proxies without atomic qualified observations.
++type HoopaProbeSource interface {
++	EnableHoopaProbe(url, expectedStatus string) bool
++	HoopaProbeObservation(url, expectedStatus string) HoopaProbeObservation
++}
++
++type HoopaHealthCheckPolicy struct {
++	URL             string
++	ExpectedStatus  string
++	IntervalSeconds uint64
++	TimeoutMS       uint64
++	Lazy            bool
++}
+diff --git a/hoopa_control_sources_linux.go b/hoopa_control_sources_linux.go
+new file mode 100644
+--- /dev/null
++++ b/hoopa_control_sources_linux.go
+@@ -0,0 +1,279 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"encoding/hex"
++	"encoding/json"
++	"flag"
++	"net"
++	"net/http"
++	"os"
++	"os/signal"
++	"sort"
++	"strconv"
++	"strings"
++	"syscall"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/outboundgroup"
++	wire "github.com/metacubex/mihomo/component/corecontrol"
++	"github.com/metacubex/mihomo/component/hoopaguard"
++	legacy "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	sources "github.com/metacubex/mihomo/component/sourcecontrol"
++	profile "github.com/metacubex/mihomo/component/sourceprofile"
++	C "github.com/metacubex/mihomo/constant"
++	P "github.com/metacubex/mihomo/constant/provider"
++	"github.com/metacubex/mihomo/hub/executor"
++	listenerInbound "github.com/metacubex/mihomo/listener/inbound"
++	"github.com/metacubex/mihomo/log"
++	"github.com/metacubex/mihomo/tunnel"
++)
++
++func hoopaSourceCapabilities() []string {
++	return []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "probe-qualified-groups-v1"}
++}
++
++func runHoopaControlSources() error {
++	log.SetLevel(log.SILENT)
++	if os.Getenv("HOOPA_CONTROL_PROTOCOL") != "2" || version || testConfig || configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
++		return errHoopaGuard
++	}
++	nonce := os.Getenv("HOOPA_RUN_NONCE")
++	nb, err := hex.DecodeString(nonce)
++	if err != nil || len(nb) != 32 || hex.EncodeToString(nb) != nonce {
++		return errHoopaGuard
++	}
++	for _, kv := range os.Environ() {
++		pair := strings.SplitN(kv, "=", 2)
++		if pair[0] == "HOOPA_IDENTITY_HANDOFF" || pair[0] == "HOOPA_IDENTITY_HANDOFF_SET" || strings.HasPrefix(pair[0], "HOOPA_TRACE_") && pair[1] != "" {
++			return errHoopaGuard
++		}
++	}
++	raw, err := guardReadConfig(configFile)
++	if err != nil {
++		return errHoopaGuard
++	}
++	hash := controlDigest(raw)
++	if hash != os.Getenv("HOOPA_GUARD_CONFIG_SHA256") {
++		return errHoopaGuard
++	}
++	generation, runID := os.Getenv("HOOPA_GUARD_GENERATION"), os.Getenv("HOOPA_RUN_ID")
++	p, err := profile.Validate(raw, generation)
++	if err != nil {
++		return errHoopaGuard
++	}
++	status := sources.Status{SchemaVersion: 2, RunID: runID, ConfigGeneration: generation, ConfigSHA256: hash, BinaryVersion: C.Version, Mode: "basic-sources", Capabilities: hoopaSourceCapabilities(), State: "closed", SnapshotSHA256: hash}
++	if status.Validate() != nil {
++		return errHoopaGuard
++	}
++	C.SetHomeDir(homeDir)
++	C.SetConfig(configFile)
++	cfg, err := executor.ParseWithBytes(raw)
++	if err != nil {
++		return errHoopaGuard
++	}
++	g := cfg.General
++	if g.Port != 0 || g.SocksPort != 0 || g.RedirPort != 0 || g.TProxyPort != 0 || g.MixedPort != 0 || g.Tun.Enable || g.TuicServer.Enable || len(cfg.Tunnels) != 0 || len(cfg.RuleProviders) != 0 || len(cfg.SubRules) != 0 || g.GeoAutoUpdate || len(cfg.Listeners) != len(p.Listeners) {
++		return errHoopaGuard
++	}
++	for _, provider := range cfg.Providers {
++		if provider == nil || provider.VehicleType() != P.Compatible {
++			return errHoopaGuard
++		}
++	}
++	entries := make([]legacy.Entry, 0, len(p.Listeners))
++	for _, entry := range p.Listeners {
++		ln := cfg.Listeners[entry.Name]
++		if ln == nil || ln.Name() != entry.Name || ln.RawAddress() != net.JoinHostPort(entry.Listen, strconv.Itoa(int(entry.Port))) {
++			return errHoopaGuard
++		}
++		o, ok := ln.Config().(*listenerInbound.MixedOption)
++		if !ok || o.UDP || o.SpecialProxy != "" || o.SpecialRules != "" || len(o.Users) != 1 || o.Users[0].Username != entry.Users[0].Username || o.Users[0].Password != entry.Users[0].Password {
++			return errHoopaGuard
++		}
++		entries = append(entries, legacy.Entry{Name: entry.Name, Type: entry.Type, Listen: entry.Listen, Port: entry.Port, UDP: entry.UDP, Users: []legacy.User{{Username: entry.Users[0].Username, Password: entry.Users[0].Password}}})
++	}
++	// Configure protected selection before publishing proxies or starting native
++	// provider health checks. These are immutable inline providers only.
++	for _, group := range p.Groups {
++		proxy := cfg.Proxies[group.Name]
++		if proxy == nil {
++			return errHoopaGuard
++		}
++		if group.Type == "url-test" {
++			u, ok := proxy.Adapter().(*outboundgroup.URLTest)
++			if !ok {
++				return errHoopaGuard
++			}
++			probe := group.Probe()
++			if u.ConfigureHoopaProbe(C.HoopaProbePolicy{URL: probe.URL, IntervalSeconds: probe.IntervalSeconds, TimeoutMS: probe.TimeoutMS, ToleranceMS: probe.ToleranceMS}, cfg.Proxies["REJECT"]) != nil {
++				return errHoopaGuard
++			}
++		}
++	}
++	cfg.Listeners = nil
++	C.HoopaProtected = true
++	executor.ApplyConfig(cfg, true)
++	defer executor.Shutdown()
++	r := &hoopaControlRuntime{sourceMode: true, state: "closed", runID: runID, generation: generation, hash: hash, secret: p.Secret, controllerAddress: p.Controller, declaredEntries: entries, conns: map[net.Conn]bool{}}
++	defer r.stop()
++	snapshot, err := r.readSourceSnapshot()
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.snapshotSHA, err = snapshot.Digest()
++	if err != nil {
++		return errHoopaGuard
++	}
++	for _, entry := range entries {
++		f, err := hoopaguard.Reserve(net.JoinHostPort(entry.Listen, strconv.Itoa(int(entry.Port))))
++		if err != nil {
++			return errHoopaGuard
++		}
++		r.reserved = append(r.reserved, f)
++	}
++	f, err := hoopaguard.Reserve(p.Controller)
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.controller, err = hoopaguard.Listen(f)
++	_ = f.Close()
++	if err != nil {
++		return errHoopaGuard
++	}
++	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 8192}
++	terms, hups := make(chan os.Signal, 1), make(chan os.Signal, 1)
++	signal.Notify(terms, syscall.SIGINT, syscall.SIGTERM)
++	signal.Notify(hups, syscall.SIGHUP)
++	defer signal.Stop(terms)
++	defer signal.Stop(hups)
++	served := make(chan error, 1)
++	go func() { served <- r.server.Serve(r.controller) }()
++	for {
++		select {
++		case <-terms:
++			return nil
++		case <-hups:
++		case <-served:
++			return errHoopaGuard
++		}
++	}
++}
++
++func (r *hoopaControlRuntime) controlPrefix() string {
++	if r.sourceMode {
++		return "/hoopa/v2/"
++	}
++	return "/hoopa/v1/"
++}
++func (r *hoopaControlRuntime) decodeMutation(raw []byte) (wire.Mutation, error) {
++	if r.sourceMode {
++		q, e := sources.DecodeMutation(raw)
++		return wire.Mutation(q), e
++	}
++	return wire.DecodeMutation(raw)
++}
++func (r *hoopaControlRuntime) mutationDigest(q wire.Mutation) (string, error) {
++	if r.sourceMode {
++		return sources.Mutation(q).Digest()
++	}
++	return q.Digest()
++}
++func sourceStatus(s wire.Status) (sources.Status, error) {
++	v := sources.Status{SchemaVersion: 2, RunID: s.RunID, ConfigGeneration: s.ConfigGeneration, ConfigSHA256: s.ConfigSHA256, BinaryVersion: s.BinaryVersion, Mode: "basic-sources", Capabilities: hoopaSourceCapabilities(), State: s.State, SnapshotSHA256: s.SnapshotSHA256}
++	if s.Activation != nil {
++		x := sources.Result(*s.Activation)
++		v.Activation = &x
++	}
++	if s.Drain != nil {
++		x := sources.Result(*s.Drain)
++		v.Drain = &x
++	}
++	return v, v.Validate()
++}
++
++// URLTest projection deliberately never calls Now, Touch, or a live probe.
++// Its immutable policy is checked by Configure against native health settings.
++func (r *hoopaControlRuntime) readSourceSnapshot() (sources.Snapshot, error) {
++	s := sources.Snapshot{SchemaVersion: 2, ConfigSHA256: r.hash, Controller: r.controllerAddress, Entries: []sources.Entry{}, Proxies: []sources.Proxy{}, Rules: []sources.Rule{}}
++	for _, e := range r.declaredEntries {
++		users, err := json.Marshal(e.Users)
++		if err != nil {
++			return s, errHoopaGuard
++		}
++		s.Entries = append(s.Entries, sources.Entry{Name: e.Name, Type: e.Type, Address: net.JoinHostPort(e.Listen, strconv.Itoa(int(e.Port))), AuthSHA256: controlDigest(users)})
++	}
++	for name, p := range tunnel.Proxies() {
++		if p == nil || name != p.Name() {
++			return s, errHoopaGuard
++		}
++		x := sources.Proxy{Name: name, Type: p.Type().String(), Address: p.Addr(), DialerProxy: p.ProxyInfo().DialerProxy, Members: []string{}}
++		switch p.Type() {
++		case C.Selector:
++			u, ok := p.Adapter().(*outboundgroup.Selector)
++			if !ok {
++				return s, errHoopaGuard
++			}
++			for _, m := range u.Proxies() {
++				if m == nil {
++					return s, errHoopaGuard
++				}
++				x.Members = append(x.Members, m.Name())
++			}
++			x.Selected = u.Now()
++		case C.URLTest:
++			u, ok := p.Adapter().(*outboundgroup.URLTest)
++			if !ok {
++				return s, errHoopaGuard
++			}
++			policy, ok := u.HoopaProbePolicy()
++			if !ok {
++				return s, errHoopaGuard
++			}
++			x.Probe = &sources.Probe{URL: policy.URL, IntervalSeconds: policy.IntervalSeconds, TimeoutMS: policy.TimeoutMS, ToleranceMS: policy.ToleranceMS}
++			for _, m := range u.Proxies() {
++				if m == nil {
++					return s, errHoopaGuard
++				}
++				x.Members = append(x.Members, m.Name())
++			}
++		}
++		s.Proxies = append(s.Proxies, x)
++	}
++	for _, rule := range tunnel.Rules() {
++		if rule == nil {
++			return s, errHoopaGuard
++		}
++		s.Rules = append(s.Rules, sources.Rule{Type: rule.RuleType().String(), Payload: rule.Payload(), Target: rule.Adapter()})
++	}
++	sort.Slice(s.Entries, func(i, j int) bool { return s.Entries[i].Name < s.Entries[j].Name })
++	sort.Slice(s.Proxies, func(i, j int) bool { return s.Proxies[i].Name < s.Proxies[j].Name })
++	return s, s.Validate()
++}
++
++func (r *hoopaControlRuntime) verifiedProjection() (any, error) {
++	if !r.sourceMode {
++		return r.verifiedSnapshot()
++	}
++	s, err := r.readSourceSnapshot()
++	if err != nil {
++		return nil, err
++	}
++	hash, err := s.Digest()
++	if err != nil || hash != r.snapshotSHA {
++		return nil, errHoopaGuard
++	}
++	if r.state == "open" {
++		if len(r.entries) != len(r.declaredEntries) {
++			return nil, errHoopaGuard
++		}
++		for i, ln := range r.entries {
++			e := r.declaredEntries[i]
++			if ln.Addr().String() != net.JoinHostPort(e.Listen, strconv.Itoa(int(e.Port))) {
++				return nil, errHoopaGuard
++			}
++		}
++	}
++	return s, nil
++}
+diff --git a/hoopa_control_v1_linux.go b/hoopa_control_v1_linux.go
+--- a/hoopa_control_v1_linux.go
++++ b/hoopa_control_v1_linux.go
+@@ -50,6 +50,9 @@
+ }
+ 
+ func runHoopaControlV1() error {
++	if os.Getenv("HOOPA_CONTROL_PROTOCOL") == "2" {
++		return runHoopaControlSources()
++	}
+ 	log.SetLevel(log.SILENT)
+ 	if os.Getenv("HOOPA_CONTROL_PROTOCOL") != "1" || version || testConfig || configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
+ 		return errHoopaGuard
+@@ -154,6 +157,7 @@
+ }
+ 
+ type hoopaControlRuntime struct {
++	sourceMode                                          bool
+ 	mu                                                  sync.Mutex
+ 	state, runID, generation, hash, secret, snapshotSHA string
+ 	controllerAddress                                   string
+@@ -245,8 +249,9 @@
+ 		http.Error(w, "unauthorized", 401)
+ 		return
+ 	}
+-	read := q.Method == "GET" && (q.URL.Path == "/hoopa/v1/status" || q.URL.Path == "/hoopa/v1/snapshot")
+-	write := q.Method == "POST" && (q.URL.Path == "/hoopa/v1/activate" || q.URL.Path == "/hoopa/v1/drain")
++	prefix := r.controlPrefix()
++	read := q.Method == "GET" && (q.URL.Path == prefix+"status" || q.URL.Path == prefix+"snapshot")
++	write := q.Method == "POST" && (q.URL.Path == prefix+"activate" || q.URL.Path == prefix+"drain")
+ 	if !read && !write {
+ 		http.Error(w, "unsupported operation", 409)
+ 		return
+@@ -262,16 +267,25 @@
+ 			http.Error(w, "observation unavailable", 503)
+ 			return
+ 		}
+-		snapshot, err := r.verifiedSnapshot()
++		snapshot, err := r.verifiedProjection()
+ 		if err != nil {
+ 			http.Error(w, "observation unavailable", 503)
+ 			return
+ 		}
+-		if q.URL.Path == "/hoopa/v1/snapshot" {
++		if q.URL.Path == prefix+"snapshot" {
+ 			controlWriteJSON(w, 200, snapshot)
+ 			return
+ 		}
+ 		status := wire.Status{SchemaVersion: 1, RunID: r.runID, ConfigGeneration: r.generation, ConfigSHA256: r.hash, BinaryVersion: C.Version, Mode: "basic", Capabilities: hoopaControlCapabilities(), State: r.state, SnapshotSHA256: r.snapshotSHA, Activation: r.activation, Drain: r.drainReceipt}
++		if r.sourceMode {
++			converted, err := sourceStatus(status)
++			if err != nil {
++				http.Error(w, "observation unavailable", 503)
++				return
++			}
++			controlWriteJSON(w, 200, converted)
++			return
++		}
+ 		if status.Validate() != nil {
+ 			http.Error(w, "observation unavailable", 503)
+ 			return
+@@ -289,8 +303,8 @@
+ 		http.Error(w, "invalid request", 400)
+ 		return
+ 	}
+-	request, err := wire.DecodeMutation(raw)
+-	if err != nil || q.URL.Path != "/hoopa/v1/"+request.Operation {
++	request, err := r.decodeMutation(raw)
++	if err != nil || q.URL.Path != prefix+request.Operation {
+ 		http.Error(w, "invalid request", 400)
+ 		return
+ 	}
+@@ -321,7 +335,7 @@
+ func (r *hoopaControlRuntime) mutate(q wire.Mutation) (*wire.Result, int) {
+ 	r.mu.Lock()
+ 	defer r.mu.Unlock()
+-	digest, err := q.Digest()
++	digest, err := r.mutationDigest(q)
+ 	if err != nil || r.state == "stopped" || q.RunID != r.runID || q.ConfigGeneration != r.generation || q.ConfigSHA256 != r.hash || q.SnapshotSHA256 != r.snapshotSHA {
+ 		return nil, 409
+ 	}
+@@ -342,13 +356,16 @@
+ 		}
+ 		return &copy, 200 // Historical receipt, never changes today's state.
+ 	}
+-	if _, err := r.verifiedSnapshot(); err != nil {
++	if _, err := r.verifiedProjection(); err != nil {
+ 		return nil, 409
+ 	}
+ 	if q.Operation == "activate" && r.state != "closed" || q.Operation == "drain" && r.state != "closed" && r.state != "open" {
+ 		return nil, 409
+ 	}
+ 	result := &wire.Result{SchemaVersion: 1, OperationID: q.OperationID, RequestSHA256: digest, RunID: q.RunID, Result: "failed"}
++	if r.sourceMode {
++		result.SchemaVersion = 2
++	}
+ 	if q.Operation == "activate" {
+ 		r.activationRequest, r.activation = &q, result
+ 		for _, f := range r.reserved {

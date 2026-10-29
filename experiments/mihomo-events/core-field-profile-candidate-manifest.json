@@ -1,0 +1,1080 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-25",
+  "scope": "T132 finite restricted field capability; source v5 candidate; not yet T137",
+  "status": "fresh 001-015 build; actual preflight and new VM unverified at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0014-enforce-connector-namespace.patch",
+      "bytes": 14486,
+      "sha256": "1f3353b523a4a8201924bf71562018e9f3d656006de20a28cffbc05c7bf05ae6"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0015-add-restricted-field-profile.patch",
+      "bytes": 76418,
+      "sha256": "b953ef468978a5e8cf1f3285256d550f9f08e332620b00747ae50f703158a3d0"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-core-field-profile/artifact/mihomo-identity-field-profile",
+    "bytes": 51320639,
+    "sha256": "1ef1b53ae41435596844c264ae5e1e5201ce95b5d2762be872371023f4d6af25"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-namespace-guard-candidate-manifest.json",
+    "bytes": 14826,
+    "sha256": "726ef0401e59fc74a9685e84e8dda32c56b7a404aef95e250d7ea7da1444aa80"
+  },
+  "source": {
+    "fresh_applied": "private/t132-core-field-profile/artifact/source",
+    "reviewed_target": "private/t132-field-profile/reviewed-source",
+    "tree_sha256": "8f79c90508d8a3719eee356778fc513f872c615b0fba2591c0191ca4ecc26020",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF for each entry; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1192,
+    "file_count": 995,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-core-field-profile/build-result.json",
+      "bytes": 198756,
+      "sha256": "d2d3f25e44f0dd448c6c9f8c77888cc2cb095885287c3fad4809c0ade90f9693"
+    },
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    }
+  },
+  "integration": {
+    "changed_files": [
+      "component/hoopaguard/profile/identity.go",
+      "component/hoopaguard/profile/identity_test.go",
+      "component/hoopaguard/profile/profile.go",
+      "component/hoopaguard/profile/profile_test.go",
+      "component/hoopaid/abi.go",
+      "component/hoopaid/handoff.go",
+      "component/hoopaid/owner.go",
+      "component/hoopaid/profile_v2.go",
+      "component/hoopaid/profile_v3.go",
+      "component/hoopaid/profile_v4_test.go",
+      "component/hoopatrace/field_profile_linux_test.go",
+      "component/hoopatrace/guard_linux.go",
+      "component/hoopatrace/quality_linux.go",
+      "component/hoopatrace/recovery_linux.go",
+      "component/hoopatrace/telemetrywire/connector_v5.go",
+      "component/hoopatrace/telemetrywire/connector_v5_test.go",
+      "component/hoopatrace/telemetrywire/manifest.go",
+      "component/hoopatrace/telemetrywire/recovery.go",
+      "component/hoopatrace/telemetrywire/source_event.go",
+      "component/hoopatrace/telemetrywire/state.go",
+      "component/hoopatrace/trace_linux.go",
+      "component/identityprofile/profile.go",
+      "component/identityprofile/profile_test.go",
+      "constant/hoopa_quality.go",
+      "constant/hoopa_quality_profile_test.go",
+      "hoopa_field_profile_test.go",
+      "hoopa_guard_linux.go"
+    ],
+    "package_mappings": [
+      {
+        "public": {
+          "path": "protocol/identityprofile/profile.go",
+          "bytes": 5576,
+          "sha256": "8bb532168e07f88eefe431f5e91979f08a0a0985215d18c0feebdc859249ed48"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/identityprofile/profile.go",
+          "bytes": 5576,
+          "sha256": "8bb532168e07f88eefe431f5e91979f08a0a0985215d18c0feebdc859249ed48"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/identityprofile/profile_test.go",
+          "bytes": 2695,
+          "sha256": "9b3f0951310d7b344462999e3586d4313d915ecdd3310f4732c0839ce737d795"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/identityprofile/profile_test.go",
+          "bytes": 2695,
+          "sha256": "9b3f0951310d7b344462999e3586d4313d915ecdd3310f4732c0839ce737d795"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/quality_v2_test.go",
+          "bytes": 13875,
+          "sha256": "61a7207bc4c33175b31ea332fd92729b96c2abee494d37290c8cae6bebe2ebad"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/quality_v2_test.go",
+          "bytes": 13857,
+          "sha256": "e3067552205fdab00ce6671cad99a211ca0099cf481bbf868115f33fc9408fdf"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v5.go",
+          "bytes": 2458,
+          "sha256": "42567f06fbed88b8d5da56666d0c8190c9e3691f0515a5a16a4ddb3fb1216eba"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v5.go",
+          "bytes": 2481,
+          "sha256": "0e25d09f215ce8e11b98e68b38bf85d8b9dd2094191146fc3c19a05b6501bf82"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/state_test.go",
+          "bytes": 7546,
+          "sha256": "0c4503e2b323e34646d815d80abb5b0e7066dc4149e2a4851cc9e109e9e834d5"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/state_test.go",
+          "bytes": 7546,
+          "sha256": "0c4503e2b323e34646d815d80abb5b0e7066dc4149e2a4851cc9e109e9e834d5"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/source_event.go",
+          "bytes": 12682,
+          "sha256": "f8527e0a18f812cb1b1be423f58a6536fd7f5ac3b048d82b7f50baadaa77070b"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/source_event.go",
+          "bytes": 12705,
+          "sha256": "05e08138b8f87f453680cc7b329ec7508b3f650676d499465bcf1e0e5c223d42"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v3_test.go",
+          "bytes": 12209,
+          "sha256": "5afc879b300eb28da80d8bf711ffdbff4a75d4e734ff2f805d0870af1954511c"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v3_test.go",
+          "bytes": 12209,
+          "sha256": "5afc879b300eb28da80d8bf711ffdbff4a75d4e734ff2f805d0870af1954511c"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/state.go",
+          "bytes": 5990,
+          "sha256": "102d2f57e28e84088696ad8218a942ee7f32696397b529e5a2961218371f02b0"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/state.go",
+          "bytes": 5990,
+          "sha256": "102d2f57e28e84088696ad8218a942ee7f32696397b529e5a2961218371f02b0"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/counter_event.go",
+          "bytes": 4890,
+          "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/counter_event.go",
+          "bytes": 4890,
+          "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/recovery_test.go",
+          "bytes": 4008,
+          "sha256": "836a1db499ab45c5307f0b26479cdac5f6148ab88f86ea7142dca9ade776dac7"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/recovery_test.go",
+          "bytes": 4008,
+          "sha256": "836a1db499ab45c5307f0b26479cdac5f6148ab88f86ea7142dca9ade776dac7"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/recovery.go",
+          "bytes": 5591,
+          "sha256": "29de180eb0e37678d476ef435803993c49aa56a6287e618f6319d8190bd60d25"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/recovery.go",
+          "bytes": 5591,
+          "sha256": "29de180eb0e37678d476ef435803993c49aa56a6287e618f6319d8190bd60d25"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v4_test.go",
+          "bytes": 12021,
+          "sha256": "b58373dbb4789410fbb4b7dc610b997c72331aa2989158b270f2d61042d32cd1"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v4_test.go",
+          "bytes": 12021,
+          "sha256": "b58373dbb4789410fbb4b7dc610b997c72331aa2989158b270f2d61042d32cd1"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/counter_event_test.go",
+          "bytes": 6510,
+          "sha256": "1ae983cb234571840ec3fb874827e4232c42708b3a8e89e84f921322bd6b7eab"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/counter_event_test.go",
+          "bytes": 6510,
+          "sha256": "1ae983cb234571840ec3fb874827e4232c42708b3a8e89e84f921322bd6b7eab"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/scalars.go",
+          "bytes": 1024,
+          "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/scalars.go",
+          "bytes": 1024,
+          "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v3.go",
+          "bytes": 8817,
+          "sha256": "583e3245657dbbb1aab65ca6dc8e6bd476c7cb4400e1a251e0d9c1db806a0dd5"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v3.go",
+          "bytes": 8817,
+          "sha256": "583e3245657dbbb1aab65ca6dc8e6bd476c7cb4400e1a251e0d9c1db806a0dd5"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/manifest_test.go",
+          "bytes": 2724,
+          "sha256": "f4ebe793b7b7fabeafb7525eb1698b699f5db5e550eef3adfbbe5b28570e1bdd"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/manifest_test.go",
+          "bytes": 2724,
+          "sha256": "f4ebe793b7b7fabeafb7525eb1698b699f5db5e550eef3adfbbe5b28570e1bdd"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/quality_state.go",
+          "bytes": 3561,
+          "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/quality_state.go",
+          "bytes": 3561,
+          "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/manifest.go",
+          "bytes": 4569,
+          "sha256": "f853b9f186ac0b87e180999f3bcc02714cd8465b433394c07b2de6214e76f697"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/manifest.go",
+          "bytes": 4592,
+          "sha256": "4a3bb53f19086583fa7246f94f5d279a0dfdca6e002202ce029d1f6cf29dd514"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v4.go",
+          "bytes": 4845,
+          "sha256": "e6eca66c28d2f9dad6d67a435d82be182489eec871aa12c002a9da91590c4f92"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v4.go",
+          "bytes": 4845,
+          "sha256": "e6eca66c28d2f9dad6d67a435d82be182489eec871aa12c002a9da91590c4f92"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/source_event_test.go",
+          "bytes": 6431,
+          "sha256": "cdb204eeca6810f0c882096d93e363e185ea761343548104ca514eabe0305163"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/source_event_test.go",
+          "bytes": 6431,
+          "sha256": "cdb204eeca6810f0c882096d93e363e185ea761343548104ca514eabe0305163"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/quality_v2.go",
+          "bytes": 9494,
+          "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/quality_v2.go",
+          "bytes": 9494,
+          "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384"
+        }
+      },
+      {
+        "public": {
+          "path": "protocol/telemetrywire/connector_v5_test.go",
+          "bytes": 7184,
+          "sha256": "c89aeeae46857efe7fcb2619c3ac62606947825457f7603817d5a59d31693c84"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopatrace/telemetrywire/connector_v5_test.go",
+          "bytes": 7207,
+          "sha256": "18d71659f26f1132fe5050cfd1535300db3be481e1fb67941093d41d1b781ab9"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/abi.go",
+          "bytes": 6687,
+          "sha256": "d68a6efa4538d4abf25ca102904999bc2d748f48331355d3504b67945853c5b9"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/abi.go",
+          "bytes": 6704,
+          "sha256": "cdca76c0034643565c156d8e36807da975179f94ce7e85a754164587e31f1fe2"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/diagnostics_test.go",
+          "bytes": 12402,
+          "sha256": "62e20436544475f6aeaf41f4593d3bfec4228aab5dc4c577fbfbde3584865303"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/diagnostics_test.go",
+          "bytes": 12396,
+          "sha256": "acce4f1999b4486efe880ce2bda24391e9ce712eb1d3eb3417cb3d3aa0902b99"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/native_other.go",
+          "bytes": 182,
+          "sha256": "a7fb26a279acf02ed1ea4c852db7ac209cf85eea91a12b855fbae22bba3a8184"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/native_other.go",
+          "bytes": 176,
+          "sha256": "c20ed76c9dcd289ea8365b4d7721f7b5263f923be7fd49f9c6bcf39be3cc83d6"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/native_linux_amd64_test.go",
+          "bytes": 3553,
+          "sha256": "6c1224df4e49622015bc6aa4e16fc16b4a8c7782dd5e6e8c3b809b9328b89814"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/native_linux_amd64_test.go",
+          "bytes": 3547,
+          "sha256": "0004d9be1a657d1e35744bab15b5da322738d643ffd4480dd05681a22c007ae1"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v2.go",
+          "bytes": 4064,
+          "sha256": "defc02b4b9d743f931b2f420704d4fe2f77a9871cf6499c1ffdce9d0fecfd8ad"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/profile_v2.go",
+          "bytes": 4081,
+          "sha256": "670e395cdeba9434c0bbef0a8922b02c0526ea2f6ea02c40d3e485cd7fa2925c"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v4_test.go",
+          "bytes": 2654,
+          "sha256": "7de0860ce8a1f3b150f789c6d4448abddec514257c130e5cf400d0314eecfa89"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/profile_v4_test.go",
+          "bytes": 2671,
+          "sha256": "bde8f8573a716344a7b0fa97b6ea72a0691027e422f48babf1d2926762189a68"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v3.go",
+          "bytes": 2353,
+          "sha256": "1dd5dba7479fbb1e586f18da98b4b85a870c3f0b9a0eef8d659a9e96dc92f927"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/profile_v3.go",
+          "bytes": 2370,
+          "sha256": "13399dfc4ca70cca4e4b91992730363b70bd161f0c0ece80837b8455dc23e45b"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/tcp_info_linux_amd64.go",
+          "bytes": 1578,
+          "sha256": "efbca2bd8bc8ee0e6520d8353b0204b70df4a15072c4213571d637966ea2e103"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/tcp_info_linux_amd64.go",
+          "bytes": 1572,
+          "sha256": "94eb286f25bf4e2f131db81002df883b98d3c44b9e0fd1f0eb32d8769c1039fb"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/native_linux_amd64.go",
+          "bytes": 10236,
+          "sha256": "f29d335d5c460e55065f4a149a033e86d337d14dc6491bae7518df5e5860edd1"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/native_linux_amd64.go",
+          "bytes": 10230,
+          "sha256": "239ce68ad993ca24a1fe98519a711d1d62f970acaf2ef2f70d30bcfade6cab86"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v3_test.go",
+          "bytes": 7004,
+          "sha256": "4bea895d98bc99477af08fb64b7062d8a8fbf99738dc85839f75e1a028e80088"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/profile_v3_test.go",
+          "bytes": 6998,
+          "sha256": "a3997d04ab58421403e79d3da937873e3c9811ac01dc4174fe33bd0a60d28f72"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/tcp_info_linux_amd64_test.go",
+          "bytes": 1316,
+          "sha256": "1d7b81fd02ff132604d7462a3f05a4148d1b3feb030ac98fb12320516095182b"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/tcp_info_linux_amd64_test.go",
+          "bytes": 1310,
+          "sha256": "048b1ed433541ada56a69491ca8c32e543e8050a10049a519083f4859c9e8e65"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/diagnostics.go",
+          "bytes": 4458,
+          "sha256": "40bcd398192688d024b39bd98f3ad0619e27010015ed3915a0cc5d30391f60bc"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/diagnostics.go",
+          "bytes": 4452,
+          "sha256": "b2f5f400aa2726cdc8d64732c14b0ebebf49a12d588f91778fccb3ca5b5c4664"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/owner_test.go",
+          "bytes": 20860,
+          "sha256": "a7336b930dabc36669a00892c94f153845afaee537982409fec465eb30a5eacf"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/owner_test.go",
+          "bytes": 20854,
+          "sha256": "fe0c273d3f8b09a80878f1d264a3b52b45d647e53e7d5d7e54e07183d7c316b0"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/handoff.go",
+          "bytes": 5725,
+          "sha256": "8753e5f3235a8a4acf56c8f7ab93f34a55ab0b0f99cdab6f6b61bd3bb64c6fd3"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/handoff.go",
+          "bytes": 5742,
+          "sha256": "37210a9b7e0ce9612b12f41438f9ccee08765ca36c5fec5dc7ea3e0946730c5a"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/executable.go",
+          "bytes": 2627,
+          "sha256": "b95cb0e9dbd04e6ecc0333b3ee276c665d602fc2167446a3cd6b6a8bf7ac54cb"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/executable.go",
+          "bytes": 2621,
+          "sha256": "8537a0595e46aa00f9fde6b7c034e293634924a23ffafc91817bf421d6c1f8e4"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/executable_native_linux_amd64.go",
+          "bytes": 2508,
+          "sha256": "b2fc68224879ad4b10b69dadf87fdf5d12af9029d2b8d63fdf9364a17a911ce1"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/executable_native_linux_amd64.go",
+          "bytes": 2502,
+          "sha256": "73c8f8871b64952fdd8b43d555223be1743b18ae85e1966c7bd0e83ba3e1f4ae"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/executable_test.go",
+          "bytes": 6289,
+          "sha256": "67aab5592d3ca3e91b3161f95c9bf261725b88e74885b22c6f1b1f061b4ec13c"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/executable_test.go",
+          "bytes": 6283,
+          "sha256": "8ea86867184d2184b716caf86f17ea0ecd10a82f0e3eac73c79adc3e11082caa"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v2_test.go",
+          "bytes": 8132,
+          "sha256": "93315db7124a28b44b73e47bb7a8465e2f941f3f0bdd1cfe2f3762fbb3c59001"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/profile_v2_test.go",
+          "bytes": 8126,
+          "sha256": "186ba4f05e1795ff2478395017ae1a2850cd43e4211f94c061e2321cda08c884"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/owner.go",
+          "bytes": 12650,
+          "sha256": "687556a90cd5a29ab7293f2fc38a04ca772316d7b888147ac99a37075d5141b7"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaid/owner.go",
+          "bytes": 12667,
+          "sha256": "d71e9d785b1fc27bea5d74865b88d1f423d8cd600cb911dd147fff35c9f1d7b5"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/mihomo-events/capabilityprofile/identity.go",
+          "bytes": 1779,
+          "sha256": "ff084084c745af8d7e34d678684b1a0cb5a7a849c9c970c086696cd323622fef"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaguard/profile/identity.go",
+          "bytes": 1792,
+          "sha256": "ca89e9a964f5428a9a4fed93cc6342d79082663bc57a574cd072b90b28bf624d"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/mihomo-events/capabilityprofile/profile.go",
+          "bytes": 11262,
+          "sha256": "3b6ff718046dc8d3ded6fa8a87ef3cf5934d9aab90b8efd4739c6d1d82b475a5"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaguard/profile/profile.go",
+          "bytes": 11252,
+          "sha256": "35cc6a035f4a898c5d66d50fe459c7a5f83a9383905d65a12d1cc7ff40d80a75"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/mihomo-events/capabilityprofile/identity_test.go",
+          "bytes": 2650,
+          "sha256": "ec85053bc2d62494d23c35cd8601b3870751f87e4b26f43a7779f97b99662721"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaguard/profile/identity_test.go",
+          "bytes": 2663,
+          "sha256": "8d615a554735f700da5a0918a97dd6b46781e7ced35b264fce6f9fa13ea8af35"
+        }
+      },
+      {
+        "public": {
+          "path": "experiments/mihomo-events/capabilityprofile/profile_test.go",
+          "bytes": 13284,
+          "sha256": "1df164ba3c6d7afc1c625336af496292430f717be950c0b64299131e6327819a"
+        },
+        "integrated": {
+          "path": "private/t132-field-profile/reviewed-source/component/hoopaguard/profile/profile_test.go",
+          "bytes": 13274,
+          "sha256": "6608beb7f41c8e3bfbc4e75870f35da5922502e961ef7d78650ca22712e4e1dc"
+        }
+      }
+    ],
+    "race_top_level": 38,
+    "race_including_subtests": 180,
+    "skipped": 0,
+    "vet_exit_code": 0,
+    "build_exit_code": 0,
+    "printed_version": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time",
+    "printed_version_not_source_tag": true,
+    "tests": [
+      {
+        "path": "private/t132-core-field-profile/integrated-field-race.stdout",
+        "bytes": 175643,
+        "sha256": "02ec6e7d1cc3d0fd08d2d931cc066b0e0088ba354987d5658c64320a20aebf84"
+      },
+      {
+        "path": "private/t132-core-field-profile/integrated-field-race.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "private/t132-core-field-profile/integrated-field-vet.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "private/t132-core-field-profile/integrated-field-vet.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "public_implementation": {
+    "report": {
+      "path": "private/t132-field-profile/implementation-report.json",
+      "bytes": 40645,
+      "sha256": "989ad6c552d51f4baea5cb479c0aa6a2632da693859f818fa7291d6ebde872cf"
+    },
+    "files": [
+      {
+        "path": "protocol/identityprofile/profile.go",
+        "bytes": 5576,
+        "sha256": "8bb532168e07f88eefe431f5e91979f08a0a0985215d18c0feebdc859249ed48"
+      },
+      {
+        "path": "protocol/identityprofile/profile_test.go",
+        "bytes": 2695,
+        "sha256": "9b3f0951310d7b344462999e3586d4313d915ecdd3310f4732c0839ce737d795"
+      },
+      {
+        "path": "protocol/telemetrywire/connector_v5.go",
+        "bytes": 2458,
+        "sha256": "42567f06fbed88b8d5da56666d0c8190c9e3691f0515a5a16a4ddb3fb1216eba"
+      },
+      {
+        "path": "protocol/telemetrywire/connector_v5_test.go",
+        "bytes": 7184,
+        "sha256": "c89aeeae46857efe7fcb2619c3ac62606947825457f7603817d5a59d31693c84"
+      },
+      {
+        "path": "protocol/telemetrywire/source_event.go",
+        "bytes": 12682,
+        "sha256": "f8527e0a18f812cb1b1be423f58a6536fd7f5ac3b048d82b7f50baadaa77070b"
+      },
+      {
+        "path": "protocol/telemetrywire/state.go",
+        "bytes": 5990,
+        "sha256": "102d2f57e28e84088696ad8218a942ee7f32696397b529e5a2961218371f02b0"
+      },
+      {
+        "path": "protocol/telemetrywire/manifest.go",
+        "bytes": 4569,
+        "sha256": "f853b9f186ac0b87e180999f3bcc02714cd8465b433394c07b2de6214e76f697"
+      },
+      {
+        "path": "protocol/telemetrywire/recovery.go",
+        "bytes": 5591,
+        "sha256": "29de180eb0e37678d476ef435803993c49aa56a6287e618f6319d8190bd60d25"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/abi.go",
+        "bytes": 6687,
+        "sha256": "d68a6efa4538d4abf25ca102904999bc2d748f48331355d3504b67945853c5b9"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/handoff.go",
+        "bytes": 5725,
+        "sha256": "8753e5f3235a8a4acf56c8f7ab93f34a55ab0b0f99cdab6f6b61bd3bb64c6fd3"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/owner.go",
+        "bytes": 12650,
+        "sha256": "687556a90cd5a29ab7293f2fc38a04ca772316d7b888147ac99a37075d5141b7"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/profile_v2.go",
+        "bytes": 4064,
+        "sha256": "defc02b4b9d743f931b2f420704d4fe2f77a9871cf6499c1ffdce9d0fecfd8ad"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/profile_v3.go",
+        "bytes": 2353,
+        "sha256": "1dd5dba7479fbb1e586f18da98b4b85a870c3f0b9a0eef8d659a9e96dc92f927"
+      },
+      {
+        "path": "experiments/sourceidentity/coreadmission/profile_v4_test.go",
+        "bytes": 2654,
+        "sha256": "7de0860ce8a1f3b150f789c6d4448abddec514257c130e5cf400d0314eecfa89"
+      },
+      {
+        "path": "experiments/sourceidentity/exec_core.py",
+        "bytes": 17198,
+        "sha256": "b08c59d183d6945925fa823058203059359445c02bd9299e62f0603e692dc0d4"
+      },
+      {
+        "path": "experiments/sourceidentity/test_field_profile.py",
+        "bytes": 4320,
+        "sha256": "2dc3efaa5422cbb24248e15f16c1ab8b3090648a0a707769297e7ec9c3df7d2f"
+      },
+      {
+        "path": "experiments/mihomo-events/capabilityprofile/identity.go",
+        "bytes": 1779,
+        "sha256": "ff084084c745af8d7e34d678684b1a0cb5a7a849c9c970c086696cd323622fef"
+      },
+      {
+        "path": "experiments/mihomo-events/capabilityprofile/identity_test.go",
+        "bytes": 2650,
+        "sha256": "ec85053bc2d62494d23c35cd8601b3870751f87e4b26f43a7779f97b99662721"
+      },
+      {
+        "path": "experiments/mihomo-events/identity_preflight_test.go",
+        "bytes": 7256,
+        "sha256": "a50d24850085b0c5ccfeed74e2c11d7c9bc32078804637cbccb754d44782e0f7"
+      },
+      {
+        "path": "experiments/mihomo-events/receiver_linux.go",
+        "bytes": 5787,
+        "sha256": "f0d42e06f7bfb48dd0adc87f4a3913dfd9439853868b2c737a6aaf72af8f6b35"
+      },
+      {
+        "path": "experiments/mihomo-events/source_lifecycle.go",
+        "bytes": 4341,
+        "sha256": "5b1f1f6c18c510c703dbeb1ef05a7ccfea7068deaa5ed72e99c01eae077179de"
+      },
+      {
+        "path": "experiments/mihomo-events/source_recovery.go",
+        "bytes": 1308,
+        "sha256": "b30f4419e4a70e884e762e4d1cae76723517d8100e3b890bb0adc54ecd3e2fa4"
+      },
+      {
+        "path": "experiments/mihomo-events/setup_probe_test.go",
+        "bytes": 32193,
+        "sha256": "05494dbec8322a78b49b876b84d0158e1493390cd0eb8061caf067c546df0bd4"
+      }
+    ],
+    "checks": {
+      "public_race": {
+        "top_level_pass": 125,
+        "including_subtest_pass": 843,
+        "skips": [
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestCapabilityCandidate"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestCapabilityTraceAdmission"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestIdentityPreflightActualCandidate"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestNativeCandidateIdentity"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestHoopaQualityActualTwoLines"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestHoopaQualityActualRejectedThenRetry"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestHoopaClosureTransportOfflineReopen"
+          },
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestHoopaClosureTransportStalledACK"
+          }
+        ],
+        "log": {
+          "path": "private/t132-field-profile/public-race-final.jsonl",
+          "bytes": 801433,
+          "sha256": "b66c14ec10108302aebaa1be30afa27c38493d7a9ea2743186dd57ad6460f565"
+        }
+      },
+      "final_affected_receiver_and_preflight_race": {
+        "top_level_pass": 12,
+        "including_subtest_pass": 23,
+        "skips": [
+          {
+            "package": "hoopa/experiments/mihomo-events",
+            "test": "TestIdentityPreflightActualCandidate"
+          }
+        ],
+        "log": {
+          "path": "private/t132-field-profile/preflight-receiver-final.jsonl",
+          "bytes": 23414,
+          "sha256": "0963e9b8e5e808301a124c5b4944d6ad8f5d000bebe4b449976df3f6817df17c"
+        }
+      },
+      "integrated_race": {
+        "top_level_pass": 38,
+        "including_subtest_pass": 180,
+        "skips": [],
+        "log": {
+          "path": "private/t132-field-profile/integrated-race-stable.jsonl",
+          "bytes": 175675,
+          "sha256": "e7647c2eb10a3d1f844c6f1bad0a1c02b7426f5c1e7c9d8b65e23c9d2f64b405"
+        }
+      },
+      "final_formatted_guard_entry_race": {
+        "top_level_pass": 2,
+        "including_subtest_pass": 7,
+        "skips": [],
+        "log": {
+          "path": "private/t132-field-profile/integrated-guard-stable.jsonl",
+          "bytes": 7276,
+          "sha256": "ab1ad66b653cedb8bbf1eeadee25bd08a4a1d02a9f3cf000c156175804f5bfdf"
+        }
+      },
+      "public_vet": {
+        "exit_code": 0,
+        "stderr": {
+          "path": "private/t132-field-profile/public-vet-stable.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "final_affected_vet": {
+        "exit_code": 0,
+        "stderr": {
+          "path": "private/t132-field-profile/receiver-vet.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "integrated_vet": {
+        "exit_code": 0,
+        "stderr": {
+          "path": "private/t132-field-profile/integrated-vet.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "python": {
+        "tests": 107,
+        "exit_code": 0,
+        "stderr": {
+          "path": "private/t132-field-profile/python-final.stderr",
+          "bytes": 207,
+          "sha256": "f3aa52952d4efacbb7cd9efefe80366ffa10139f30be9441bf54be4808f71cc8"
+        }
+      },
+      "python38_ast": {
+        "path": "private/t132-field-profile/python-ast.json",
+        "bytes": 173,
+        "sha256": "ee50980f51de9a9857729358e66f16d53a94586c84b6f1bfdfc3e86add723d6d"
+      },
+      "help": {
+        "exit_code": 0,
+        "stdout": {
+          "path": "private/t132-field-profile/python-help.stdout",
+          "bytes": 1412,
+          "sha256": "dbe5a41ed7867d628b88022c9f08ba44d942acbf986f090e7dd9eabbb41bdfc6"
+        }
+      },
+      "gofmt": {
+        "exit_code": 0,
+        "changed_file_errors": 0
+      },
+      "whitespace_errors": 0
+    }
+  },
+  "bpf_object": {
+    "bytes": 924400,
+    "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+    "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+  },
+  "profile": {
+    "name": "scoped-executable-online",
+    "identity_profile": "linux_amd64_loopback_connect_v1",
+    "handoff": "hoopa-core-identity-handoff-v4",
+    "maps": 10,
+    "programs": 6,
+    "links": 5,
+    "fds": 21,
+    "scope": {
+      "map": "identity_scope",
+      "bytes": 24,
+      "schema_version": 1,
+      "fields": [
+        "generation:u64",
+        "userns_inode:u32",
+        "mountns_inode:u32",
+        "schema_version:u32",
+        "reserved:u32=0"
+      ],
+      "frozen_before_any_attach": true,
+      "current_caller_user_level": 0,
+      "current_caller_user_inode": "registered initial",
+      "current_caller_mount_inode": "registered initial",
+      "checks": [
+        "LSM before exe capture",
+        "LSM after path capture before publication",
+        "connect4 before consuming executable",
+        "connect4 before connect observation publication"
+      ],
+      "actual_scope_readback_in_exec_intent": true
+    },
+    "connect_record_bytes": 112,
+    "executable_record_bytes": 296,
+    "event_schema_version": 5,
+    "manifest_schema_version": 2,
+    "declared_fields": {
+      "instance": "available",
+      "program_name": "available",
+      "program_path": "available",
+      "comm": "unverified"
+    },
+    "declared_fields_not_runtime_acceptance": true,
+    "process_rules": "unsupported; rejected at protected config load"
+  },
+  "unchanged": {
+    "original_0014_binary": {
+      "path": "private/t132-core-namespace-guard/artifact/mihomo-identity-namespace-guard",
+      "bytes": 51271973,
+      "sha256": "97d0a450202a94cee40a78d32a747865534bee1ef06b8d64efaf24819bb84167"
+    },
+    "original_0014_tree": "68ccb3e5d54842fa7ab12904a0694d7214af88f629828cb45b4ff5e880a71be6",
+    "source_v1_through_v4_wire": true,
+    "bpf_object": true,
+    "admission_lock_and_capture_order": true,
+    "ack_gc_and_recovery_order": true
+  },
+  "review": [
+    {
+      "path": "private/t132-core-field-profile/freeze.json",
+      "bytes": 3469,
+      "sha256": "126c5a176953117a35c899320a10d1f84c8de64504e34fe0a5241c5e51fb9cde"
+    },
+    {
+      "path": "private/t132-core-field-profile/root-critical-review.md",
+      "bytes": 2306,
+      "sha256": "0c51afbc082535f19abec413b54073dac4fbe03eca9e0eed6c7b8fc7249e4866"
+    },
+    {
+      "path": "private/t132-core-edges-review/field-profile-frozen-review.md",
+      "bytes": 5025,
+      "sha256": "f90a0f2eb1b9afa7e557e3206d6c20d40fd85455b5acb7c2a73440a05666761e"
+    }
+  ],
+  "runtime": {
+    "status": "not executed at creation",
+    "contract": "specs/001-hoopa-proxy-manager/contracts/source-connector-v5.md"
+  },
+  "boundaries": {
+    "T132_complete": false,
+    "T137_complete": false,
+    "formal_g01_new_samples": 0,
+    "formal_g01_old": "0/100",
+    "P0_released": false,
+    "P1_released": false,
+    "production_launcher": false,
+    "other_platform_support": false,
+    "legacy_lifecycle_helper": "ReadSourceLifecycle without manifest may project counters; it does not grant identity"
+  }
+}

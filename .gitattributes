@@ -1,0 +1,8 @@
+# Unified diffs contain significant context markers; validate with git apply.
+experiments/mihomo-events/*.patch -whitespace
+experiments/mihomo-events/patches/*.patch -whitespace
+# Preserve the exact upstream license and notice text, including its whitespace.
+LICENSES/*.txt -whitespace
+# Frozen BPF source hashes include the original final blank line.
+experiments/sourceidentity/bpf/executable_online/executable_online.bpf.c whitespace=-blank-at-eof
+experiments/sourceidentity/bpf/scoped_executable_online/scoped_executable_online.bpf.c whitespace=-blank-at-eof

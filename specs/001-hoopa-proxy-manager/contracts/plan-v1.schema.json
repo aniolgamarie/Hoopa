@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "base_revision": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "compiler_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "intent": {
+      "$ref": "intent-v1.schema.json"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "provider",
+              "core_binary",
+              "capabilities",
+              "rule_asset",
+              "app_binding"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "impact": {
+      "type": "object",
+      "properties": {
+        "requires_disruption": {
+          "type": "boolean"
+        },
+        "affected_apps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "uniqueItems": true
+        },
+        "previous_generation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_generation": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "connection_effect": {
+          "enum": [
+            "preserve_old",
+            "interrupt",
+            "unknown"
+          ]
+        },
+        "runtime_action": {
+          "enum": [
+            "start",
+            "replace",
+            "select",
+            "none"
+          ]
+        }
+      },
+      "required": [
+        "requires_disruption",
+        "affected_apps",
+        "previous_generation",
+        "target_generation",
+        "connection_effect",
+        "runtime_action"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "connection_effect": {
+                "enum": [
+                  "interrupt",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "connection_effect"
+            ]
+          },
+          "then": {
+            "properties": {
+              "requires_disruption": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "plan_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "schema_version",
+    "base_revision",
+    "compiler_version",
+    "capabilities_digest",
+    "intent",
+    "inputs",
+    "impact",
+    "blockers",
+    "plan_digest"
+  ],
+  "additionalProperties": false,
+  "title": "Hoopa Plan v1 (planned)",
+  "$comment": "Digest is lowercase SHA256 of UTF8 RFC8785 JCS serialization of entire Plan omitting only top-level plan_digest. No implementation supplied. Apply validates every bound input, compiler/capabilities/revision, blockers and confirmation. P1 full config.apply supports start/replace; select/none require capability."
+}

@@ -1,0 +1,1051 @@
+--- a/experiments/mihomo-events/control_runtime_linux_amd64.go
++++ b/experiments/mihomo-events/control_runtime_linux_amd64.go
+@@ -17,7 +17,7 @@
+ 	"time"
+ )
+ 
+-const LinuxControlCoreSHA256 = "616133dd060b14cdbde68c6d5029f003429d7a8b6adeee4452e8176c63ca80e6"
++const LinuxControlCoreSHA256 = "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967"
+ const linuxControlBPF = "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+ const linuxControlLibbpf = "1c928f61158f25d39cd3fbc7ddafeebec2448886225e2c1824455fcfcd15d04c"
+ const linuxControlBTF = "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+--- a/experiments/mihomo-events/control_process_linux_amd64.go
++++ b/experiments/mihomo-events/control_process_linux_amd64.go
+@@ -13,8 +13,6 @@
+ 	"hoopa/experiments/mihomo-events/capabilityprofile"
+ 	"hoopa/protocol/identityprofile"
+ 	"io"
+-	"net"
+-	"net/http"
+ 	"os"
+ 	"os/exec"
+ 	"path/filepath"
+@@ -44,7 +42,7 @@
+ 	exited            func(int) (bool, error)
+ 	waitExit          func(context.Context, int, time.Duration) (bool, error)
+ 	closeFD           func(int) error
+-	status            func(context.Context, capabilityprofile.Config) (linuxControlStatus, error)
++	status            func(context.Context, capabilityprofile.Config, int, ControlInstance) (linuxControlStatus, error)
+ 	mkdir             func(string) error
+ 	writeExclusive    func(string, []byte) error
+ 	syncDir           func(string) error
+@@ -450,28 +448,8 @@
+ 	} `json:"experimental_admission"`
+ }
+ 
+-func linuxControlHTTPStatus(ctx context.Context, c capabilityprofile.Config) (linuxControlStatus, error) {
+-	var s linuxControlStatus
+-	ctx, cancel := context.WithTimeout(ctx, time.Second)
+-	defer cancel()
+-	tr := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 500 * time.Millisecond}).DialContext, DisableKeepAlives: true}
+-	defer tr.CloseIdleConnections()
+-	client := &http.Client{Transport: tr, Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+-	r, e := http.NewRequestWithContext(ctx, "GET", "http://"+c.Controller+"/hoopa/status", nil)
+-	if e != nil {
+-		return s, ErrLinuxControlRuntime
+-	}
+-	r.Header.Set("Authorization", "Bearer "+c.Secret)
+-	resp, e := client.Do(r)
+-	if e != nil {
+-		return s, ErrLinuxControlRuntime
+-	}
+-	defer resp.Body.Close()
+-	raw, e := io.ReadAll(io.LimitReader(resp.Body, 8193))
+-	if e != nil || len(raw) > 8192 || resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "application/json" || controlDecode(raw, &s) != nil {
+-		return s, ErrLinuxControlRuntime
+-	}
+-	return s, nil
++func linuxControlHTTPStatus(ctx context.Context, c capabilityprofile.Config, pidfd int, instance ControlInstance) (linuxControlStatus, error) {
++	return linuxControlHTTPStatusOwner(ctx, c, pidfd, instance, newLinuxControlOwnerOps())
+ }
+ func linuxControlStatusMatches(s linuxControlStatus, l ControlLaunch) bool {
+ 	return s.SchemaVersion == 1 && s.ConfigGeneration == l.Generation && s.ConfigSHA256 == l.Bundle.ConfigSHA256 && s.State == "running" && !s.IdentityInstance && !s.IdentityName && !s.IdentityPath && s.AcceptedTCPConnections >= 0 && !s.Admission.Revoked
+@@ -631,7 +609,7 @@
+ 	if e != nil || !linuxControlEnvMatches(env, l, c, b.assets) {
+ 		return unknown, fd, ErrLinuxControlRuntime
+ 	}
+-	status, e := b.ops.status(ctx, c)
++	status, e := b.ops.status(ctx, c, fd, claim.Instance)
+ 	if e != nil || !linuxControlStatusMatches(status, l) {
+ 		return unknown, fd, ErrLinuxControlRuntime
+ 	}
+--- a/experiments/mihomo-events/control_runtime_linux_amd64_test.go
++++ b/experiments/mihomo-events/control_runtime_linux_amd64_test.go
+@@ -153,7 +153,10 @@
+ 	o.closeFD = func(fd int) error { f.closed = append(f.closed, fd); return nil }
+ 	_ = c
+ 	// Assign the typed HTTP seam separately to keep all actual network disabled.
+-	o.status = func(_ context.Context, _ capabilityprofile.Config) (linuxControlStatus, error) {
++	o.status = func(_ context.Context, _ capabilityprofile.Config, fd int, instance ControlInstance) (linuxControlStatus, error) {
++		if fd != 200 || instance != f.claim.Instance {
++			t.Fatal("status must receive original pidfd and exact claimed instance")
++		}
+ 		if f.statusHook != nil {
+ 			f.statusHook()
+ 		}
+--- /dev/null
++++ b/experiments/mihomo-events/control_owner_linux_amd64.go
+@@ -0,0 +1,289 @@
++//go:build linux && amd64
++
++package mihomoevents
++
++import (
++	"context"
++	"encoding/binary"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"strconv"
++	"strings"
++	"syscall"
++	"time"
++	"unsafe"
++
++	"hoopa/experiments/mihomo-events/capabilityprofile"
++)
++
++// Native operations are per invocation. Tests inject only owned/fake operations;
++// there is no global hook or process-wide transport mutation.
++type linuxControlOwnerOps struct {
++	dial     func(context.Context, string, string) (net.Conn, error)
++	readFile func(string, int) ([]byte, error)
++	readFDs  func(string, int) ([]string, error)
++	readlink func(string) (string, error)
++	alive    func(int) error
++}
++
++func newLinuxControlOwnerOps() linuxControlOwnerOps {
++	return linuxControlOwnerOps{dial: (&net.Dialer{Timeout: 500 * time.Millisecond}).DialContext, readFile: linuxControlReadFile, readFDs: linuxControlOwnerFDs, readlink: os.Readlink, alive: linuxControlOwnerAlive}
++}
++func linuxControlOwnerAlive(fd int) error {
++	if fd < 0 || fd > 2147483647 {
++		return ErrLinuxControlRuntime
++	}
++	p := linuxControlPollFD{FD: int32(fd), Events: 1}
++	_, _, err := syscall.Syscall(syscall.SYS_POLL, uintptr(unsafe.Pointer(&p)), 1, 0)
++	if err != 0 || p.Revents != 0 {
++		return ErrLinuxControlRuntime
++	}
++	return nil
++}
++func linuxControlOwnerFDs(path string, limit int) ([]string, error) {
++	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
++	if err != nil {
++		return nil, err
++	}
++	names, err := f.Readdirnames(limit + 1)
++	closed := f.Close()
++	if err != nil && !errors.Is(err, io.EOF) {
++		return nil, err
++	}
++	if closed != nil || len(names) > limit {
++		return nil, ErrLinuxControlRuntime
++	}
++	return names, nil
++}
++func linuxControlOwnerEndpoint(raw string) (*net.TCPAddr, error) {
++	host, port, err := net.SplitHostPort(raw)
++	n, e := strconv.Atoi(port)
++	if err != nil || e != nil || host != "127.0.0.1" || n < 1 || n > 65535 || strconv.Itoa(n) != port {
++		return nil, ErrLinuxControlRuntime
++	}
++	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: n}, nil
++}
++func linuxControlOwnerAddress(a net.Addr) (*net.TCPAddr, error) {
++	v, ok := a.(*net.TCPAddr)
++	if !ok || v == nil || v.Zone != "" || !v.IP.Equal(net.IPv4(127, 0, 0, 1)) || v.Port < 1 || v.Port > 65535 {
++		return nil, ErrLinuxControlRuntime
++	}
++	return v, nil
++}
++func linuxControlOwnerProcAddress(a *net.TCPAddr) string {
++	return fmt.Sprintf("%08X:%04X", binary.LittleEndian.Uint32(a.IP.To4()), a.Port)
++}
++
++// The TCP table is namespace-wide. Its inode is never accepted as PID ownership
++// without the separate exact process FD intersection below.
++func linuxControlOwnerInode(raw []byte, server, client *net.TCPAddr) (string, error) {
++	if len(raw) == 0 || len(raw) > 1<<20 || raw[len(raw)-1] != '\n' || strings.ContainsRune(string(raw), '\x00') {
++		return "", ErrLinuxControlRuntime
++	}
++	lines := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
++	header := strings.Fields(lines[0])
++	if len(header) < 4 || header[0] != "sl" || header[1] != "local_address" || header[2] != "rem_address" || header[3] != "st" {
++		return "", ErrLinuxControlRuntime
++	}
++	wantedLocal, wantedRemote := linuxControlOwnerProcAddress(server), linuxControlOwnerProcAddress(client)
++	inode := ""
++	matches := 0
++	for _, line := range lines[1:] {
++		fields := strings.Fields(line)
++		if len(fields) < 10 {
++			return "", ErrLinuxControlRuntime
++		}
++		for _, address := range fields[1:3] {
++			if len(address) != 13 || address[8] != ':' {
++				return "", ErrLinuxControlRuntime
++			}
++			ip, e := strconv.ParseUint(address[:8], 16, 32)
++			if e != nil || fmt.Sprintf("%08X", ip) != address[:8] {
++				return "", ErrLinuxControlRuntime
++			}
++			port, e := strconv.ParseUint(address[9:], 16, 16)
++			if e != nil || fmt.Sprintf("%04X", port) != address[9:] {
++				return "", ErrLinuxControlRuntime
++			}
++		}
++		if fields[1] != wantedLocal || fields[2] != wantedRemote {
++			continue
++		}
++		matches++
++		if matches != 1 || fields[3] != "01" {
++			return "", ErrLinuxControlRuntime
++		}
++		n, e := strconv.ParseUint(fields[9], 10, 64)
++		if e != nil || strconv.FormatUint(n, 10) != fields[9] {
++			return "", ErrLinuxControlRuntime
++		}
++		// An established socket can appear before accept installs its process FD.
++		// Zero is never proof; retry only within the bounded owner-appearance wait.
++		if n != 0 {
++			inode = fields[9]
++		}
++	}
++	return inode, nil
++}
++func linuxControlOwnerInstance(ctx context.Context, fd int, i ControlInstance, ops linuxControlOwnerOps) error {
++	if ctx.Err() != nil || fd < 0 || i.PID < 1 || i.PID > 2147483647 || !controlBootID.MatchString(i.BootID) || !controlTicks.MatchString(i.StartTicks) {
++		return ErrLinuxControlRuntime
++	}
++	if _, err := strconv.ParseUint(i.StartTicks, 10, 64); err != nil {
++		return ErrLinuxControlRuntime
++	}
++	if ops.alive(fd) != nil || ctx.Err() != nil {
++		return ErrLinuxControlRuntime
++	}
++	boot, err := ops.readFile("/proc/sys/kernel/random/boot_id", 64)
++	if err != nil || ctx.Err() != nil || strings.TrimSpace(string(boot)) != i.BootID {
++		return ErrLinuxControlRuntime
++	}
++	raw, err := ops.readFile("/proc/"+strconv.Itoa(i.PID)+"/stat", 4096)
++	if err != nil || ctx.Err() != nil {
++		return ErrLinuxControlRuntime
++	}
++	s, err := linuxParseStat(raw)
++	if err != nil || s.PID != i.PID || s.StartTicks != i.StartTicks || s.State == 'Z' || s.State == 'X' {
++		return ErrLinuxControlRuntime
++	}
++	return nil
++}
++func linuxControlOwnerProof(ctx context.Context, conn net.Conn, fd int, i ControlInstance, ops linuxControlOwnerOps) error {
++	local, err := linuxControlOwnerAddress(conn.LocalAddr())
++	if err != nil {
++		return err
++	}
++	remote, err := linuxControlOwnerAddress(conn.RemoteAddr())
++	if err != nil {
++		return err
++	}
++	ctx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
++	defer cancel()
++	proc := "/proc/" + strconv.Itoa(i.PID)
++	for {
++		if linuxControlOwnerInstance(ctx, fd, i, ops) != nil {
++			return ErrLinuxControlRuntime
++		}
++		if ctx.Err() != nil {
++			return ErrLinuxControlRuntime
++		}
++		raw, err := ops.readFile(proc+"/net/tcp", 1<<20)
++		if err != nil || ctx.Err() != nil {
++			return ErrLinuxControlRuntime
++		}
++		inode, err := linuxControlOwnerInode(raw, remote, local)
++		if err != nil {
++			return err
++		}
++		found := false
++		if inode != "" {
++			if ctx.Err() != nil {
++				return ErrLinuxControlRuntime
++			}
++			names, err := ops.readFDs(proc+"/fd", 4096)
++			if err != nil || len(names) > 4096 || ctx.Err() != nil {
++				return ErrLinuxControlRuntime
++			}
++			for _, name := range names {
++				if ctx.Err() != nil {
++					return ErrLinuxControlRuntime
++				}
++				n, err := strconv.ParseUint(name, 10, 31)
++				if err != nil || strconv.FormatUint(n, 10) != name {
++					return ErrLinuxControlRuntime
++				}
++				link, err := ops.readlink(proc + "/fd/" + name)
++				if err != nil || ctx.Err() != nil {
++					return ErrLinuxControlRuntime
++				}
++				if link == "socket:["+inode+"]" {
++					found = true
++				}
++			}
++		}
++		if linuxControlOwnerInstance(ctx, fd, i, ops) != nil {
++			return ErrLinuxControlRuntime
++		}
++		if found && ctx.Err() == nil {
++			return nil
++		}
++		timer := time.NewTimer(2 * time.Millisecond)
++		select {
++		case <-ctx.Done():
++			timer.Stop()
++			return ErrLinuxControlRuntime
++		case <-timer.C:
++		}
++	}
++}
++
++// Capture original request ctx: Go Transport deliberately detaches cancellation
++// from the ctx it passes to DialContext. Both cancellation sources must stop us.
++func linuxControlOwnerDial(original context.Context, controller string, fd int, i ControlInstance, ops linuxControlOwnerOps) func(context.Context, string, string) (net.Conn, error) {
++	return func(dialCtx context.Context, network, address string) (net.Conn, error) {
++		ctx, cancel := context.WithCancel(original)
++		stop := context.AfterFunc(dialCtx, cancel)
++		defer stop()
++		defer cancel()
++		if original.Err() != nil || dialCtx.Err() != nil || ctx.Err() != nil {
++			return nil, ErrLinuxControlRuntime
++		}
++		expected, err := linuxControlOwnerEndpoint(controller)
++		if err != nil || address != controller || (network != "tcp" && network != "tcp4") {
++			return nil, ErrLinuxControlRuntime
++		}
++		conn, err := ops.dial(ctx, "tcp4", address)
++		if err != nil {
++			if conn != nil {
++				conn.Close()
++			}
++			return nil, ErrLinuxControlRuntime
++		}
++		if conn == nil {
++			return nil, ErrLinuxControlRuntime
++		}
++		success := false
++		defer func() {
++			if !success {
++				conn.Close()
++			}
++		}()
++		remote, err := linuxControlOwnerAddress(conn.RemoteAddr())
++		if err != nil || !remote.IP.Equal(expected.IP) || remote.Port != expected.Port || ctx.Err() != nil || dialCtx.Err() != nil {
++			return nil, ErrLinuxControlRuntime
++		}
++		if linuxControlOwnerProof(ctx, conn, fd, i, ops) != nil || ctx.Err() != nil || dialCtx.Err() != nil {
++			return nil, ErrLinuxControlRuntime
++		}
++		success = true
++		return conn, nil
++	}
++}
++func linuxControlHTTPStatusOwner(ctx context.Context, c capabilityprofile.Config, pidfd int, instance ControlInstance, ops linuxControlOwnerOps) (linuxControlStatus, error) {
++	var s linuxControlStatus
++	ctx, cancel := context.WithTimeout(ctx, time.Second)
++	defer cancel()
++	tr := &http.Transport{Proxy: nil, DialContext: linuxControlOwnerDial(ctx, c.Controller, pidfd, instance, ops), DisableKeepAlives: true}
++	defer tr.CloseIdleConnections()
++	client := &http.Client{Transport: tr, Timeout: time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
++	request, err := http.NewRequestWithContext(ctx, "GET", "http://"+c.Controller+"/hoopa/status", nil)
++	if err != nil {
++		return s, ErrLinuxControlRuntime
++	}
++	request.Header.Set("Authorization", "Bearer "+c.Secret)
++	response, err := client.Do(request)
++	if err != nil {
++		return s, ErrLinuxControlRuntime
++	}
++	defer response.Body.Close()
++	raw, err := io.ReadAll(io.LimitReader(response.Body, 8193))
++	if err != nil || len(raw) > 8192 || response.StatusCode != 200 || response.Header.Get("Content-Type") != "application/json" || controlDecode(raw, &s) != nil {
++		return s, ErrLinuxControlRuntime
++	}
++	return s, nil
++}
+--- /dev/null
++++ b/experiments/mihomo-events/control_owner_linux_amd64_test.go
+@@ -0,0 +1,671 @@
++//go:build linux && amd64
++
++package mihomoevents
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"os/exec"
++	"strings"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"hoopa/experiments/mihomo-events/capabilityprofile"
++)
++
++const ownerTestBoot = "12345678-1234-1234-1234-123456789abc"
++
++func ownerTestInstance() ControlInstance {
++	return ControlInstance{PID: 123, BootID: ownerTestBoot, StartTicks: "42", Nonce: strings.Repeat("a", 32), Generation: "gen:owner-test", BundleDigest: strings.Repeat("b", 64)}
++}
++func ownerTestTable(local, remote, state, inode string) []byte {
++	return []byte("  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n   0: " + local + " " + remote + " " + state + " 00000000:00000000 00:00000000 00000000 0 0 " + inode + " 1 0 100 0 0 10 0\n")
++}
++func ownerTestAddresses() (*net.TCPAddr, *net.TCPAddr) {
++	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 18994}, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 34567}
++}
++
++type ownerFakeConn struct {
++	writes        atomic.Int32
++	closed        atomic.Int32
++	once          sync.Once
++	done          chan struct{}
++	local, remote *net.TCPAddr
++}
++
++func ownerTestConn() *ownerFakeConn {
++	s, c := ownerTestAddresses()
++	return &ownerFakeConn{done: make(chan struct{}), local: c, remote: s}
++}
++func (c *ownerFakeConn) Read([]byte) (int, error)    { return 0, io.EOF }
++func (c *ownerFakeConn) Write(p []byte) (int, error) { c.writes.Add(int32(len(p))); return len(p), nil }
++func (c *ownerFakeConn) Close() error {
++	c.closed.Add(1)
++	c.once.Do(func() { close(c.done) })
++	return nil
++}
++func (c *ownerFakeConn) LocalAddr() net.Addr              { return c.local }
++func (c *ownerFakeConn) RemoteAddr() net.Addr             { return c.remote }
++func (c *ownerFakeConn) SetDeadline(time.Time) error      { return nil }
++func (c *ownerFakeConn) SetReadDeadline(time.Time) error  { return nil }
++func (c *ownerFakeConn) SetWriteDeadline(time.Time) error { return nil }
++func ownerTestOps(conn *ownerFakeConn) linuxControlOwnerOps {
++	s, c := ownerTestAddresses()
++	return linuxControlOwnerOps{dial: func(ctx context.Context, network, address string) (net.Conn, error) {
++		if ctx.Err() != nil || network != "tcp4" || address != "127.0.0.1:18994" {
++			return nil, ErrLinuxControlRuntime
++		}
++		return conn, nil
++	}, readFile: func(path string, limit int) ([]byte, error) {
++		switch path {
++		case "/proc/sys/kernel/random/boot_id":
++			return []byte(ownerTestBoot + "\n"), nil
++		case "/proc/123/stat":
++			return linuxRuntimeStat(123, "42", "S"), nil
++		case "/proc/123/net/tcp":
++			return ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "01", "456"), nil
++		}
++		return nil, os.ErrNotExist
++	}, readFDs: func(path string, limit int) ([]string, error) {
++		if path != "/proc/123/fd" || limit != 4096 {
++			return nil, ErrLinuxControlRuntime
++		}
++		return []string{"3", "4"}, nil
++	}, readlink: func(path string) (string, error) {
++		if path == "/proc/123/fd/3" {
++			return "socket:[456]", nil
++		}
++		return "anon_inode:[eventpoll]", nil
++	}, alive: func(fd int) error {
++		if fd != 200 {
++			return ErrLinuxControlRuntime
++		}
++		return nil
++	}}
++}
++func TestLinuxControlOwnerParse(t *testing.T) {
++	s, c := ownerTestAddresses()
++	valid := ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "01", "456")
++	inode, err := linuxControlOwnerInode(valid, s, c)
++	if err != nil || inode != "456" {
++		t.Fatalf("valid %q %v", inode, err)
++	}
++	for name, raw := range map[string][]byte{"duplicate": append(append([]byte(nil), valid...), append(bytes.Split(valid, []byte("\n"))[1], '\n')...), "wrong-state": ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "0A", "456"), "bad-inode": ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "01", "0456"), "bad-header": []byte("bad\n"), "too-large": bytes.Repeat([]byte("x"), (1<<20)+1), "bad-address": ownerTestTable("GG00007F:4A32", linuxControlOwnerProcAddress(c), "01", "456")} {
++		t.Run(name, func(t *testing.T) {
++			if _, err := linuxControlOwnerInode(raw, s, c); err == nil {
++				t.Fatal("invalid accepted")
++			}
++		})
++	}
++	zero := ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "01", "0")
++	if inode, err := linuxControlOwnerInode(zero, s, c); err != nil || inode != "" {
++		t.Fatal("zero inode must remain unproved", inode, err)
++	}
++	reversed := ownerTestTable(linuxControlOwnerProcAddress(c), linuxControlOwnerProcAddress(s), "01", "456")
++	if inode, err := linuxControlOwnerInode(reversed, s, c); err != nil || inode != "" {
++		t.Fatal("client inode accepted", inode, err)
++	}
++	for _, raw := range []string{"localhost:18994", "[::1]:18994", "127.0.0.2:18994", "127.0.0.1:018994", "127.0.0.1:0", "127.0.0.1:65536"} {
++		if _, err := linuxControlOwnerEndpoint(raw); err == nil {
++			t.Fatal(raw)
++		}
++	}
++}
++func TestLinuxControlOwnerFakeSuccessAndEveryDial(t *testing.T) {
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	var dials, proofs int
++	base := ops.readFile
++	ops.dial = func(context.Context, string, string) (net.Conn, error) { dials++; return conn, nil }
++	ops.readFile = func(path string, limit int) ([]byte, error) {
++		if strings.HasSuffix(path, "/net/tcp") {
++			proofs++
++		}
++		return base(path, limit)
++	}
++	dial := linuxControlOwnerDial(context.Background(), "127.0.0.1:18994", 200, ownerTestInstance(), ops)
++	for j := 0; j < 2; j++ {
++		conn = ownerTestConn()
++		out, err := dial(context.Background(), "tcp", "127.0.0.1:18994")
++		if err != nil || out != conn || conn.writes.Load() != 0 || conn.closed.Load() != 0 {
++			t.Fatal("same unmodified verified connection", err)
++		}
++		out.Close()
++	}
++	if dials != 2 || proofs != 2 {
++		t.Fatal("each repeated transport dial must prove ownership", dials, proofs)
++	}
++}
++func TestLinuxControlOwnerFakeRefusalClosesNoBytes(t *testing.T) {
++	cases := map[string]func(*linuxControlOwnerOps, *ControlInstance){
++		"wrong-start": func(o *linuxControlOwnerOps, i *ControlInstance) { i.StartTicks = "43" },
++		"dead-pidfd": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			o.alive = func(int) error { return ErrLinuxControlRuntime }
++		},
++		"missing-fd": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			o.readFDs = func(string, int) ([]string, error) { return []string{}, nil }
++		},
++		"proc-error": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			o.readFile = func(string, int) ([]byte, error) { return nil, os.ErrPermission }
++		},
++		"fd-link-error": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			o.readlink = func(string) (string, error) { return "", os.ErrPermission }
++		},
++		"oversized-fd-list": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			o.readFDs = func(string, int) ([]string, error) { return make([]string, 4097), nil }
++		},
++		"wrong-instance": func(o *linuxControlOwnerOps, i *ControlInstance) { i.PID = 124 },
++		"wrong-boot":     func(o *linuxControlOwnerOps, i *ControlInstance) { i.BootID = "22345678-1234-1234-1234-123456789abc" },
++		"state-not-established": func(o *linuxControlOwnerOps, i *ControlInstance) {
++			base := o.readFile
++			o.readFile = func(p string, l int) ([]byte, error) {
++				if strings.HasSuffix(p, "/net/tcp") {
++					s, c := ownerTestAddresses()
++					return ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "0A", "456"), nil
++				}
++				return base(p, l)
++			}
++		},
++	}
++	for _, mode := range []string{"zero-inode", "duplicate-tuple", "missing-tuple"} {
++		mode := mode
++		cases[mode] = func(o *linuxControlOwnerOps, i *ControlInstance) {
++			base := o.readFile
++			o.readFile = func(path string, limit int) ([]byte, error) {
++				raw, err := base(path, limit)
++				if !strings.HasSuffix(path, "/net/tcp") {
++					return raw, err
++				}
++				s, c := ownerTestAddresses()
++				switch mode {
++				case "zero-inode":
++					return ownerTestTable(linuxControlOwnerProcAddress(s), linuxControlOwnerProcAddress(c), "01", "0"), nil
++				case "duplicate-tuple":
++					return append(raw, append(bytes.Split(raw, []byte("\n"))[1], '\n')...), nil
++				default:
++					return []byte(" sl local_address rem_address st\n"), nil
++				}
++			}
++		}
++	}
++	for name, change := range cases {
++		t.Run(name, func(t *testing.T) {
++			conn := ownerTestConn()
++			ops := ownerTestOps(conn)
++			instance := ownerTestInstance()
++			change(&ops, &instance)
++			dial := linuxControlOwnerDial(context.Background(), "127.0.0.1:18994", 200, instance, ops)
++			out, err := dial(context.Background(), "tcp", "127.0.0.1:18994")
++			if err == nil || out != nil || conn.closed.Load() != 1 || conn.writes.Load() != 0 {
++				t.Fatal("refusal leaked", err, conn.closed.Load(), conn.writes.Load())
++			}
++		})
++	}
++}
++func TestLinuxControlOwnerFakeAddressRefusalBeforeDial(t *testing.T) {
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	var calls atomic.Int32
++	ops.dial = func(context.Context, string, string) (net.Conn, error) { calls.Add(1); return conn, nil }
++	dial := linuxControlOwnerDial(context.Background(), "127.0.0.1:18994", 200, ownerTestInstance(), ops)
++	for _, args := range [][2]string{{"tcp6", "127.0.0.1:18994"}, {"tcp", "127.0.0.1:18995"}, {"udp", "127.0.0.1:18994"}} {
++		if out, err := dial(context.Background(), args[0], args[1]); out != nil || err == nil {
++			t.Fatal("invalid address accepted")
++		}
++	}
++	if calls.Load() != 0 {
++		t.Fatal("unsafe address dial")
++	}
++}
++func TestLinuxControlOwnerFakeOriginalCancelledDetachedDial(t *testing.T) {
++	original, cancel := context.WithCancel(context.Background())
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	var calls atomic.Int32
++	ops.dial = func(context.Context, string, string) (net.Conn, error) { calls.Add(1); return conn, nil }
++	cancel()
++	dial := linuxControlOwnerDial(original, "127.0.0.1:18994", 200, ownerTestInstance(), ops)
++	if _, err := dial(context.WithoutCancel(original), "tcp", "127.0.0.1:18994"); err == nil || calls.Load() != 0 || conn.writes.Load() != 0 {
++		t.Fatal("detached hook ignored original cancellation")
++	}
++}
++func TestLinuxControlOwnerFakeCancelDuringProofDetachedDial(t *testing.T) {
++	original, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	entered := make(chan struct{})
++	base := ops.readFile
++	var tcpReads, fdReads atomic.Int32
++	ops.readFile = func(path string, limit int) ([]byte, error) {
++		if strings.HasSuffix(path, "/net/tcp") {
++			tcpReads.Add(1)
++			close(entered)
++			<-original.Done()
++			return []byte(" sl local_address rem_address st\n"), nil
++		}
++		return base(path, limit)
++	}
++	ops.readFDs = func(string, int) ([]string, error) { fdReads.Add(1); return []string{}, nil }
++	done := make(chan error, 1)
++	dial := linuxControlOwnerDial(original, "127.0.0.1:18994", 200, ownerTestInstance(), ops)
++	go func() { _, err := dial(context.WithoutCancel(original), "tcp", "127.0.0.1:18994"); done <- err }()
++	<-entered
++	cancel()
++	select {
++	case err := <-done:
++		if err == nil {
++			t.Fatal("cancel accepted")
++		}
++	case <-time.After(time.Second):
++		t.Fatal("detached proof survived original ctx")
++	}
++	if tcpReads.Load() != 1 || fdReads.Load() != 0 || conn.closed.Load() != 1 || conn.writes.Load() != 0 {
++		t.Fatal("post-cancel polling/bytes", tcpReads.Load(), fdReads.Load(), conn.writes.Load())
++	}
++}
++func TestLinuxControlOwnerFakeWholeHTTPNoBytesBeforeProof(t *testing.T) {
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	ops.readlink = func(string) (string, error) { return "", os.ErrPermission }
++	_, err := linuxControlHTTPStatusOwner(context.Background(), capabilityprofile.Config{Controller: "127.0.0.1:18994", Secret: "owner-test-secret"}, 200, ownerTestInstance(), ops)
++	if err == nil || conn.writes.Load() != 0 || conn.closed.Load() != 1 {
++		t.Fatal("HTTP bytes before proof", err, conn.writes.Load())
++	}
++}
++func TestLinuxControlOwnerFakeWholeHTTPCancel(t *testing.T) {
++	original, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	entered := make(chan struct{})
++	base := ops.readFile
++	var calls atomic.Int32
++	ops.readFile = func(path string, l int) ([]byte, error) {
++		if strings.HasSuffix(path, "/net/tcp") {
++			calls.Add(1)
++			close(entered)
++			<-original.Done()
++			return nil, original.Err()
++		}
++		return base(path, l)
++	}
++	done := make(chan error, 1)
++	go func() {
++		_, err := linuxControlHTTPStatusOwner(original, capabilityprofile.Config{Controller: "127.0.0.1:18994", Secret: "owner-test-secret"}, 200, ownerTestInstance(), ops)
++		done <- err
++	}()
++	<-entered
++	cancel()
++	select {
++	case err := <-done:
++		if err == nil {
++			t.Fatal("HTTP cancellation succeeded")
++		}
++	case <-time.After(time.Second):
++		t.Fatal("HTTP cancel timeout")
++	}
++	select {
++	case <-conn.done:
++	case <-time.After(time.Second):
++		t.Fatal("dial worker not stopped")
++	}
++	if calls.Load() != 1 || conn.writes.Load() != 0 {
++		t.Fatal("cancelled worker continued")
++	}
++}
++func TestLinuxControlOwnerFakeOwnerDeadline(t *testing.T) {
++	conn := ownerTestConn()
++	ops := ownerTestOps(conn)
++	ops.readFDs = func(string, int) ([]string, error) { return []string{}, nil }
++	start := time.Now()
++	dial := linuxControlOwnerDial(context.Background(), "127.0.0.1:18994", 200, ownerTestInstance(), ops)
++	if _, err := dial(context.Background(), "tcp", "127.0.0.1:18994"); err == nil || time.Since(start) > time.Second || time.Since(start) < 200*time.Millisecond || conn.writes.Load() != 0 || conn.closed.Load() != 1 {
++		t.Fatal("owner deadline", err, time.Since(start))
++	}
++}
++
++type ownerChild struct {
++	cmd    *exec.Cmd
++	input  io.WriteCloser
++	output *bufio.Reader
++	stderr *bytes.Buffer
++	ready  ownerChildReady
++}
++type ownerChildReady struct {
++	PID        int    `json:"pid"`
++	StartTicks string `json:"start_ticks"`
++	BootID     string `json:"boot_id"`
++	Address    string `json:"address"`
++}
++type ownerChildResult struct {
++	Bytes                  int    `json:"bytes"`
++	Auth                   string `json:"auth"`
++	Error                  string `json:"error"`
++	Replaced               bool   `json:"replaced"`
++	ReplacementConnections int    `json:"replacement_connections"`
++}
++
++func ownerReadJSON(t *testing.T, child *ownerChild, value any) {
++	t.Helper()
++	line, err := child.output.ReadBytes('\n')
++	if err != nil || len(line) > 8192 || json.Unmarshal(line, value) != nil {
++		t.Fatalf("owned child output: %q %v %s", line, err, child.stderr.String())
++	}
++}
++func ownerStartChild(t *testing.T, mode string) *ownerChild {
++	t.Helper()
++	exe, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	cmd := exec.Command(exe, "-test.run=^TestLinuxControlOwnerNativeChild$")
++	cmd.Env = append(os.Environ(), "HOOPA_CONTROL_OWNER_TEST_CHILD="+mode)
++	input, err := cmd.StdinPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	output, err := cmd.StdoutPipe()
++	if err != nil {
++		t.Fatal(err)
++	}
++	child := &ownerChild{cmd: cmd, input: input, output: bufio.NewReader(output), stderr: &bytes.Buffer{}}
++	cmd.Stderr = child.stderr
++	if err = cmd.Start(); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() {
++		input.Close()
++		if cmd.ProcessState == nil {
++			cmd.Process.Kill()
++			cmd.Wait()
++		}
++	})
++	ownerReadJSON(t, child, &child.ready)
++	if child.ready.PID != cmd.Process.Pid {
++		t.Fatal("child OS identity mismatch")
++	}
++	return child
++}
++func ownerClaimChild(t *testing.T, child *ownerChild) (ControlInstance, int) {
++	t.Helper()
++	pid := child.ready.PID
++	raw, err := linuxControlReadFile(fmt.Sprintf("/proc/%d/stat", pid), 4096)
++	if err != nil {
++		t.Fatal(err)
++	}
++	stat, err := linuxParseStat(raw)
++	if err != nil || stat.PID != pid || stat.StartTicks != child.ready.StartTicks {
++		t.Fatal("independent child instance", err)
++	}
++	boot, err := linuxControlReadFile("/proc/sys/kernel/random/boot_id", 64)
++	if err != nil || strings.TrimSpace(string(boot)) != child.ready.BootID {
++		t.Fatal("independent child boot", err)
++	}
++	fd, err := linuxControlPidfdOpen(pid)
++	if err != nil {
++		t.Fatal("pidfd unavailable, not skipped", err)
++	}
++	t.Cleanup(func() { newLinuxControlOps().closeFD(fd) })
++	return ControlInstance{PID: pid, StartTicks: stat.StartTicks, BootID: child.ready.BootID}, fd
++}
++func ownerChildWait(t *testing.T, child *ownerChild) {
++	t.Helper()
++	if err := child.cmd.Wait(); err != nil {
++		t.Fatal("owned child exit", err, child.stderr.String())
++	}
++}
++func TestLinuxControlOwnerNativeLegitimateAuth(t *testing.T) {
++	child := ownerStartChild(t, "server")
++	instance, fd := ownerClaimChild(t, child)
++	status, err := linuxControlHTTPStatus(context.Background(), capabilityprofile.Config{Controller: child.ready.Address, Secret: "owner-fixture"}, fd, instance)
++	if err != nil || status.State != "running" {
++		t.Fatal("legitimate owned status", err)
++	}
++	var result ownerChildResult
++	ownerReadJSON(t, child, &result)
++	ownerChildWait(t, child)
++	if result.Auth != "Bearer owner-fixture" || result.Bytes <= 0 || result.Error != "" {
++		t.Fatal("legitimate auth missing", result)
++	}
++	t.Logf("owned child PID %d/start %s received authenticated HTTP after native proof; bytes=%d", instance.PID, instance.StartTicks, result.Bytes)
++}
++func TestLinuxControlOwnerNativeWrongOwner(t *testing.T) {
++	server := ownerStartChild(t, "server")
++	claimed := ownerStartChild(t, "standby")
++	instance, fd := ownerClaimChild(t, claimed)
++	_, err := linuxControlHTTPStatus(context.Background(), capabilityprofile.Config{Controller: server.ready.Address, Secret: "must-not-leak"}, fd, instance)
++	if err == nil {
++		t.Fatal("wrong owner accepted")
++	}
++	var result ownerChildResult
++	ownerReadJSON(t, server, &result)
++	ownerChildWait(t, server)
++	io.WriteString(claimed.input, "stop\n")
++	ownerChildWait(t, claimed)
++	if result.Bytes != 0 || result.Auth != "" || result.Error != "" {
++		t.Fatal("foreign socket received application bytes", result)
++	}
++	t.Logf("foreign child PID %d vs claimed %d/start %s: zero application bytes, closed EOF", server.ready.PID, instance.PID, instance.StartTicks)
++}
++func TestLinuxControlOwnerNativeReplacementCannotSteal(t *testing.T) {
++	child := ownerStartChild(t, "replacement")
++	instance, fd := ownerClaimChild(t, child)
++	ops := newLinuxControlOwnerOps()
++	base := ops.readFile
++	proved := make(chan struct{})
++	resume := make(chan struct{})
++	var resumeOnce sync.Once
++	release := func() { resumeOnce.Do(func() { close(resume) }) }
++	defer release()
++	var stats atomic.Int32
++	// Observe the exact native reversed tuple inode; the gate must follow its
++	// actual FD link, not merely an unrelated socket in the child process.
++	dialBase := ops.dial
++	var captured net.Conn
++	var expectedInode atomic.Value
++	ops.dial = func(ctx context.Context, network, address string) (net.Conn, error) {
++		conn, err := dialBase(ctx, network, address)
++		if err == nil {
++			captured = conn
++		}
++		return conn, err
++	}
++	var fdSeen atomic.Bool
++	links := ops.readlink
++	ops.readlink = func(path string) (string, error) {
++		link, err := links(path)
++		wanted, _ := expectedInode.Load().(string)
++		if err == nil && wanted != "" && link == "socket:["+wanted+"]" {
++			fdSeen.Store(true)
++		}
++		return link, err
++	}
++	var gated atomic.Bool
++	ops.readFile = func(path string, l int) ([]byte, error) {
++		raw, err := base(path, l)
++		if err == nil && strings.HasSuffix(path, "/net/tcp") && captured != nil {
++			server, e := linuxControlOwnerAddress(captured.RemoteAddr())
++			client, e2 := linuxControlOwnerAddress(captured.LocalAddr())
++			if e == nil && e2 == nil {
++				inode, e := linuxControlOwnerInode(raw, server, client)
++				if e == nil && inode != "" {
++					expectedInode.Store(inode)
++				}
++			}
++		}
++		if strings.HasSuffix(path, "/stat") && stats.Add(1) >= 2 && fdSeen.Load() && gated.CompareAndSwap(false, true) {
++			close(proved)
++			<-resume
++		}
++		return raw, err
++	}
++	done := make(chan error, 1)
++	go func() {
++		_, err := linuxControlHTTPStatusOwner(context.Background(), capabilityprofile.Config{Controller: child.ready.Address, Secret: "owner-fixture"}, fd, instance, ops)
++		done <- err
++	}()
++	select {
++	case <-proved:
++	case <-time.After(time.Second):
++		t.Fatal("native ownership proof barrier missing")
++	}
++	io.WriteString(child.input, "replace\n")
++	var replaced ownerChildResult
++	ownerReadJSON(t, child, &replaced)
++	if !replaced.Replaced {
++		t.Fatal("replacement not bound")
++	}
++	release()
++	select {
++	case err := <-done:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("same-connection status timeout")
++	}
++	var result ownerChildResult
++	ownerReadJSON(t, child, &result)
++	ownerChildWait(t, child)
++	if result.Auth != "Bearer owner-fixture" || result.Bytes <= 0 || result.Error != "" || result.ReplacementConnections != 0 {
++		t.Fatal("replacement stole established traffic", result)
++	}
++	t.Logf("same verified established connection retained across owned listener replacement PID %d; old bytes=%d replacement connections=0", instance.PID, result.Bytes)
++}
++func TestLinuxControlOwnerNativeInvalidPIDFD(t *testing.T) {
++	if linuxControlOwnerAlive(-1) == nil || linuxControlOwnerAlive(2147483648) == nil {
++		t.Fatal("invalid pidfd accepted")
++	}
++}
++
++// Child body is executed only by explicitly owned test subprocesses. The normal
++// suite's empty-env invocation has no sockets or side effects and does not skip.
++func TestLinuxControlOwnerNativeChild(t *testing.T) {
++	mode := os.Getenv("HOOPA_CONTROL_OWNER_TEST_CHILD")
++	if mode == "" {
++		return
++	}
++	os.Exit(ownerNativeChild(mode))
++}
++func ownerNativeChild(mode string) int {
++	pid := os.Getpid()
++	raw, err := linuxControlReadFile(fmt.Sprintf("/proc/%d/stat", pid), 4096)
++	if err != nil {
++		return 2
++	}
++	stat, err := linuxParseStat(raw)
++	if err != nil {
++		return 2
++	}
++	boot, err := linuxControlReadFile("/proc/sys/kernel/random/boot_id", 64)
++	if err != nil {
++		return 2
++	}
++	ready := ownerChildReady{PID: pid, StartTicks: stat.StartTicks, BootID: strings.TrimSpace(string(boot))}
++	encoder := json.NewEncoder(os.Stdout)
++	input := bufio.NewReader(os.Stdin)
++	if mode == "standby" {
++		encoder.Encode(ready)
++		line, err := input.ReadString('\n')
++		if err != nil || line != "stop\n" {
++			return 3
++		}
++		return 0
++	}
++	ln, err := net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		return 4
++	}
++	defer ln.Close()
++	ready.Address = ln.Addr().String()
++	encoder.Encode(ready)
++	ln.(*net.TCPListener).SetDeadline(time.Now().Add(3 * time.Second))
++	conn, err := ln.Accept()
++	if err != nil {
++		fmt.Fprintln(os.Stderr, err)
++		return 5
++	}
++	defer conn.Close()
++	var replacement net.Listener
++	if mode == "replacement" {
++		line, err := input.ReadString('\n')
++		if err != nil || line != "replace\n" {
++			return 6
++		}
++		ln.Close()
++		replacement, err = net.Listen("tcp4", ready.Address)
++		if err != nil {
++			fmt.Fprintln(os.Stderr, err)
++			return 7
++		}
++		defer replacement.Close()
++		encoder.Encode(ownerChildResult{Replaced: true})
++	}
++	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
++	counter := &ownerCountingReader{reader: conn}
++	first := make([]byte, 1)
++	n, err := counter.Read(first)
++	result := ownerChildResult{Bytes: n}
++	if err == io.EOF && n == 0 {
++		encoder.Encode(result)
++		return 0
++	}
++	if err != nil || n != 1 {
++		result.Error = fmt.Sprint(err)
++		encoder.Encode(result)
++		return 8
++	}
++	request, err := http.ReadRequest(bufio.NewReader(io.MultiReader(bytes.NewReader(first), counter)))
++	if err != nil {
++		result.Error = err.Error()
++		encoder.Encode(result)
++		return 9
++	}
++	request.Body.Close()
++	result.Auth = request.Header.Get("Authorization")
++	result.Bytes = counter.bytes
++	body := `{"schema_version":1,"config_generation":"gen:owner","config_sha256":"hash","state":"running","identity_instance":false,"identity_name":false,"identity_path":false,"accepted_tcp_connections":0,"experimental_admission":{"admitted":0,"rejected":0,"revoked":false}}`
++	_, err = io.WriteString(conn, fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", len(body), body))
++	conn.Close()
++	if err != nil {
++		result.Error = err.Error()
++	}
++	if replacement != nil {
++		replacement.(*net.TCPListener).SetDeadline(time.Now().Add(40 * time.Millisecond))
++		other, e := replacement.Accept()
++		if other != nil {
++			result.ReplacementConnections++
++			other.Close()
++		}
++		if timeout, ok := e.(net.Error); !ok || !timeout.Timeout() {
++			result.Error = fmt.Sprint(e)
++		}
++	}
++	encoder.Encode(result)
++	if result.Error != "" || result.ReplacementConnections != 0 {
++		return 10
++	}
++	return 0
++}
++
++type ownerCountingReader struct {
++	reader io.Reader
++	bytes  int
++}
++
++func (r *ownerCountingReader) Read(p []byte) (int, error) {
++	n, err := r.reader.Read(p)
++	r.bytes += n
++	return n, err
++}

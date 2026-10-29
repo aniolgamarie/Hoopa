@@ -1,0 +1,135 @@
+diff --git a/component/hoopaid/native_linux_amd64.go b/component/hoopaid/native_linux_amd64.go
+index 15a2bc6..ce343d8 100644
+--- a/component/hoopaid/native_linux_amd64.go
++++ b/component/hoopaid/native_linux_amd64.go
+@@ -204,6 +204,16 @@ func (b *nativeBackend) environment(h handoff) error {
+ 	if os.Geteuid() != 0 || !lab {
+ 		return errors.New("dedicated root t132 guest required")
+ 	}
++	// This prototype relies on the fixed guest's TCP_INFO TFO_CHILD ABI.
++	// The launcher separately pins the kernel image hash; the release check
++	// refuses accidental use on kernels where a zero bit would be ambiguous.
++	release, err := read("/proc/sys/kernel/osrelease")
++	if err != nil {
++		return err
++	}
++	if err := validateKernelRelease(release); err != nil {
++		return err
++	}
+ 	boot, err := read("/proc/sys/kernel/random/boot_id")
+ 	if err != nil {
+ 		return err
+@@ -335,6 +345,9 @@ func captureSocket(fd int) (witness, error) {
+ 			return w, errors.New("original socket must be ordinary IPv4 TCP")
+ 		}
+ 	}
++	if err := rejectFastOpenChild(fd); err != nil {
++		return w, err
++	}
+ 	var err error
+ 	w.cookie, err = socketU64(fd, 57)
+ 	if err != nil {
+diff --git b/component/hoopaid/tcp_info_linux_amd64.go b/component/hoopaid/tcp_info_linux_amd64.go
+new file mode 100644
+index 0000000..828489c
+--- /dev/null
++++ b/component/hoopaid/tcp_info_linux_amd64.go
+@@ -0,0 +1,52 @@
++//go:build linux && amd64
++
++package coreadmission
++
++import (
++	"errors"
++	"runtime"
++	"syscall"
++	"unsafe"
++)
++
++const fixedKernelRelease = "6.18.54.1-microsoft-standard-WSL2"
++
++func validateKernelRelease(release string) error {
++	if release != fixedKernelRelease {
++		return errors.New("unsupported experimental TCP_INFO kernel profile")
++	}
++	return nil
++}
++
++func validateTCPInfo(info []byte) error {
++	if len(info) < 8 {
++		return errors.New("short original socket TCP_INFO")
++	}
++	// Fixed 6.18 guest: include/uapi/linux/tcp.h TCPI_OPT_TFO_CHILD.
++	// TFO passive-established can precede the peer's active-established,
++	// invalidating this prototype's tuple publication order. SYN_DATA alone
++	// misses data-less TFO. State is deliberately not restricted to ESTABLISHED:
++	// an ordinary peer may already have sent FIN, leaving CLOSE_WAIT.
++	if info[5]&128 != 0 {
++		return errors.New("TCP Fast Open child outside connector admission profile")
++	}
++	return nil
++}
++
++// Called inside the same Control callback as the cookies and endpoints,
++// before any protocol I/O or lookup of a potentially stale tuple binding.
++func rejectFastOpenChild(fd int) error {
++	var info [256]byte
++	size := uint32(len(info))
++	_, _, errno := syscall.Syscall6(syscall.SYS_GETSOCKOPT, uintptr(fd), syscall.IPPROTO_TCP,
++		syscall.TCP_INFO, uintptr(unsafe.Pointer(&info[0])), uintptr(unsafe.Pointer(&size)), 0)
++	runtime.KeepAlive(&info)
++	runtime.KeepAlive(&size)
++	if errno != 0 {
++		return errno
++	}
++	if size > uint32(len(info)) {
++		return errors.New("oversized original socket TCP_INFO")
++	}
++	return validateTCPInfo(info[:size])
++}
+diff --git b/component/hoopaid/tcp_info_linux_amd64_test.go b/component/hoopaid/tcp_info_linux_amd64_test.go
+new file mode 100644
+index 0000000..73fd03d
+--- /dev/null
++++ b/component/hoopaid/tcp_info_linux_amd64_test.go
+@@ -0,0 +1,40 @@
++//go:build linux && amd64
++
++package coreadmission
++
++import (
++	"errors"
++	"syscall"
++	"testing"
++)
++
++func TestTCPInfoProfilePreservesHalfCloseAndRejectsTFO(t *testing.T) {
++	for _, state := range []byte{1, 3, 8} { // ESTABLISHED, SYN_RECV, CLOSE_WAIT
++		for _, options := range []byte{0, 7, 32, 128, 128 | 7, 128 | 32} {
++			info := make([]byte, 8)
++			info[0], info[5] = state, options
++			err := validateTCPInfo(info)
++			if (err != nil) != (options&128 != 0) {
++				t.Fatalf("state=%d options=%d: %v", state, options, err)
++			}
++		}
++	}
++	for size := 0; size < 8; size++ {
++		if err := validateTCPInfo(make([]byte, size)); err == nil {
++			t.Fatalf("short TCP_INFO accepted: %d", size)
++		}
++	}
++}
++
++func TestTCPInfoKernelProfileAndReadFailure(t *testing.T) {
++	for _, release := range []string{"", "6.6.0", "6.18.54.1", fixedKernelRelease + "-other", fixedKernelRelease} {
++		if err := validateKernelRelease(release); (err == nil) != (release == fixedKernelRelease) {
++			t.Fatalf("release=%q: %v", release, err)
++		}
++	}
++	// A syscall sandbox can deny getsockopt before the fd is resolved. Both
++	// errors must propagate; neither may become a zero-filled success result.
++	if err := rejectFastOpenChild(-1); !errors.Is(err, syscall.EBADF) && !errors.Is(err, syscall.EPERM) {
++		t.Fatalf("original fd read failure must reject: %v", err)
++	}
++}

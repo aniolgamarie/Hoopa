@@ -1,0 +1,11 @@
+--- a/experiments/mihomo-events/control_runtime_linux_amd64.go
++++ b/experiments/mihomo-events/control_runtime_linux_amd64.go
+@@ -17,7 +17,7 @@
+ 	"time"
+ )
+ 
+-const LinuxControlCoreSHA256 = "616133dd060b14cdbde68c6d5029f003429d7a8b6adeee4452e8176c63ca80e6"
++const LinuxControlCoreSHA256 = "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967"
+ const linuxControlBPF = "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+ const linuxControlLibbpf = "1c928f61158f25d39cd3fbc7ddafeebec2448886225e2c1824455fcfcd15d04c"
+ const linuxControlBTF = "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"

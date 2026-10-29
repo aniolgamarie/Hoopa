@@ -1,0 +1,134 @@
+--- a/transport/socks5/socks5.go
++++ b/transport/socks5/socks5.go
+@@ -269,6 +269,15 @@
+ 	// VER, REP, RSV
+ 	if _, err := io.ReadFull(rw, buf[:3]); err != nil {
+ 		return nil, err
++	}
++	if buf[0] != Version {
++		return nil, errors.New("SOCKS version error")
++	}
++	if buf[2] != 0 {
++		return nil, errors.New("SOCKS reserved field error")
++	}
++	if buf[1] != 0 {
++		return nil, Error(buf[1])
+ 	}
+ 
+ 	return ReadAddr(rw, buf)
+--- /dev/null
++++ b/transport/socks5/socks5_hoopa_reply_test.go
+@@ -0,0 +1,113 @@
++package socks5
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"io"
++	"testing"
++)
++
++// hoopaReplyRW supplies a synthetic server stream and records client writes.
++// A positive chunk limits each read to exercise fragmented replies.
++type hoopaReplyRW struct {
++	input  *bytes.Reader
++	output bytes.Buffer
++	chunk  int
++}
++
++func (rw *hoopaReplyRW) Read(p []byte) (int, error) {
++	if rw.chunk > 0 && len(p) > rw.chunk {
++		p = p[:rw.chunk]
++	}
++	return rw.input.Read(p)
++}
++
++func (rw *hoopaReplyRW) Write(p []byte) (int, error) { return rw.output.Write(p) }
++
++func hoopaReplyStream(reply []byte, chunk int) *hoopaReplyRW {
++	stream := append([]byte{Version, 0}, reply...)
++	return &hoopaReplyRW{input: bytes.NewReader(stream), chunk: chunk}
++}
++
++func TestHoopaClientHandshakeRejectsReply(t *testing.T) {
++	bound := []byte{AtypIPv4, 127, 0, 0, 1, 0, 80}
++	for _, rep := range []byte{1, 2, 3, 4, 5, 6, 7, 8, 255} {
++		t.Run(fmt.Sprintf("REP_%d", rep), func(t *testing.T) {
++			rw := hoopaReplyStream(append([]byte{Version, rep, 0}, bound...), 1)
++			addr, err := ClientHandshake(rw, bound, CmdConnect, nil)
++			if err == nil || addr != nil {
++				t.Fatalf("rejected reply returned addr=%v err=%v", addr, err)
++			}
++			var code Error
++			if !errors.As(err, &code) || code != Error(rep) {
++				t.Fatalf("reply code lost: got %v, want %v", err, Error(rep))
++			}
++			if rw.input.Len() != len(bound) {
++				t.Fatalf("rejected reply consumed bound address: %d bytes remain", rw.input.Len())
++			}
++		})
++	}
++	for _, tc := range []struct {
++		name   string
++		header []byte
++	}{
++		{"VER", []byte{4, 0, 0}},
++		{"RSV", []byte{Version, 0, 1}},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			rw := hoopaReplyStream(append(tc.header, bound...), 1)
++			addr, err := ClientHandshake(rw, bound, CmdConnect, nil)
++			if err == nil || addr != nil {
++				t.Fatalf("invalid header returned addr=%v err=%v", addr, err)
++			}
++			if rw.input.Len() != len(bound) {
++				t.Fatalf("invalid header consumed bound address: %d bytes remain", rw.input.Len())
++			}
++		})
++	}
++}
++
++func TestHoopaClientHandshakeTruncatedReply(t *testing.T) {
++	reply := []byte{Version, 0, 0, AtypIPv4, 127, 0, 0, 1, 0, 80}
++	for n := 0; n < len(reply); n++ {
++		t.Run(fmt.Sprintf("length_%d", n), func(t *testing.T) {
++			rw := hoopaReplyStream(reply[:n], 1)
++			_, err := ClientHandshake(rw, reply[3:], CmdConnect, nil)
++			if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
++				t.Fatalf("truncated reply returned %v", err)
++			}
++		})
++	}
++}
++
++func TestHoopaClientHandshakeSuccessfulReply(t *testing.T) {
++	for _, tc := range []struct {
++		name  string
++		bound Addr
++	}{
++		{"IPv4", Addr{AtypIPv4, 127, 0, 0, 1, 0, 80}},
++		{"domain", Addr{AtypDomainName, 3, 'a', '.', 'b', 0, 80}},
++		{"IPv6", Addr{AtypIPv6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 80}},
++	} {
++		for _, chunk := range []int{0, 1} {
++			t.Run(fmt.Sprintf("%s/chunk_%d", tc.name, chunk), func(t *testing.T) {
++				payload := []byte("application payload")
++				reply := append([]byte{Version, 0, 0}, tc.bound...)
++				rw := hoopaReplyStream(append(reply, payload...), chunk)
++				addr, err := ClientHandshake(rw, tc.bound, CmdConnect, nil)
++				if err != nil || !bytes.Equal(addr, tc.bound) {
++					t.Fatalf("successful reply returned addr=%v err=%v", addr, err)
++				}
++				rest, err := io.ReadAll(rw)
++				if err != nil || !bytes.Equal(rest, payload) {
++					t.Fatalf("payload changed: %q err=%v", rest, err)
++				}
++				want := append([]byte{Version, 1, 0, Version, CmdConnect, 0}, tc.bound...)
++				if !bytes.Equal(rw.output.Bytes(), want) {
++					t.Fatalf("client request changed: %v", rw.output.Bytes())
++				}
++			})
++		}
++	}
++}

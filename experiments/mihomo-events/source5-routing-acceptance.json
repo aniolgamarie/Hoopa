@@ -1,0 +1,2593 @@
+{
+  "P0_released": false,
+  "P1_released": false,
+  "core_sha256": "5e934bdc28dd07e7b7f8cf372d1d4f7a553a3aa3bd835de24f982dfed011a388",
+  "counts": {
+    "VMs": 39,
+    "admitted_flows": 124,
+    "application_slots": 127,
+    "checkpoints": 9,
+    "frames": 814,
+    "mandatory_frames": 805,
+    "source_epochs": 59
+  },
+  "families": {
+    "C01_concurrent_control_v2": {
+      "public_record": {
+        "bytes": 28020,
+        "path": "experiments/mihomo-events/source5-concurrent-control-validation.json",
+        "schema": "hoopa-t016-concurrent-control-validation-v2",
+        "sha256": "06e4536aa5a28dc0c8a6bbf16f2158c5a8fc5a9e4027efaa9d89a954b6949177",
+        "status": "accepted_finite_C01_concurrent_replacement_and_zero_write_retries"
+      },
+      "root_acceptance": {
+        "bytes": 27805,
+        "path": "private/t016-multi-entry-preparation/root-concurrent-control-runtime-acceptance-v2.json",
+        "schema": "hoopa-root-concurrent-control-runtime-acceptance-v2",
+        "sha256": "75ca1e7d63243f043f662397871feccc561052802ebb877c0db8e5803388a6fd",
+        "status": "accepted_finite_C01_concurrent_replacement_and_zero_write_retries"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1772,
+            "path": "private/t016-concurrent-control-v2/canonical-output-v1/canonical.json",
+            "sha256": "0889e7fbf25731691a64b484661f5b8bad7f19e8b50fcd05d67ed0737c0bbef9"
+          },
+          "canonical_schema": "hoopa-t016-concurrent-canonical-v1",
+          "canonical_status": "finite_concurrent_control_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 8979,
+              "path": "private/t130-followup/t016-concurrent-v2-runtime-review.json",
+              "sha256": "6b4b5bd1326b839969f987b5a61553aa9d68415d1abb91a38f9dd1083bac718a"
+            }
+          ],
+          "launch": {
+            "bytes": 99123,
+            "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/launch.json",
+            "sha256": "15dda98206ce385e573fb038c166bc8e58195499ce187f9aaf3df209809d8959"
+          },
+          "name": "C01_concurrent_control_v2",
+          "registration": {
+            "bytes": 5016,
+            "path": "private/t016-concurrent-control-v2/registration-v1/registration.json",
+            "sha256": "fe33e2df239bde0aaeadc4107689d1ccf2cc1b2c90ed29d22cce53cee24c0084"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/result.json",
+            "sha256": "8c45dca54469a6daa0c8529cfd63a634a1ee0f7cb43e4416594442cdf9475377"
+          },
+          "run": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17284,
+                "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/evidence/trace/epoch-6704b910df9293be93437a149c31b040ac7195cb23607fc9f863b4dd87b5d9cc.frames",
+                "sha256": "684ef271e527d52b2066516901a7fcfba9067e00f57c66165d3ad82212f90bba"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/evidence/trace/epoch-6704b910df9293be93437a149c31b040ac7195cb23607fc9f863b4dd87b5d9cc.source.json",
+                "sha256": "ad4662097ce45a1b9fad1103135bdbc19b32db579eba5ae6d9178f3bada578e4"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17284,
+                "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/evidence/trace/epoch-a1abfb2acc98ada7f9aebd936169eb750ff8b781769ac32c4ce12a27e86df581.frames",
+                "sha256": "945f0a328030714c423020427ef7cd9542c40a231d74ae6f7e9c6f9299009410"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-concurrent-control-v2/vm-two-apps-4n5bhh0s/evidence/trace/epoch-a1abfb2acc98ada7f9aebd936169eb750ff8b781769ac32c4ce12a27e86df581.source.json",
+                "sha256": "63b67e4ac138425c108bd97f9572ba93236c74eaf5c286c65ed2761d1711ddd8"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "F10_F33_full_rollback_v2": {
+      "public_record": {
+        "bytes": 33949,
+        "path": "experiments/mihomo-events/source5-full-rollback-validation.json",
+        "schema": "hoopa-t016-full-rollback-validation-v2",
+        "sha256": "a5a09184d2b33835eea89333be4ad8af6113ab45cfaaca1d8794ed104d8f06c5",
+        "status": "accepted_finite_F10_F33_full_old_bundle_rollback_after_second_entry_bind_failure"
+      },
+      "root_acceptance": {
+        "bytes": 33739,
+        "path": "private/t016-multi-entry-preparation/root-full-rollback-runtime-acceptance-v2.json",
+        "schema": "hoopa-root-full-rollback-runtime-acceptance-v2",
+        "sha256": "461d75ab3be5307c4680396499b7f2b454c6be996b2ba09ae8b4f055971033b1",
+        "status": "accepted_finite_F10_F33_full_old_bundle_rollback_after_second_entry_bind_failure"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1958,
+            "path": "private/t016-full-rollback-v2/canonical-output-v1/canonical.json",
+            "sha256": "a00d9c9abad094e32ebca3e112f55db7c126411c3222898302a02b86115a73c0"
+          },
+          "canonical_schema": "hoopa-t016-full-rollback-canonical-v1",
+          "canonical_status": "finite_complete_old_bundle_rollback_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 7842,
+              "path": "private/t130-followup/t016-full-rollback-v2-runtime-review.json",
+              "sha256": "a2240b35db4344fb758bb7997f4d52bc5368f5d7c6d4306a366e002dfc5ced3e"
+            }
+          ],
+          "launch": {
+            "bytes": 98921,
+            "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/launch.json",
+            "sha256": "551722f1f56cb1ac5cf8fbd07056184c110cdb58dd8146ac26696bf8d189b760"
+          },
+          "name": "F10_F33_full_rollback_v2",
+          "registration": {
+            "bytes": 4754,
+            "path": "private/t016-full-rollback-v2/registration-v1/registration.json",
+            "sha256": "8aa2cac67adb4cf6e112f5ba180612f2917b0200cb2b48017e59542f5507f8c2"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/result.json",
+            "sha256": "98a8199ed4a384ba745ed735d1ab1c177e3207365db0fbd07ea37e0fe92a779d"
+          },
+          "run": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17280,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-12c258700d84e0817cf60afab1fd0cfcdf176faf357e13ef847751eb51431b19.frames",
+                "sha256": "00667c97d37b7b60567e00233dcc125677805d49a84a3f6d3892e2dc9f31e929"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-12c258700d84e0817cf60afab1fd0cfcdf176faf357e13ef847751eb51431b19.source.json",
+                "sha256": "66242bdf7fe341912d76eb2ea4e51dc3b7180b60e7e4fc24daa021b428bfe910"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 621,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-5b6e7ea8c02fc12d4c9ac35de91373430b8e7ed1c8b48f2107ebaf0094f991e3.frames",
+                "sha256": "0b2826876706cb936a15b6ef323062a9bfccefcfb058c92d66b8d2fad1873dca"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-5b6e7ea8c02fc12d4c9ac35de91373430b8e7ed1c8b48f2107ebaf0094f991e3.source.json",
+                "sha256": "5e05e68cc85fcc5a3d48ed45b8c99a17fd9ec39c68bcd5c188623f57dad9caac"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17281,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-76ae7e4594e0d7908e89a3670b5b7eb8278c25e48c22bd4322c32d25f2719184.frames",
+                "sha256": "1c7c8e152b34abc65137448156af495f7811bddafe81de9615bf199ad565dc14"
+              },
+              "manifest": {
+                "bytes": 680,
+                "path": "private/t016-full-rollback-v2/vm-full-rollback-mxou_pju/evidence/trace/epoch-76ae7e4594e0d7908e89a3670b5b7eb8278c25e48c22bd4322c32d25f2719184.source.json",
+                "sha256": "f537a9ab69e151babeae4c03a04b95799463fe32b45e3ac63ad5dde0aaf6c47a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "F11_persistence_matrix_v2": {
+      "public_record": {
+        "bytes": 8090,
+        "path": "experiments/mihomo-events/source5-persistence-v2-validation.json",
+        "schema": "hoopa-f11-persistence-matrix-progress-v1",
+        "sha256": "751bc2be0b4ad4e82d8b783f93ad48605ea1df73fe566fa8ca9c910636d63cdb",
+        "status": "finite_matrix_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 11415,
+        "path": "private/t016-multi-entry-preparation/root-persistence-matrix-v2-runtime-acceptance.json",
+        "schema": "hoopa-f11-matrix-root-aggregate-acceptance-v1",
+        "sha256": "8eabc46331918da39bd45d710e636ec27b85b8486d870aeaf4b60e3aa1443c91",
+        "status": "finite_registered_process_crash_matrix_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1952,
+            "path": "private/t016-persistence-vm-v2/verified-vm-w01-ny_kw2kt/canonical-output/canonical.json",
+            "sha256": "37d9303d5b8dfee72d67abd8d457417ec88f0d75415e3c1a18ed24a7067ddd21"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 4669,
+              "path": "private/t130-followup/t016-matrix-v2-w01-review.json",
+              "sha256": "0957b1739781c000852ece3a844cb85dabc085356f27a30a48c197e30be234a2"
+            }
+          ],
+          "launch": {
+            "bytes": 100197,
+            "path": "private/t016-persistence-vm-v2/vm-w01-ny_kw2kt/launch.json",
+            "sha256": "5e18209554cefe9a3d245fdbe46f9a616c17105a5db7717181c645ecc2863966"
+          },
+          "name": "w01",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w01-ny_kw2kt/result.json",
+            "sha256": "089600be546e6db441840f7deded14521a21ce4ba51f601d9cb1645c51c4923a"
+          },
+          "row_acceptance": {
+            "bytes": 44282,
+            "path": "private/t016-persistence-vm-v2/verified-vm-w01-ny_kw2kt/root-row-acceptance.json",
+            "sha256": "7a7feddbc42d02f75cc7cf3ff39d7edb5f93263fe61abf6d65abce62a38f2c3a"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w01-ny_kw2kt",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 34703,
+                "path": "private/t016-persistence-vm-v2/vm-w01-ny_kw2kt/evidence/trace/epoch-9bd5d23c5f506a50ee4cb4dba705531e511abfc2d222b4d75df0a002675d3ea4.frames",
+                "sha256": "72bcb3efa66aa18ff469ddcfc889e9e3af312f19bc0a19b9c0fd2c93427c0be0"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w01-ny_kw2kt/evidence/trace/epoch-9bd5d23c5f506a50ee4cb4dba705531e511abfc2d222b4d75df0a002675d3ea4.source.json",
+                "sha256": "b6b0cda2457eb7169b11e95ee5c168abc6f7b533f580f4f6058dd7d6c0c5054e"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/verified-vm-w02-bta96p08/canonical-output/canonical.json",
+            "sha256": "8bb96cdc942c6a897d19abac4d244f9ba8e5623a5d53eaceaa8708c2fe673fad"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 5392,
+              "path": "private/t130-followup/t016-matrix-v2-w02-review.json",
+              "sha256": "d27e7ca8c57a13838a7cd01624fda00addee66d119a55c0f0af6e943b5020299"
+            }
+          ],
+          "launch": {
+            "bytes": 101520,
+            "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/launch.json",
+            "sha256": "be355cb6cea08f5113708067c1cec2b63ee53fd07f3a94013ad8b9abc5f70571"
+          },
+          "name": "w02",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 327,
+            "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/result.json",
+            "sha256": "f81d079de54e1c253bfd925c200b006cec36e570b40e8106f1cfe30266d9df7f"
+          },
+          "row_acceptance": {
+            "bytes": 49397,
+            "path": "private/t016-persistence-vm-v2/verified-vm-w02-bta96p08/root-row-acceptance.json",
+            "sha256": "80b199e83273a608b048a567c0e393984dd08a0e220e9f7d060d5e31a48f5fd3"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w02-bta96p08",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17276,
+                "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/evidence/trace/epoch-25bf3247f6211ebe1ba6def67efb662597406e60fcac9e432ee04f0629a4ba71.frames",
+                "sha256": "0c1106ae542d8f15488caa01bd7f18ff5dd24df10e89c1fac21d54b1b6c25609"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/evidence/trace/epoch-25bf3247f6211ebe1ba6def67efb662597406e60fcac9e432ee04f0629a4ba71.source.json",
+                "sha256": "0e7e3cf3d3e4b192cfeb5e41d64d7863a40e9f833f32394dbf00ecbadc619d36"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17288,
+                "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/evidence/trace/epoch-ed30b95060a4622a44c9e8850b601c064ac49b6a577cdcb7be5c0bb36a9e0562.frames",
+                "sha256": "520ccd73b62811b0268554d9f64541144f2c43142e31db989b4a14c84ff23cbb"
+              },
+              "manifest": {
+                "bytes": 680,
+                "path": "private/t016-persistence-vm-v2/vm-w02-bta96p08/evidence/trace/epoch-ed30b95060a4622a44c9e8850b601c064ac49b6a577cdcb7be5c0bb36a9e0562.source.json",
+                "sha256": "d842220ca940ab47ce07798f0160e35da4b1b490811c5e5aa1aa6258a4d96450"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w03-qd72iwor/canonical-output/canonical.json",
+            "sha256": "d0352e298c38516afb3f9f09bc259f53e24e8bbacd7f95cf0ed0aa12a309a56b"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 3017,
+              "path": "private/t130-followup/t016-matrix-v2-w03-canonical-review.json",
+              "sha256": "0dc0798029d4acfe5acb76542b3c2dd87404c89114c74c61ddda13f1d1a8069b"
+            }
+          ],
+          "launch": {
+            "bytes": 101520,
+            "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/launch.json",
+            "sha256": "dbe8be9eb336ff939e7e8b04dfe3d4d33c3a2201cb8000eb7b7e04dfc017cb30"
+          },
+          "name": "w03",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 327,
+            "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/result.json",
+            "sha256": "2b422ae443adac13e14026f24d9ada6deeced2b1fdb18a0f1a794f875e7b82d9"
+          },
+          "row_acceptance": {
+            "bytes": 49484,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w03-qd72iwor/root-row-acceptance.json",
+            "sha256": "471bbd92f75cc95e6aa544916432c5edf5d8d4c1cbc603ce368378a48d7a6de9"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w03-qd72iwor",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17283,
+                "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/evidence/trace/epoch-b095a639466074f8a5532518087088d88c387c176658e7f97815d2af061d4520.frames",
+                "sha256": "81e06d887bb519102644e367e568703e821bde9c294b2628afcec5a1b9c47ccd"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/evidence/trace/epoch-b095a639466074f8a5532518087088d88c387c176658e7f97815d2af061d4520.source.json",
+                "sha256": "823c336952c23ebbc5060258ce98697e27640f3b195f35d3f5a5f597438d4070"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17288,
+                "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/evidence/trace/epoch-e4136923316820970c1b9e25c4866f0092eadb68b79160e09beb585a232ca48f.frames",
+                "sha256": "f79d993773f1c6434b0d621d9a4bfd75decd3723428f6c1d9ac9ab68915aabfb"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w03-qd72iwor/evidence/trace/epoch-e4136923316820970c1b9e25c4866f0092eadb68b79160e09beb585a232ca48f.source.json",
+                "sha256": "c4a109cfb3d3a66a246bccd2bc344c01e166c81d781b034f177ad982323f705c"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w04-pcwlze9u/canonical-output/canonical.json",
+            "sha256": "89d6a6401e9046e0bb3277b35dc65e741570f988bfeae924957b28e1416b43e1"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 9352,
+              "path": "private/t130-followup/t016-matrix-v2-w04-review.json",
+              "sha256": "b1d2d6c071aecfa208f387c1c709cddcda9a51becdc5e61397c00926c4a01c64"
+            }
+          ],
+          "launch": {
+            "bytes": 101524,
+            "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/launch.json",
+            "sha256": "339fdf6b8d519a2fbc69f2d7060d2e8dfbcacfa436320268bff2479eae8ffe99"
+          },
+          "name": "w04",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/result.json",
+            "sha256": "7f81a935d4dfb92514a60c95e5a58014fae382a043c75161ead5c4a9fabd86bb"
+          },
+          "row_acceptance": {
+            "bytes": 49428,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w04-pcwlze9u/root-row-acceptance.json",
+            "sha256": "e2e4c43854d1828ff00b9cbfe461079bacef3fa28c1215020a56a984364c4164"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17282,
+                "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/evidence/trace/epoch-0dfff636f975442567e6f6d975c658f5dddc4ebd3d90247d15a67bd6d3934d04.frames",
+                "sha256": "58d6460f9f5006afc41df7ef2578a22bf551aef4a23c0a6c134581c9c2932d28"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/evidence/trace/epoch-0dfff636f975442567e6f6d975c658f5dddc4ebd3d90247d15a67bd6d3934d04.source.json",
+                "sha256": "f78f97f449425b7c6106783f3c6cb1815c273eb9dd94920030753f423b00ac71"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17284,
+                "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/evidence/trace/epoch-c49cc7d8a2488dcbf64885506d0a196bee70de9748404ef7815f2df93eb75340.frames",
+                "sha256": "4aab86ad8a30e5d74d9ebb22566663e189aeaad05fd96abecd98fffc5fef230b"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w04-pcwlze9u/evidence/trace/epoch-c49cc7d8a2488dcbf64885506d0a196bee70de9748404ef7815f2df93eb75340.source.json",
+                "sha256": "51b7ecca1b8c2645f12aa6faba984b9eed45da7f7165c7b31fae4f60d69e21ec"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w05-zmoziczl/canonical-output/canonical.json",
+            "sha256": "85b328f4e482db7752c6a5ce13de0b5e983723b6ad3f82c1853eb5e52f6199d0"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 9107,
+              "path": "private/t130-followup/t016-matrix-v2-w05-review.json",
+              "sha256": "37c4bfa97c8edd43cd66e94073cda5ee643268575a51e693549e8655a988d132"
+            }
+          ],
+          "launch": {
+            "bytes": 101522,
+            "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/launch.json",
+            "sha256": "f74042dec4c35b3f51829e2d2835a8e8300b4f10d32780db2d40ef21e5059cc0"
+          },
+          "name": "w05",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/result.json",
+            "sha256": "d71d8bc9e09cc558f0064924eb752559060aba542c7c38a83e3d730172c05721"
+          },
+          "row_acceptance": {
+            "bytes": 49402,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w05-zmoziczl/root-row-acceptance.json",
+            "sha256": "2c06b2590908ab12ab315d9a1541b2bc69e849ccf8f2b190918d3d07a0392bd4"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w05-zmoziczl",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17289,
+                "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/evidence/trace/epoch-7564e3d8e5aaa23b34fee083618876e8caf04347eab2253164a16debac763ee1.frames",
+                "sha256": "5b0fc535981c1338c47029942a6a7699967dd4033fb7354abc1139c1877d212e"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/evidence/trace/epoch-7564e3d8e5aaa23b34fee083618876e8caf04347eab2253164a16debac763ee1.source.json",
+                "sha256": "2c63ebc23185186db78827dd636607a8095d077d724af79f6d0f4249404c1cd2"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17281,
+                "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/evidence/trace/epoch-b031852de26326fcf954642c54ca043c121caac53878e3e2c91e50d22ad89ce4.frames",
+                "sha256": "440db77dd83414de448ef9e8aab966842b767598a77823872f30adfec61e609b"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w05-zmoziczl/evidence/trace/epoch-b031852de26326fcf954642c54ca043c121caac53878e3e2c91e50d22ad89ce4.source.json",
+                "sha256": "02ba8002fb62f9a78bbc36e6cfa0364dec9c335fd6a99e59007678ccf1c3f0dd"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w06-ckmr1d1x/canonical-output/canonical.json",
+            "sha256": "1059f4ac14a28cb600c60d4d25a001e39f5255992931a75a0f0314c91acd2001"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 10950,
+              "path": "private/t130-followup/t016-matrix-v2-w06-review.json",
+              "sha256": "989ed7853ea01251298e500a9bad770f78cb7b5a67d2ac68371ef80c875d489c"
+            }
+          ],
+          "launch": {
+            "bytes": 101521,
+            "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/launch.json",
+            "sha256": "6a53bf9eb093d5097a82e0e87cdf25bec1ab4ff0642beec5f44cb52ca7fc85f5"
+          },
+          "name": "w06",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/result.json",
+            "sha256": "5974210f93b1edb00a0a5313a33a8e3d7966ddd63172d630549ef99c9d4f39d0"
+          },
+          "row_acceptance": {
+            "bytes": 49446,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w06-ckmr1d1x/root-row-acceptance.json",
+            "sha256": "4f7b41120d2b28f29d120974afea0fc05fcd4a57495da8fe9c495ab4bfa790f0"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17279,
+                "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/evidence/trace/epoch-957b280a80bb76698df62ea534fe6e1ccdae789c833877be0be212e278ae5a07.frames",
+                "sha256": "509031766796a4222d19ad2881009728ca91e7687dbb2aa76a7e11e74c01038e"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/evidence/trace/epoch-957b280a80bb76698df62ea534fe6e1ccdae789c833877be0be212e278ae5a07.source.json",
+                "sha256": "f908ac25a31c6eb8e9e810a432825dea476e299680688623bb6b62c000b4eb21"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17281,
+                "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/evidence/trace/epoch-f583d2f539ab4b92911d79a30329f75123de1abd51d679a319157f08a88b49aa.frames",
+                "sha256": "6faf1f5c8bb1eddf3962942450c6eaace50b5de2cdc864702b26b4ae41727761"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w06-ckmr1d1x/evidence/trace/epoch-f583d2f539ab4b92911d79a30329f75123de1abd51d679a319157f08a88b49aa.source.json",
+                "sha256": "eb2972e9e840c79f5357cb823079aa3e2261e6d1140901eb3f290cdd6bdd7a58"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1368,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w07-sa1zfjtk/canonical-output/canonical.json",
+            "sha256": "ff32414ea1518488511294c8c190a65b92ff916e42803ff720cc8ff563bf8bf2"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 8420,
+              "path": "private/t130-followup/t016-matrix-v2-w07-review.json",
+              "sha256": "050d04e0a0cafbd0ca1f8af185f8b336fe912314ef5bdddbbf6d78fd4acd2bbe"
+            }
+          ],
+          "launch": {
+            "bytes": 100121,
+            "path": "private/t016-persistence-vm-v2/vm-w07-sa1zfjtk/launch.json",
+            "sha256": "bc89f697e998dd121ae3a73349551b5b0594c08896d4cce0a89b39eb50de5362"
+          },
+          "name": "w07",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w07-sa1zfjtk/result.json",
+            "sha256": "4abe25d5c7034e17cc1b9666fc11a5fd95c484bc3cd6c6ac43fa9b620a5d9364"
+          },
+          "row_acceptance": {
+            "bytes": 39140,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w07-sa1zfjtk/root-row-acceptance.json",
+            "sha256": "16586f9e0e229ae5c90111fc10ee305a47afb38976c86762fc9e58f16c2e3b79"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w07-sa1zfjtk",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17281,
+                "path": "private/t016-persistence-vm-v2/vm-w07-sa1zfjtk/evidence/trace/epoch-c7b84a3f31d67a5af3a214e2257f931be2e9bedc6a8ee0b168747a1ed562e24b.frames",
+                "sha256": "6d1ba1920227ce949c5daf89b5cff8e98af2fd242391589c77aa4b647432ac8d"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w07-sa1zfjtk/evidence/trace/epoch-c7b84a3f31d67a5af3a214e2257f931be2e9bedc6a8ee0b168747a1ed562e24b.source.json",
+                "sha256": "7199c5c89693d503b0b422b0f84cd4b1430d22978c2db30005af51b731074dbe"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w08-04xdzt82/canonical-output/canonical.json",
+            "sha256": "fc228c383de3bc0ee3b6f2c2112c8c7d0e6f59752398c9057c3864de0ef61841"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 11167,
+              "path": "private/t130-followup/t016-matrix-v2-w08-review.json",
+              "sha256": "4214b2a355e5d8c8e36eb3f4aa9e651e35151b566a75846765f9b8af5b18e402"
+            }
+          ],
+          "launch": {
+            "bytes": 101519,
+            "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/launch.json",
+            "sha256": "bd90298644ac93073de5d8f102b5408a3989dc3d86fbfb5458497f7d7ae764c2"
+          },
+          "name": "w08",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 327,
+            "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/result.json",
+            "sha256": "3dd15a5305794bb19820783fd232564bd5cf9bdb8bae809ba8c5bf3d9d9faa4f"
+          },
+          "row_acceptance": {
+            "bytes": 49463,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w08-04xdzt82/root-row-acceptance.json",
+            "sha256": "1d8af7c9ba5d8b9b360df31615199d057347538dfb72b9d9083193b7c696c18a"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w08-04xdzt82",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17295,
+                "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/evidence/trace/epoch-0fda271783d8eeb34b1ce90580334d4c1a9f84d1b0641646087547ebaf50aaa4.frames",
+                "sha256": "9b243097abfa31494e8101b3a88eee236be9507cef652fe5b407ff6c3121ccfd"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/evidence/trace/epoch-0fda271783d8eeb34b1ce90580334d4c1a9f84d1b0641646087547ebaf50aaa4.source.json",
+                "sha256": "99e0e65efed9b22dfb1baca7dc0fbae44758bc03ead46ec7f7d6f113adf65c86"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17283,
+                "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/evidence/trace/epoch-9dde638a0d32d14092af021ee3dfc563344e30f993a921fb4d41e787a102961a.frames",
+                "sha256": "4299d6c129bc4099991c8817f751e6ad50f13c9d517bbe8c153a03872f447f31"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w08-04xdzt82/evidence/trace/epoch-9dde638a0d32d14092af021ee3dfc563344e30f993a921fb4d41e787a102961a.source.json",
+                "sha256": "25d01dd0d03144ef1d03a9105f87d6819bd9031ea548e3dddb199e67dccdadc6"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w09-9h_284lb/canonical-output/canonical.json",
+            "sha256": "92af8cda5bc2189ede57a55063ebacab6a3b11c472341812fd0e2f3430151155"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 6023,
+              "path": "private/t130-followup/t016-matrix-v2-w09-review.json",
+              "sha256": "3d37ead231b33c2cb1a7f3232c4bca2d2ce38c113f3919cdb1e1ccd0daca05da"
+            }
+          ],
+          "launch": {
+            "bytes": 101523,
+            "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/launch.json",
+            "sha256": "c98cc5c88353f217114bac106acf065f7fd05f69dc6a6db0f86e91fbceae21ee"
+          },
+          "name": "w09",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/result.json",
+            "sha256": "7f783e98ddb809b8e197c066dd26f032937a2c132b478d7d28c2c44a616644cd"
+          },
+          "row_acceptance": {
+            "bytes": 49369,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w09-9h_284lb/root-row-acceptance.json",
+            "sha256": "6944a0f0ccfd38767bd4d6d5f5ef80aabdaee88cf2c91987ab70ac68da4dfcb4"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w09-9h_284lb",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17278,
+                "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/evidence/trace/epoch-58e26199764c47a1a4b4df3f27927f9836755d31064942070112a0991e92bc57.frames",
+                "sha256": "5c7eeeed07766c4e0ed7531d905bc1ad61c6e5c8ae8424f5a562c1c35f819cc4"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/evidence/trace/epoch-58e26199764c47a1a4b4df3f27927f9836755d31064942070112a0991e92bc57.source.json",
+                "sha256": "bdbdd38bc6ca150fdc0279737c89a85aee98ee74113f514369938e97252e3682"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17296,
+                "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/evidence/trace/epoch-91a737c82954c0a51f668cf0240f986a332bb395ff23e81dda8467e91b87f692.frames",
+                "sha256": "7c354220b711f4c1f5268ec7c1b341f712be652b0ca2f0a6d46d2b997c4bf3dc"
+              },
+              "manifest": {
+                "bytes": 680,
+                "path": "private/t016-persistence-vm-v2/vm-w09-9h_284lb/evidence/trace/epoch-91a737c82954c0a51f668cf0240f986a332bb395ff23e81dda8467e91b87f692.source.json",
+                "sha256": "4c3e210bae3c9b3aa500f2dd4436dc0cc34ea478df0cd2f89a0cd0149b21415b"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w10-bf1z2uvd/canonical-output/canonical.json",
+            "sha256": "665b7704a00a9022dded954e262d6f3f7413137e012faf21f6fe90c1ed4dd0bd"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 6354,
+              "path": "private/t130-followup/t016-matrix-v2-w10-review.json",
+              "sha256": "940199dd9310a229f5b0b38b87ba65fbedd435b820af138a1eeee62e1f3ffadd"
+            }
+          ],
+          "launch": {
+            "bytes": 101525,
+            "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/launch.json",
+            "sha256": "e78cc8570192ee9e3d3de6dbf0d1303d4042e44f1cd7efc837bf8a498878a8ea"
+          },
+          "name": "w10",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/result.json",
+            "sha256": "d3c7bfeabe5e864850b147dd170cdb11dcfc75bc8957add39a007f9cda281b85"
+          },
+          "row_acceptance": {
+            "bytes": 49428,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w10-bf1z2uvd/root-row-acceptance.json",
+            "sha256": "b061d68e031d1a7c7b8fab81d6ebfafbf18c08c45cfd261c87a500019a9493fe"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 18038,
+                "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/evidence/trace/epoch-18a14282100ee297d7fc63588537020f83ffefbcaa414edfd103705b20064d41.frames",
+                "sha256": "66f0c481479ab68751bad28806652761dbab4ca82f7839a0e24f49658ff19ebb"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/evidence/trace/epoch-18a14282100ee297d7fc63588537020f83ffefbcaa414edfd103705b20064d41.source.json",
+                "sha256": "f491805a58d7de0b5074b0c7f5cbaac2e0fefc7d8eb7a5792719581605709e8b"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17271,
+                "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/evidence/trace/epoch-1a3d6570a25a3969fde12caf72f36ed0a340c5c54dda7d86cd3aa873ef0130c4.frames",
+                "sha256": "db8e3ef4c0a17fd6b698debc90e1ef48a808684613220c39e43b1dc82b031c95"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w10-bf1z2uvd/evidence/trace/epoch-1a3d6570a25a3969fde12caf72f36ed0a340c5c54dda7d86cd3aa873ef0130c4.source.json",
+                "sha256": "433435a15d20d74be689e00742cb74ecbb40bd7049850e6540becf6fd790b518"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w11-ureug62t/canonical-output/canonical.json",
+            "sha256": "2831f94c864ab64037c427ce91a933b740f14a58d242a9803b83b9d33d4aa501"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 6344,
+              "path": "private/t130-followup/t016-matrix-v2-w11-review.json",
+              "sha256": "98e9f0702798ebd37110a389c3687d33dea38135cf88b349b6a6bb6d6f831e9c"
+            }
+          ],
+          "launch": {
+            "bytes": 101525,
+            "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/launch.json",
+            "sha256": "bc4cc591154bc16471a2e26175b16a53f8395f60ee73ec91a248c2938c92be27"
+          },
+          "name": "w11",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/result.json",
+            "sha256": "96911125ac4cdd4bd5206e1d61ff8e71ae3905bb5a1500c9048e911a7515de7b"
+          },
+          "row_acceptance": {
+            "bytes": 49404,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w11-ureug62t/root-row-acceptance.json",
+            "sha256": "5cca9dd11cd864b102be5e999c96c7a2bde3b40ed2727d4144ed171723e87b9c"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w11-ureug62t",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17278,
+                "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/evidence/trace/epoch-1cafcf2ce1f266f952d8ac436095671848eeffce0cdbc57de0becd864ba3039c.frames",
+                "sha256": "2b1075dfca89e8089a4b684063e090c68f8ca9708f09cdc7b9266e179cbd20fc"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/evidence/trace/epoch-1cafcf2ce1f266f952d8ac436095671848eeffce0cdbc57de0becd864ba3039c.source.json",
+                "sha256": "cfdee2b32c3fd5c1c7174cdb8455f619161bc70c6d03954393e902a1a9338847"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17283,
+                "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/evidence/trace/epoch-4f69c303708bc6bf54ddcc52fe585ffbba4cbf8d0b7788a207538d44b6eb9bb6.frames",
+                "sha256": "d0682ebe9f77a84803ebdacb77083bb81b011a832ba4d8a77b6e64cf5ee6a41f"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w11-ureug62t/evidence/trace/epoch-4f69c303708bc6bf54ddcc52fe585ffbba4cbf8d0b7788a207538d44b6eb9bb6.source.json",
+                "sha256": "17832f5c19d074ec7a5f4e994171ae8665b8f7849ee52dcbc889c4df10e83db7"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2202,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w12-qse55x1m/canonical-output/canonical.json",
+            "sha256": "c7d6dc0f3c911503f5570b639048265537ace6ca9e092bb5fa64a9b8a788abe0"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 7412,
+              "path": "private/t130-followup/t016-matrix-v2-w12-review.json",
+              "sha256": "ecddf6f9e0ae0b5c6961ad4119b89abd0e893e8c300c6308e62ebedf8b2cefd9"
+            }
+          ],
+          "launch": {
+            "bytes": 101522,
+            "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/launch.json",
+            "sha256": "12bf72109d2e8636cad5056943351e387fcd7b2d8b67d43e2f68880218e779c1"
+          },
+          "name": "w12",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 328,
+            "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/result.json",
+            "sha256": "abe447816102b127423ff98a4c4df861db614bd909325aec79e1c1420975569a"
+          },
+          "row_acceptance": {
+            "bytes": 50526,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-w12-qse55x1m/root-row-acceptance.json",
+            "sha256": "25536d29671c6a1c3be71a1351c87b8f24b3ddfb73f64847eb27a80cef973423"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-w12-qse55x1m",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17283,
+                "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/evidence/trace/epoch-48688ef5ae5794b7d2f1d1d90075afec575c054edf57de5d014fc3af704871b4.frames",
+                "sha256": "23d7411cf3c1aab8e0919100cc2cd71e8a30dd5396194006bdd691a1ede42264"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/evidence/trace/epoch-48688ef5ae5794b7d2f1d1d90075afec575c054edf57de5d014fc3af704871b4.source.json",
+                "sha256": "00058c66b0e4049e4bb774d5c006c7672c09f5e1b7ec47d6378b3e0e6b0e7def"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17286,
+                "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/evidence/trace/epoch-e7924dc3102ed846d5b5f2a66c0c6e9a5abd2986cdc2ef96d0c0284d99d179da.frames",
+                "sha256": "2dee859d7d8b535c5eb721e5f6a2c601e1bc28eeaa026ccff57fb785ea2fcaaf"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-w12-qse55x1m/evidence/trace/epoch-e7924dc3102ed846d5b5f2a66c0c6e9a5abd2986cdc2ef96d0c0284d99d179da.source.json",
+                "sha256": "a3393142ef9b4d99590c090a62b25d2ad69f5039749d1128693811dd7048d4ba"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2224,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-spawn-returned-hnq034hh/canonical-output/canonical.json",
+            "sha256": "b0774f8d9704638d05a5f2adebd49955f72c955f94f8741555c1cde3941655ee"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 4652,
+              "path": "private/t130-followup/t016-matrix-v2-spawn-returned-review.json",
+              "sha256": "dd53c6bae740c744c658ddf3e92b14d34fba6decc918a9d8d2969e1e7606b8cc"
+            }
+          ],
+          "launch": {
+            "bytes": 101642,
+            "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/launch.json",
+            "sha256": "8ab868dadd2570a54f67eb73ccba61a9a506e88f0b4383cc8cbb2c69d5d44d4a"
+          },
+          "name": "spawn-returned",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 339,
+            "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/result.json",
+            "sha256": "3e583c34d17b701fc459dbb9a066bd32b8fb0f90fb49cd97a11fe38b7c71cedc"
+          },
+          "row_acceptance": {
+            "bytes": 52635,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-spawn-returned-hnq034hh/root-row-acceptance.json",
+            "sha256": "4418f63171e1e641b192ffdb81c31b116fcf12fc63f6721c50fb01b8136ef562"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17275,
+                "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/evidence/trace/epoch-11f8f014f82e33f3a6fd6f5f14d5301a51656dafa7a13d4265aa2af031d6b40f.frames",
+                "sha256": "d6655529c4fcbd293ee9a7a7a3d935ef366a7f2c870667795214468ace5ea5b1"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/evidence/trace/epoch-11f8f014f82e33f3a6fd6f5f14d5301a51656dafa7a13d4265aa2af031d6b40f.source.json",
+                "sha256": "cf050234adf780a1358611253d7c3af7ecb6a0ddddacce39c1c75bb3ba0264be"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17288,
+                "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/evidence/trace/epoch-d204c476289ef6d0851f65d2ced62f2bc5555238d93ed016a001e6af3629b6ca.frames",
+                "sha256": "9058f07f3e8c88d1a601c74fd000096e5d1d13c5343838bec7629dc36e08fcd8"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-spawn-returned-hnq034hh/evidence/trace/epoch-d204c476289ef6d0851f65d2ced62f2bc5555238d93ed016a001e6af3629b6ca.source.json",
+                "sha256": "b08e8e46ffd687520c2a18e2572fe7e0153152dadca862b072e2f73cccfcc59b"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2220,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-write-yv2qub1r/canonical-output/canonical.json",
+            "sha256": "e1f30f5999154f5fbce5b1253270b1a34f0bb299ef5f8700d1eaa783bd3d43bf"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 5021,
+              "path": "private/t130-followup/t016-matrix-v2-active-write-review.json",
+              "sha256": "691486a5ac4556b112f1913317ab8f8748ce7d5e9bdef575c45830b9db91e67c"
+            }
+          ],
+          "launch": {
+            "bytes": 101666,
+            "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/launch.json",
+            "sha256": "36d96dd303355e7e1a43ad0edfa4088f770953ecfea0d349dec4f69e19f3625c"
+          },
+          "name": "active-write",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 337,
+            "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/result.json",
+            "sha256": "52c1925131e8d7cc0c823a2774ad36b79e6d6762fffdc134ae925f22e0a3700a"
+          },
+          "row_acceptance": {
+            "bytes": 51969,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-write-yv2qub1r/root-row-acceptance.json",
+            "sha256": "82e07d5067e7c9105c9a1b62e22ec659e9fc105e01eb20345ea071fe081589e4"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17282,
+                "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/evidence/trace/epoch-0b50285b0d32fe26b868dfec69ba6f6123c16795222779db96895478efaaaa98.frames",
+                "sha256": "438d4ffb65afb2eb722cae327d4dd4384b03290c98fe9a1abb20f64004a9238e"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/evidence/trace/epoch-0b50285b0d32fe26b868dfec69ba6f6123c16795222779db96895478efaaaa98.source.json",
+                "sha256": "9508d950c55d7821afc69281c5a2084a61cc446d4d9d7466d74bf17740427ba4"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17296,
+                "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/evidence/trace/epoch-75ade24373f6ab6cfd821be9e544a285ffc894b368557b1e04ffc4c39517c9dd.frames",
+                "sha256": "f11a0865c11bc0ade55d53a208faaa4eb763c04a4b824e696c796bfb7b195f05"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-active-write-yv2qub1r/evidence/trace/epoch-75ade24373f6ab6cfd821be9e544a285ffc894b368557b1e04ffc4c39517c9dd.source.json",
+                "sha256": "b44e4816340e4c542c6ced13f4c8f8a98082bc6abf0ffd4874042cc486cac695"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2228,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-file-sync-89hj2fn_/canonical-output/canonical.json",
+            "sha256": "30578f3b3c091971c1ba08d7a9b199e199abdf6dd26866cc8da250c0289aa9e8"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 5506,
+              "path": "private/t130-followup/t016-matrix-v2-active-file-sync-review.json",
+              "sha256": "2e6d1b9989412a52936bb61be124154d984fec099dfb822f26492aba0b1ccdea"
+            }
+          ],
+          "launch": {
+            "bytes": 101701,
+            "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/launch.json",
+            "sha256": "57d40d085a6629647364071ad603c90b9c2bab0be9dd9e0bfa71071baf8efd20"
+          },
+          "name": "active-file-sync",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 341,
+            "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/result.json",
+            "sha256": "e91b3d05cf8d2b7df594adea1ae06886ac52d3dd256c28ed16b6de72073cc1f4"
+          },
+          "row_acceptance": {
+            "bytes": 53320,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-file-sync-89hj2fn_/root-row-acceptance.json",
+            "sha256": "16ca074421383a179faf1e6fe85c3ea3305454ac71d2195fdb67c41b81daf2c6"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17282,
+                "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/evidence/trace/epoch-24f786186c54c2e5a236262229ce51e71b3d7293a4cc68ccbb01ce012d1a9dd3.frames",
+                "sha256": "4eb857583435909253ddd84f5a815a168946c5bb4be27498e3cd916ade8c6d72"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/evidence/trace/epoch-24f786186c54c2e5a236262229ce51e71b3d7293a4cc68ccbb01ce012d1a9dd3.source.json",
+                "sha256": "7af833baf9a61c212015db1a9a0d3818f3e7f083acea3f39a3753d855f0bd9f6"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17281,
+                "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/evidence/trace/epoch-cf794da094f0cc927245f5d8f1beddf029fba52cdf01089171eab75b9d044f18.frames",
+                "sha256": "3685e06d1483b5c672a52e152676cbb965964ebfd6e03ca11baafa66aafcce22"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-active-file-sync-89hj2fn_/evidence/trace/epoch-cf794da094f0cc927245f5d8f1beddf029fba52cdf01089171eab75b9d044f18.source.json",
+                "sha256": "09dec62b6743decf46ba6f6965b8ad3341bb6aaba20b9a2358c787df75fa3f0b"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2222,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-rename-jtlm3haa/canonical-output/canonical.json",
+            "sha256": "9d5e0f4d6248d8324630b8d542f7460d129421f7a9bb4bfbd095fc8d71ec0dc1"
+          },
+          "canonical_schema": "hoopa-f11-persistence-canonical-v1",
+          "canonical_status": "finite_persistence_row_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 3405,
+              "path": "private/t130-followup/t016-matrix-v2-w03-failure-review.json",
+              "sha256": "185660115824b6e84f22e2102d4673bdd115eebafb8d55416149729675f8d09f"
+            },
+            {
+              "bytes": 4674,
+              "path": "private/t130-followup/t016-matrix-v2-active-rename-review.json",
+              "sha256": "5152a3786d15619c2a70d45265b965607d64444cc7a096a11689fd30ab04db2e"
+            }
+          ],
+          "launch": {
+            "bytes": 101687,
+            "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/launch.json",
+            "sha256": "eddc08db0438dc478587d995fd2b5ba1646a3414d7f0c12d13ef3a4f3446b8e6"
+          },
+          "name": "active-rename",
+          "registration": {
+            "bytes": 13254,
+            "path": "private/t016-persistence-vm-v2/registration-v1/registration.json",
+            "sha256": "f237652420a00331187d48e33b23070d8ada1eb78e215779f894ac415bded486"
+          },
+          "result": {
+            "bytes": 338,
+            "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/result.json",
+            "sha256": "0a04e8049c2d88f55d68788ec7a9c130971fd7d5f7f420a6f77e4d58a5fa985c"
+          },
+          "row_acceptance": {
+            "bytes": 52400,
+            "path": "private/t016-persistence-vm-v2/reviewed-vm-active-rename-jtlm3haa/root-row-acceptance.json",
+            "sha256": "09cd5a06fc17ecf0e52a7c434c4be6eeec0e248363b9cf7ddaffe9f875de5d18"
+          },
+          "run": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17283,
+                "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/evidence/trace/epoch-36a355a1a0c0c71be8dcf45541d56cde51c3e8078d5f6fcd05f9149d69b6bad7.frames",
+                "sha256": "04e5dee3b643f336a6a983059d8565c78df8f58aca3c19950b1cec78b0092b1e"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/evidence/trace/epoch-36a355a1a0c0c71be8dcf45541d56cde51c3e8078d5f6fcd05f9149d69b6bad7.source.json",
+                "sha256": "0f32f21a6c52d380682715ab6e418999f1089bd0dc24d4e0967fa97ee4656bcf"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17272,
+                "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/evidence/trace/epoch-cba6878353eb72afd44f02229eed8d40f58a1f62b4672fb7ab67cdb1de91163f.frames",
+                "sha256": "367954085f3dd555e84fa74b768bdff3881c504b4f8ae69a0180e09bdbbd48b6"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-persistence-vm-v2/vm-active-rename-jtlm3haa/evidence/trace/epoch-cba6878353eb72afd44f02229eed8d40f58a1f62b4672fb7ab67cdb1de91163f.source.json",
+                "sha256": "57f5e6dc1b688a4fc1ee8e39636a5bb3a68843540305537bc88f0aa1a8b63cdc"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "F12_active_publication_failure_v2": {
+      "public_record": {
+        "bytes": 46119,
+        "path": "experiments/mihomo-events/source5-active-publication-validation.json",
+        "schema": "hoopa-t016-active-publication-validation-v2",
+        "sha256": "45ffb0264911dc383273ffd3b7d91cb0ba7e42248d5740ceb9345239438707b8",
+        "status": "accepted_finite_F12_publication_failure_same_target_explicit_recovery"
+      },
+      "root_acceptance": {
+        "bytes": 45904,
+        "path": "private/t016-multi-entry-preparation/root-active-publication-runtime-acceptance-v2.json",
+        "schema": "hoopa-root-active-publication-runtime-acceptance-v2",
+        "sha256": "be1bf6c2a9b25d7732f9f6b77d0e714861de1384717c7d20fb9941dfa090cacc",
+        "status": "accepted_finite_F12_publication_failure_same_target_explicit_recovery"
+      },
+      "rows": [
+        {
+          "application_slots": 6,
+          "canonical": {
+            "bytes": 2609,
+            "path": "private/t016-active-publication-failure-v2/canonical-output-v1/canonical.json",
+            "sha256": "471a5669b5f26172748d072d84da455872987b4947a4a6f7f758941532f817e0"
+          },
+          "canonical_schema": "hoopa-t016-active-publication-canonical-v2",
+          "canonical_status": "finite_active_publication_failure_recovery_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 9318,
+              "path": "private/t130-followup/t016-active-publication-failure-v2-runtime-review.json",
+              "sha256": "09b98f599154b600ad495382cd0417b2c9a8003222b2df1dc256b5fd235adde2"
+            }
+          ],
+          "launch": {
+            "bytes": 100893,
+            "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/launch.json",
+            "sha256": "2c0de4490eaa961122a76e3995a668d3c0b9cb9b4a9e46d6b7c1878cd82f8f33"
+          },
+          "name": "F12_active_publication_failure_v2",
+          "registration": {
+            "bytes": 6373,
+            "path": "private/t016-active-publication-failure-v2/registration-v1/registration.json",
+            "sha256": "74cd887042fc6c8d7820077ebfc5fff8c3dad6dffa66b14cdafe950289a353dc"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/result.json",
+            "sha256": "541c3d479f9280af0b742c29a6c22f3789bbadc1d445da432fd0e71f74a19e0f"
+          },
+          "run": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17284,
+                "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/evidence/trace/epoch-a7071e21d4d9dd90c109e20321fb8e43e7a5905081bb4de8a1384993d9bcd238.frames",
+                "sha256": "b7fece1541d3204afa4d2a3f669ee9aef8e7e1ffff30d4e619d65664a69e38ef"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/evidence/trace/epoch-a7071e21d4d9dd90c109e20321fb8e43e7a5905081bb4de8a1384993d9bcd238.source.json",
+                "sha256": "923f2dfeabc8e19a06bb84b1cc7aba7657ed56869cffc3d6c987babeacacbffb"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 33968,
+                "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/evidence/trace/epoch-a965e46e8f7fa098f4cb11224a3c3811d5220f40efedd1c6fcd01441274a8114.frames",
+                "sha256": "eb0fe775c5d1b95aeb3924128e07e6b55c078413c93d484970ffc6d1540f5c4b"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-active-publication-failure-v2/vm-publication-xgx1ijej/evidence/trace/epoch-a965e46e8f7fa098f4cb11224a3c3811d5220f40efedd1c6fcd01441274a8114.source.json",
+                "sha256": "aee681b8aa7eae44958b773809686baa729be66323d6991251bbc09dbe57cadb"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "F13_failed_rollback_degraded_v1": {
+      "public_record": {
+        "bytes": 39059,
+        "path": "experiments/mihomo-events/source5-failed-rollback-validation.json",
+        "schema": "hoopa-t016-failed-rollback-validation-v1",
+        "sha256": "d172ec5b9a85c0c3779b58cb69b5b135dde4f4426af61ab6e42369c7bd3b94c5",
+        "status": "accepted_finite_F13_degraded_state_using_separately_reviewed_derived_checker"
+      },
+      "root_acceptance": {
+        "bytes": 38850,
+        "path": "private/t016-multi-entry-preparation/root-failed-rollback-runtime-acceptance.json",
+        "schema": "hoopa-root-failed-rollback-runtime-acceptance-v1",
+        "sha256": "4229a4bde6a50984d5515c761c708e2866d155645bc00e8bba73d5a5c106cdf9",
+        "status": "accepted_finite_F13_degraded_state_using_separately_reviewed_derived_checker"
+      },
+      "rows": [
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1673,
+            "path": "private/t016-failed-rollback-canonical-v2/canonical-output-v2/canonical.json",
+            "sha256": "f0b85c5bd890c2784eaca4d935c2e763d0459680c928b1d3f651b1780212cf30"
+          },
+          "canonical_schema": "hoopa-t016-failed-rollback-canonical-v1",
+          "canonical_status": "finite_degraded_failed_rollback_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 10436,
+              "path": "private/t130-followup/t016-failed-rollback-runtime-review.json",
+              "sha256": "a79bd515de034ddf084f35b3d7456083848605431d116db7aa019c7a74b6e04c"
+            }
+          ],
+          "launch": {
+            "bytes": 97938,
+            "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/launch.json",
+            "sha256": "c636b00e6e96d9658955430a39ab204ba16328064311e9fd28c0fa735b1f7b75"
+          },
+          "name": "F13_failed_rollback_degraded_v1",
+          "registration": {
+            "bytes": 3489,
+            "path": "private/t016-failed-rollback/registration-v1/registration.json",
+            "sha256": "6b663be844dcadeca6766f47762f14b1c756e94957636ce24a2732f29e16fa4d"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/result.json",
+            "sha256": "79ec44933740c6bdeccd85735b6e6c10aedd19e4a7b157b8d79f0353416d2ac9"
+          },
+          "run": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 621,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-24265b5a8e948671a1bce422b51748e023053a670934a1052554e133895f26ec.frames",
+                "sha256": "b2b16c536b882a527b920eb2c6e08f35fe383e9a7fbd5884e6b70d9dc18f4ad8"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-24265b5a8e948671a1bce422b51748e023053a670934a1052554e133895f26ec.source.json",
+                "sha256": "c940c75fd629d9d4a6a4bac9257c8a5d0da4b774c3a9673dbfdc66ccd1ac3841"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 621,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-d28acbce9a7e7a69ccbd49c87c6d4c039cfdb7138a1fd80c801a809563add19b.frames",
+                "sha256": "e6f1ea6836c83dd1a8df77329758cc464cafa94cf22de1d2b249d36aeb0e9567"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-d28acbce9a7e7a69ccbd49c87c6d4c039cfdb7138a1fd80c801a809563add19b.source.json",
+                "sha256": "9907fde0fe59aa0cc21e220b1e922387b85b44b56c713a68d94c8a36e37eec38"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17272,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-e540f8d808469a3f7339c594e82175f5e0ca77ff1dbe866d4dc4fcbf9269c357.frames",
+                "sha256": "65f70760a5edb6c2b610664ad52e5a122be26b531247fec9b4e5a7db1fe6156e"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-failed-rollback/vm-failed-rollback-_r9n9s9l/evidence/trace/epoch-e540f8d808469a3f7339c594e82175f5e0ca77ff1dbe866d4dc4fcbf9269c357.source.json",
+                "sha256": "86b599c8328bbadf6165945d66cbe51196717398684859bca6000a4f9e422dc3"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "current_direct_two_entry": {
+      "public_record": {
+        "bytes": 19608,
+        "path": "experiments/mihomo-events/source5-dual-entry-direct-validation.json",
+        "schema": "hoopa-t016-dual-entry-direct-validation-v1",
+        "sha256": "6948424a9e7a730e6a37f6718bdffe2275b8eb34b87903131243beaa82e64e69",
+        "status": "restricted_dual_entry_direct_calibration_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 19047,
+        "path": "private/t016-multi-entry-preparation/root-direct-runtime-acceptance.json",
+        "schema": "hoopa-t016-direct-root-runtime-acceptance-v1",
+        "sha256": "414cb22276ab06f209342e8375961237fb10e6dcfb2007490505460fa08e4fd5",
+        "status": "restricted_dual_entry_direct_calibration_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1452,
+            "path": "private/t016-direct-checker-v2/canonical-output-v1/canonical.json",
+            "sha256": "98b2c41ac952e7e6b9a6dc5813c560b7627890df30d050a59364e8940eb9a343"
+          },
+          "canonical_schema": "hoopa-t016-direct-canonical-v1",
+          "canonical_status": "finite_direct_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 6243,
+              "path": "private/t130-followup/t016-direct-runtime-review.json",
+              "sha256": "7311070f295b79cd7091ce86224bf0348b4e2fc2772f9d16bf7292c86e4c95a0"
+            }
+          ],
+          "launch": {
+            "bytes": 98816,
+            "path": "private/t016-multi-entry-vm/vm-two-apps-62w0wd0o/launch.json",
+            "sha256": "58d5695fb913561f37cf19860e6d5d67341871dd0507ea36d52544ca67aea17f"
+          },
+          "name": "current_direct_two_entry",
+          "registration": {
+            "bytes": 5304,
+            "path": "private/t016-multi-entry-vm/registration-v1/registration.json",
+            "sha256": "b06c6771f2913783ee9efe3bc5dc30ab304188cf5058f8238ed3ee5dc6207d56"
+          },
+          "result": {
+            "bytes": 306,
+            "path": "private/t016-multi-entry-vm/vm-two-apps-62w0wd0o/result.json",
+            "sha256": "a8a240f36d61541601aa94b428fc9e0236d8e5654023d110b0e350fce0511444"
+          },
+          "run": "private/t016-multi-entry-vm/vm-two-apps-62w0wd0o",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 33148,
+                "path": "private/t016-multi-entry-vm/vm-two-apps-62w0wd0o/evidence/trace/epoch-084ad22636e5b57546eb7f2a4aeec2db1af1737124217c3cb05bf519fe920f76.frames",
+                "sha256": "9de5cd02d56bc283a494310c10b7b0797d0cc33e9aac264e1e4f1e810854f319"
+              },
+              "manifest": {
+                "bytes": 651,
+                "path": "private/t016-multi-entry-vm/vm-two-apps-62w0wd0o/evidence/trace/epoch-084ad22636e5b57546eb7f2a4aeec2db1af1737124217c3cb05bf519fe920f76.source.json",
+                "sha256": "4aaba2f7d8a62d6e2c3589a6b2ea33ce08ebc165c771eddf75652e78d5fc555c"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "dual_owner_attach_prerequisite": {
+      "public_record": {
+        "bytes": 7936,
+        "path": "experiments/mihomo-events/source5-multi-owner-prerequisite-validation.json",
+        "schema": "hoopa-t016-multi-owner-prerequisite-validation-v1",
+        "sha256": "ef8e7f2f9302d23d4b1f7745ddcaded80d55e46fcfeda0d8d9d6318fc07aa71e",
+        "status": "restricted_dual_owner_attach_prerequisite_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 7171,
+        "path": "private/t016-preparation/root-two-owner-runtime-acceptance.json",
+        "schema": "hoopa-t016-two-owner-root-acceptance-v1",
+        "sha256": "493fbbada98ab607caf7038aa78ab22d76bad0c8f9f3e3d53eb1ddde0dc9059d",
+        "status": "restricted_dual_owner_attach_prerequisite_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 0,
+          "canonical": {
+            "bytes": 1046,
+            "path": "private/t016-multi-owner-host-retry/vm-two-scoped-owners-m2fxmqgg/canonical-result.json",
+            "sha256": "5685606d0fce638b8cdb6ed63e5d0aff692dc4cdf21b8d8ed83b4fdd2cb5ae51"
+          },
+          "canonical_schema": null,
+          "canonical_status": null,
+          "independent_reviews": [
+            {
+              "bytes": 7304,
+              "path": "private/t130-followup/t016-two-owner-runtime-review.json",
+              "sha256": "1f94935535aeecd219ebfc470f9b3262099d61ff2ab66e470393114e71e55dde"
+            }
+          ],
+          "launch": {
+            "bytes": 12451,
+            "path": "private/t016-multi-owner-host-retry/vm-two-scoped-owners-m2fxmqgg/launch.json",
+            "sha256": "6f70f91850344351baafcd68fac62c392c10cd51a72075d90960134fa99b380f"
+          },
+          "name": "dual_owner_attach_prerequisite",
+          "prerequisite_stdout": {
+            "bytes": 201,
+            "path": "private/t016-multi-owner-host-retry/vm-two-scoped-owners-m2fxmqgg/canonical.stdout",
+            "sha256": "a77ffbd392e9155d1fa80bf525d1a0185608bb038421e9ca1a24cdf0afb6e286"
+          },
+          "registration": {
+            "bytes": 1106,
+            "path": "private/t016-multi-owner-host-retry/registration-v1/registration.json",
+            "sha256": "ba0beba7b9412350c04647878d7aa7c13fe6571162e9763cfafbc7fc0dc8abdd"
+          },
+          "result": {
+            "bytes": 331,
+            "path": "private/t016-multi-owner-host-retry/vm-two-scoped-owners-m2fxmqgg/result.json",
+            "sha256": "f87e774ba48759a28b0fb11fd7d50b36120fd23598100706f63ec15a22a6c89f"
+          },
+          "run": "private/t016-multi-owner-host-retry/vm-two-scoped-owners-m2fxmqgg",
+          "sources": []
+        }
+      ]
+    },
+    "finite_missing_proof_restore_and_sticky_refusal": {
+      "public_record": {
+        "bytes": 5025,
+        "path": "experiments/mihomo-events/source5-admission-validation.json",
+        "sha256": "98c77fb75503fd3047f18f0d57863899e5e3e2ef7b765fd23431d65ccd673955"
+      },
+      "root_acceptance": {
+        "bytes": 65817,
+        "path": "private/t016-multi-entry-preparation/root-admission-runtime-acceptance.json",
+        "sha256": "19c80429c6f5197c2118300e5235e32db10fa0388e994dcdf63ed3fe11a3068f"
+      },
+      "rows": [
+        {
+          "application_slots": 5,
+          "canonical": {
+            "bytes": 3104,
+            "path": "private/t016-admission-host-v2-execution/reviewed-vm-admission-admission-baseline-3752bgf8/canonical-output/canonical.json",
+            "sha256": "a709d9d47476091f4f8a3a09e05c807dd03055bb85423da469d60722aa21386a"
+          },
+          "canonical_schema": "hoopa-t016-admission-canonical-v1",
+          "canonical_status": "finite_admission_refusal_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 78912,
+              "path": "private/t130-followup/t016-admission-host-v2-runtime-review.json",
+              "sha256": "fcccb4e1ea4687f7ea2860dbd89da5abf7fcf3287e80df4a769d85a5230a1482"
+            }
+          ],
+          "launch": {
+            "bytes": 102993,
+            "path": "private/t016-admission-vm-preparation/vm-admission-admission-baseline-3752bgf8/launch.json",
+            "sha256": "6551192d0860262793a45665c28daa3638162fe59ca93136160cb6c77d143dde"
+          },
+          "name": "admission-baseline",
+          "registration": {
+            "bytes": 6760,
+            "path": "private/t016-admission-vm-preparation/registration-admission-baseline/registration.json",
+            "sha256": "9eb2ae9b447d7e0370af210f0acd8a0fb4c215e384cfaad6d29edac0e73ae367"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-admission-vm-preparation/vm-admission-admission-baseline-3752bgf8/result.json",
+            "sha256": "49d39416b9f20d8c2aa6247a2f1082729d8aa67174acf95086493d8b46d932fd"
+          },
+          "run": "private/t016-admission-vm-preparation/vm-admission-admission-baseline-3752bgf8",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17668,
+                "path": "private/t016-admission-vm-preparation/vm-admission-admission-baseline-3752bgf8/evidence/trace/epoch-1d8ab3190c538528c734e0054ddbc3c3a85587d5fb32b135e84a6a698d5c846a.frames",
+                "sha256": "8420d1dcad0bac41352cada48a8439628620609f705dd31b05165daec56bf046"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-admission-vm-preparation/vm-admission-admission-baseline-3752bgf8/evidence/trace/epoch-1d8ab3190c538528c734e0054ddbc3c3a85587d5fb32b135e84a6a698d5c846a.source.json",
+                "sha256": "64933d24552a5123748cd38bd2ab6428034b5ccd783eb3e34e1d41a9dd2637fa"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "multi_entry_control_manager_offline": {
+      "public_record": {
+        "bytes": 25478,
+        "path": "experiments/mihomo-events/source5-multi-entry-control-validation.json",
+        "schema": "hoopa-t016-control-calibration-validation-v1",
+        "sha256": "299aa73d6a0d0a3f68365faa56fe406c2ef129e59097061125307ca3b96b35fd",
+        "status": "restricted_multi_entry_control_calibration_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 25249,
+        "path": "private/t016-multi-entry-preparation/root-control-calibration-runtime-acceptance.json",
+        "schema": "hoopa-t016-control-root-runtime-acceptance-v1",
+        "sha256": "bc8d333c8cbc14c0bc077809bb946338755f58c3fdd9085345694c610446143b",
+        "status": "restricted_multi_entry_control_calibration_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1458,
+            "path": "private/t016-control-calibration/canonical-output-v1/canonical.json",
+            "sha256": "d507ef1dbb2622c179f2aade476b7deab610712923e767f3bc39fff2cb51911c"
+          },
+          "canonical_schema": "hoopa-t016-control-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 8358,
+              "path": "private/t130-followup/t016-control-calibration-runtime-review.json",
+              "sha256": "4c12209933a695d76888dfbfebbea082ecedddafe1f6464f155b77cc3dfdaa6e"
+            }
+          ],
+          "launch": {
+            "bytes": 98949,
+            "path": "private/t016-control-calibration/vm-two-apps-lc_xtvxq/launch.json",
+            "sha256": "79d02b1e63db9c8eb3f413f85d69d048d887f7a1ba8ce9bb1a1d3e448e543b50"
+          },
+          "name": "multi_entry_control_manager_offline",
+          "registration": {
+            "bytes": 4962,
+            "path": "private/t016-control-calibration/registration-v1/registration.json",
+            "sha256": "3f7e16696104e5f139f53c6f1b2b53371399c121c3b72e5c0fa2cf32c141bc83"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-control-calibration/vm-two-apps-lc_xtvxq/result.json",
+            "sha256": "b8fffc33ab4a5595092132afd82cd2db1f2bb152e30680beb1680ba68e458bf4"
+          },
+          "run": "private/t016-control-calibration/vm-two-apps-lc_xtvxq",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 33943,
+                "path": "private/t016-control-calibration/vm-two-apps-lc_xtvxq/evidence/trace/epoch-24574949b55374742904fac56f7f3e9c52e0194ad2c4d2b581adaf429ac0da2a.frames",
+                "sha256": "3995778c92772403c16d7cf21cd7849ca22f767674ee8426af63eec9aaa2f5af"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-control-calibration/vm-two-apps-lc_xtvxq/evidence/trace/epoch-24574949b55374742904fac56f7f3e9c52e0194ad2c4d2b581adaf429ac0da2a.source.json",
+                "sha256": "dfc8c8d37e2e44bd5a2aca8e29369f59cb4cef88870ac4e522bd1836ba378b8b"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "native_partial_bind_v4": {
+      "public_record": {
+        "bytes": 16107,
+        "path": "experiments/mihomo-events/source5-multi-entry-partial-bind-validation.json",
+        "schema": "hoopa-native-partial-bind-validation-v4",
+        "sha256": "4c6be0629463b68c0294694e7784a290932126c3dc44c0dc4f37dc02f5a2bfa1",
+        "status": "accepted_finite_second_entry_bind_failure"
+      },
+      "root_acceptance": {
+        "bytes": 15879,
+        "path": "private/t016-multi-entry-preparation/root-native-partial-bind-runtime-acceptance-v4.json",
+        "schema": "hoopa-root-native-partial-bind-acceptance-v4",
+        "sha256": "713ca62dad368de182103c64bc76410c83f3734c453c7df6b44d9eab65c84652",
+        "status": "accepted_finite_second_entry_bind_failure"
+      },
+      "rows": [
+        {
+          "application_slots": 0,
+          "canonical": {
+            "bytes": 650,
+            "path": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc/canonical.json",
+            "sha256": "fc190736ba4f6d0f28a431bc97cf203a41a1e57dac1682b6feeae17752b13362"
+          },
+          "canonical_schema": "hoopa-native-followup-canonical-v1",
+          "canonical_status": "observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 7302,
+              "path": "private/t130-followup/t016-native-v4-partial-bind-runtime-review.json",
+              "sha256": "316d9f4628c9dd67dec44fca463cf7a534d952f921e9b29411b03281c4f59fb9"
+            }
+          ],
+          "launch": {
+            "bytes": 97149,
+            "path": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc/launch.json",
+            "sha256": "0508acff781949697950b7b47c9e5f9114cf8d402bb25653986034e4187eb4f6"
+          },
+          "name": "native_partial_bind_v4",
+          "registration": {
+            "bytes": 2032,
+            "path": "private/t016-native-followup-v4/registration-partial-bind/registration.json",
+            "sha256": "c3e1940efb522551c3813ce21b02f4e50ba168e55acb428ac75dc54d836d9bcf"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc/result.json",
+            "sha256": "486fd93f1877356717900f9a6eb161485a67516900937734f572a979afc00446"
+          },
+          "run": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 606,
+                "path": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc/evidence/trace/epoch-2668e8e15daf69f4bc94a1df90831e87bc4ec69e25440c4047a113160bcf78be.frames",
+                "sha256": "eedd23f192399023b9ceffd6a5a0b54966450157ce1d223424db4324f50840c9"
+              },
+              "manifest": {
+                "bytes": 664,
+                "path": "private/t016-native-followup-v4/vm-partial-bind-otaovdwc/evidence/trace/epoch-2668e8e15daf69f4bc94a1df90831e87bc4ec69e25440c4047a113160bcf78be.source.json",
+                "sha256": "e0b00a44bb0180fa6e40ae2a06f46afd3ec10b8f5751da5b59df99f3499a080e"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "native_typed_map_alias_v4": {
+      "public_record": {
+        "bytes": 15324,
+        "path": "experiments/mihomo-events/source5-multi-entry-alias-validation.json",
+        "schema": "hoopa-native-typed-alias-validation-v4",
+        "sha256": "264d81eb6a544d57c52beb5210735e347729c0cb5bdbe4b262f1dcbee0e95dbc",
+        "status": "accepted_finite_actual_typed_map_alias_refusal"
+      },
+      "root_acceptance": {
+        "bytes": 15097,
+        "path": "private/t016-multi-entry-preparation/root-native-typed-alias-runtime-acceptance-v4.json",
+        "schema": "hoopa-root-native-typed-alias-acceptance-v4",
+        "sha256": "f52128fb6712d492289ae3d9d78df84edc6755c389f0287bc6a1fd2e4ad28233",
+        "status": "accepted_finite_actual_typed_map_alias_refusal"
+      },
+      "rows": [
+        {
+          "application_slots": 0,
+          "canonical": {
+            "bytes": 596,
+            "path": "private/t016-native-followup-v4/vm-typed-alias-b9zvrylz/canonical.json",
+            "sha256": "693efcf5a34e155062d0c707b9f2a662570bdb88ea3a3d79688d2260f6643785"
+          },
+          "canonical_schema": "hoopa-native-followup-canonical-v1",
+          "canonical_status": "observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 6861,
+              "path": "private/t130-followup/t016-native-v4-typed-alias-runtime-review.json",
+              "sha256": "5e7ae1f2ecd6e47762b6be6fe412688053f1dff458cf00f83191ab758e3466af"
+            }
+          ],
+          "launch": {
+            "bytes": 97150,
+            "path": "private/t016-native-followup-v4/vm-typed-alias-b9zvrylz/launch.json",
+            "sha256": "baa1b2ff1a805628fb296c61e64d2f3c158b0b5fdcf48ccdd734fa7ee6dd7809"
+          },
+          "name": "native_typed_map_alias_v4",
+          "registration": {
+            "bytes": 2040,
+            "path": "private/t016-native-followup-v4/registration-typed-alias/registration.json",
+            "sha256": "4b02b41f715528e0a3c6fbf35d607be25e3fbcfb7c71022c0240dd8ef417b09b"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-native-followup-v4/vm-typed-alias-b9zvrylz/result.json",
+            "sha256": "ee30cb52782e16f9b0cb914249388ed4fa3202b92b53052da9893cbad92b83ed"
+          },
+          "run": "private/t016-native-followup-v4/vm-typed-alias-b9zvrylz",
+          "sources": []
+        }
+      ]
+    },
+    "new_core_legacy_single_entry": {
+      "public_record": {
+        "bytes": 18649,
+        "path": "experiments/mihomo-events/source5-new-core-legacy-validation.json",
+        "schema": "hoopa-t016-native-legacy-validation-v1",
+        "sha256": "aa8f79e5ecf13552b675a35432605c0d72a1a99a511c174425c26172b115ac6a",
+        "status": "restricted_new_core_legacy_calibration_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 18438,
+        "path": "private/t016-multi-entry-preparation/root-native-legacy-runtime-acceptance.json",
+        "schema": "hoopa-t016-native-legacy-root-runtime-acceptance-v1",
+        "sha256": "1d5b853f9ea77e6df38a9ed7f571a1023b7bbe543ceb44c49009307de410caa8",
+        "status": "restricted_new_core_legacy_calibration_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 879,
+            "path": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_/canonical.json",
+            "sha256": "168e50bb586d12a8275f110708e5368a54b1e0308a13cb9912e92ca107eb569a"
+          },
+          "canonical_schema": "hoopa-native-followup-canonical-v1",
+          "canonical_status": "observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 5110,
+              "path": "private/t130-followup/t016-native-legacy-runtime-review.json",
+              "sha256": "10a6fb4e41d3fef93f4e08042f64c4bf4de0173399b892518a462a55c9761cbc"
+            }
+          ],
+          "launch": {
+            "bytes": 98325,
+            "path": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_/launch.json",
+            "sha256": "e653b0fd8445d5ed84bae67e2e9f90a9f7b9177fe26c7915bf1c074590d87297"
+          },
+          "name": "new_core_legacy_single_entry",
+          "registration": {
+            "bytes": 3294,
+            "path": "private/t016-native-followup-v2/registration-legacy-single/registration.json",
+            "sha256": "d33e8e31409c0012cbb99b79e9df8ca20aede43332616089b9917cce8ad31204"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_/result.json",
+            "sha256": "0e1351eaa26d47e7464a4720b873cd7c647d42bf6351e421fd27efa19106c8b6"
+          },
+          "run": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 16803,
+                "path": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_/evidence/trace/epoch-72acb808e9d1490588d36d501e0494bf3d219f7c5b4f482a504c6b5dbfb0ad2f.frames",
+                "sha256": "d65dd433d070ef6ddc352ef4905ae7833f4a2181fe359d0693dbf5f017a5defa"
+              },
+              "manifest": {
+                "bytes": 658,
+                "path": "private/t016-native-followup-v2/vm-legacy-single-q0x7ba7_/evidence/trace/epoch-72acb808e9d1490588d36d501e0494bf3d219f7c5b4f482a504c6b5dbfb0ad2f.source.json",
+                "sha256": "81c9a7dd8b05e66109e892941e34cb0cad6d740eded15f199165de47037223a7"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ordered_routing_nine_rows": {
+      "public_record": {
+        "bytes": 41981,
+        "path": "experiments/mihomo-events/source5-ordered-routing-validation.json",
+        "schema": "hoopa-t016-ordered-routing-validation-v1",
+        "sha256": "ae251460f24898eec8a9c94304647b1d34da3df06f1e0515ca413da28ea972ba",
+        "status": "finite_nine_row_ordered_route_and_unknown_matrix_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 318313,
+        "path": "private/t016-multi-entry-preparation/root-ordered-routing-runtime-acceptance.json",
+        "schema": "hoopa-t016-ordered-routing-runtime-root-acceptance-v1",
+        "sha256": "08ddac0c50674046387ef8ea421fa166b084ee5816c893e3aaea40d84407405e",
+        "status": "finite_nine_row_ordered_route_and_unknown_matrix_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1235,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-known-first-2mzq19np/canonical-output/canonical.json",
+            "sha256": "14a610c123ddf6830c272022feecd747cf4a9eb2ff7d491b0ba0def5a2802983"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102562,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-known-first-2mzq19np/launch.json",
+            "sha256": "f952ad8c82fd05a5303a41a46dcd43b8ad96ad1fd865945882a0036855257e5c"
+          },
+          "name": "known-first",
+          "registration": {
+            "bytes": 3865,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-known-first/registration.json",
+            "sha256": "c5ad0c4139bc3de2cf2002d4dc1fa3baab1f6e78c0d0ef50534127eab3e9f650"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-known-first-2mzq19np/result.json",
+            "sha256": "6f5f9d068567c3521e47212fd6e4b035ded2b51884e2e42d7a7b169ef6027228"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-known-first-2mzq19np",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17546,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-known-first-2mzq19np/evidence/trace/epoch-de69ee9cd6ab6a9f280c0255e5ae622bd22c0953d090e4a208eff2e5ff4e9b2c.frames",
+                "sha256": "9c61c9775e7fe6d7143fc8e7aea632bef2de0685e8c7788082cfd128616d475e"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-known-first-2mzq19np/evidence/trace/epoch-de69ee9cd6ab6a9f280c0255e5ae622bd22c0953d090e4a208eff2e5ff4e9b2c.source.json",
+                "sha256": "ee4c39b8d4c700b685d45d6d6e2832892513475157297756d244c63d6b41dbfa"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1089,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-unknown-first-s3xeqv5v/canonical-output/canonical.json",
+            "sha256": "58e3f98037123cec475c942f66754f7193a3c9fd3ef31b728d25304c9631dc34"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102304,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-unknown-first-s3xeqv5v/launch.json",
+            "sha256": "2411f760060fd20a7d755fce888c4a80b44d51efa3d83272407fafd83193ef70"
+          },
+          "name": "unknown-first",
+          "registration": {
+            "bytes": 3589,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-unknown-first/registration.json",
+            "sha256": "49c69da6b78165095ef4d64f9df2df0c6bfde196cd5ddef333b3683d3890f8fa"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-unknown-first-s3xeqv5v/result.json",
+            "sha256": "1a8dc743edd0b14587db495274dc5818b6a4e950ca076d0ad71c30d7d3e24cb7"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-unknown-first-s3xeqv5v",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 13313,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-unknown-first-s3xeqv5v/evidence/trace/epoch-74cec0c5904b0a14f6579fc4bc66cb0f82e607855606bd00965a9de69a108862.frames",
+                "sha256": "e0a2ed12f931e6fbf156010985792b79f04f1cd08dd4d6ac4526ab86647b4123"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-unknown-first-s3xeqv5v/evidence/trace/epoch-74cec0c5904b0a14f6579fc4bc66cb0f82e607855606bd00965a9de69a108862.source.json",
+                "sha256": "e619ec0d12c88327520751251470f40b06218e02d1bdac8b4ead14756d883ea4"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1233,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-false-and-5rf53kr5/canonical-output/canonical.json",
+            "sha256": "71ce3d3feed54e3bd553414a34fdf90c5a4afe5465a21c383c86a83a74a32a5e"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102578,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-false-and-5rf53kr5/launch.json",
+            "sha256": "2ca25ef3741b0fd7a0f1496d939e87e5dad88c43260c174439edca46e34c24c7"
+          },
+          "name": "false-and",
+          "registration": {
+            "bytes": 3899,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-false-and/registration.json",
+            "sha256": "8a18a275d3a1190101839d3427cfc521eeb7035e3715e27c1d7153b3f416dc73"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-false-and-5rf53kr5/result.json",
+            "sha256": "8a20f768c4e9f9427bde16dd7c8b39829c0bf0e6ae3b2e3dc8be66b1f8eaa8c2"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-false-and-5rf53kr5",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17514,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-false-and-5rf53kr5/evidence/trace/epoch-cc579bb66fa9524c0ba3a784d17aa07499b443e45a07c14d15e69e567ab8912d.frames",
+                "sha256": "3581704f433daed910aacc06972c42ffc2a8a90f8050f3853e7644a1731c9d3f"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-false-and-5rf53kr5/evidence/trace/epoch-cc579bb66fa9524c0ba3a784d17aa07499b443e45a07c14d15e69e567ab8912d.source.json",
+                "sha256": "026d9b864e1d1f8863d9bbd0f90a5eeac036d6a0f997f270a7d7a0d0ccb7d240"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1084,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-true-and-zn28uo6o/canonical-output/canonical.json",
+            "sha256": "c1c0b76347e167d2de3596c9722dca3bf135d3abc4114960bb66773c37399b70"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102290,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-true-and-zn28uo6o/launch.json",
+            "sha256": "a7f16be805d1c69a08c2b368e7149be324090f98a59e3cf79606dec318b09120"
+          },
+          "name": "true-and",
+          "registration": {
+            "bytes": 3620,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-true-and/registration.json",
+            "sha256": "1e8e5546f58a3223fc4339b697fa18debad0819c552f4a9566473bca8da81ce1"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-true-and-zn28uo6o/result.json",
+            "sha256": "f057d3c557c94bb85ffa5cf7968e748586b2b983fb19761ec409599f3ff3237e"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-true-and-zn28uo6o",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 13312,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-true-and-zn28uo6o/evidence/trace/epoch-c647c184be7a9dfbb46f64590110355db6ca37e9ba4148c9c873a18b4cb70de6.frames",
+                "sha256": "a7b51ba2cf89d948c57833f1d2b7537c8b13a506b41e365e4a06393929fc5a91"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-true-and-zn28uo6o/evidence/trace/epoch-c647c184be7a9dfbb46f64590110355db6ca37e9ba4148c9c873a18b4cb70de6.source.json",
+                "sha256": "3b0e625c9b698b7757c6e89186fc3b26fb8ea76056458545c0f0d1f68f24894e"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1088,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-name-unknown-hdpt3fsi/canonical-output/canonical.json",
+            "sha256": "1d2aa5458c9e14e4431740c9d638953098fddaf8fd6fb1ced642af1dce316304"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102129,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-name-unknown-hdpt3fsi/launch.json",
+            "sha256": "7613ced9e807f5f755b4f4ac36d46112b9ae0f914bec3da238de7bc5e8a64dcc"
+          },
+          "name": "name-unknown",
+          "registration": {
+            "bytes": 3423,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-name-unknown/registration.json",
+            "sha256": "e94d05e1a111b9aaf07a711b8486cd106e2aca796e30349193e833bc02c6b411"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-name-unknown-hdpt3fsi/result.json",
+            "sha256": "04f054bfa352ebeab94457298315d274c7cced603e01430082b7e849d3cede78"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-name-unknown-hdpt3fsi",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 13259,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-name-unknown-hdpt3fsi/evidence/trace/epoch-0bb21c6ae761b527292966b3eae16528f1e3db0942f4453573df1396b2834145.frames",
+                "sha256": "04f6a94c857d4c79b6642031db587bf2b168a76218dbe7c69e3fa6c630a75ccc"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-name-unknown-hdpt3fsi/evidence/trace/epoch-0bb21c6ae761b527292966b3eae16528f1e3db0942f4453573df1396b2834145.source.json",
+                "sha256": "a91f03a7b9a42e1adbbf84803ff46f78cdbe8381e8e4e62109fd9f3147c3283a"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1233,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-app-first-i8diex10/canonical-output/canonical.json",
+            "sha256": "b74fc7915be6df491535ad9103d776e190ab320e44488e3a5f45c783b8cc898c"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102586,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/launch.json",
+            "sha256": "550e27a592c6db8178b6a4150d0c4fe84d23c9181ab9ec38d1f553dc88835572"
+          },
+          "name": "app-first",
+          "registration": {
+            "bytes": 3907,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-app-first/registration.json",
+            "sha256": "fec60f6763e3fe6fae4e9b01f7a42dc16e0b62213d15a0c8c5d4eb37912f743a"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/result.json",
+            "sha256": "ab6859839a24740e5c81285443e3befba6fd9196a3306c531c956048254b33b6"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17491,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/evidence/trace/epoch-d2e82d4eb4e86b31c1e175d0696a8a20a4742487f779b2987f5fb975e8ccff77.frames",
+                "sha256": "1c64c576b7e454901085811d631fcc3c96dda311482880ac3617dfa7a16d5714"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-app-first-i8diex10/evidence/trace/epoch-d2e82d4eb4e86b31c1e175d0696a8a20a4742487f779b2987f5fb975e8ccff77.source.json",
+                "sha256": "c97a53fb14e6e50213f4fbb3b45c1915f05bc6890024087a0a1c5fed0f610948"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1359,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-process-first-7d908hbr/canonical-output/canonical.json",
+            "sha256": "2da5908e6568041ac26b43a1eedcb17a49bef1058ed8ce8b3626852359582c94"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102870,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-process-first-7d908hbr/launch.json",
+            "sha256": "6c61c7d542964e0fd6842ebffacfce803024c9becedb53ade8bc349f4d30db09"
+          },
+          "name": "process-first",
+          "registration": {
+            "bytes": 4155,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-process-first/registration.json",
+            "sha256": "dab627d74f10bf230b785b1c2815da78fa5266856abda4286cb961be1e1e0243"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-process-first-7d908hbr/result.json",
+            "sha256": "cf4561dab223aa208e28fac181afb611a6875a63bdc96b56712631890904960a"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-process-first-7d908hbr",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17469,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-process-first-7d908hbr/evidence/trace/epoch-1664c132f8d711f0c49ea4a925b01eed9b294228250f87c66a865e0e42320e3a.frames",
+                "sha256": "b1238bc0d47738c4fc4ee1569e72954178fb2e2fe3eb6e231fa28a46241c1597"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-process-first-7d908hbr/evidence/trace/epoch-1664c132f8d711f0c49ea4a925b01eed9b294228250f87c66a865e0e42320e3a.source.json",
+                "sha256": "65d83460b5d19088aa92323f2a8e64c0c603506b5a40582974591ae2a99c06d6"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1236,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-domain-first-f3x1_ryu/canonical-output/canonical.json",
+            "sha256": "c429702a14c171e1448b4276e3c50e8b95688a61f3840122df199e63d710dd4f"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102616,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/launch.json",
+            "sha256": "74f1e8be7fc01d9ce0333a77e1e51dae33e38b1b4db2c24f9bed298cd77add2b"
+          },
+          "name": "domain-first",
+          "registration": {
+            "bytes": 3910,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-domain-first/registration.json",
+            "sha256": "e077406f39f5559f5475082a3810115debc93495b52569a236f43ac4d9655a73"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/result.json",
+            "sha256": "e2e33526dd82d66a22a0ab327586cf1b4ea8c15eb306b3458a2dea9fdadde8d0"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 18253,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/evidence/trace/epoch-7facf38d1d77a05515e8d59033bc395337cd6bb2e0679ac5a2a338b64535728b.frames",
+                "sha256": "dc3e4cae2b8060667c0c25757e77b363eeb2ca359751348ad8c9c7633bd1049d"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-domain-first-f3x1_ryu/evidence/trace/epoch-7facf38d1d77a05515e8d59033bc395337cd6bb2e0679ac5a2a338b64535728b.source.json",
+                "sha256": "e8156cff2f3fab639b708cdcb2516cbbddad9776a50f53e3da08e6e5e0338f0e"
+              }
+            }
+          ]
+        },
+        {
+          "application_slots": 2,
+          "canonical": {
+            "bytes": 1354,
+            "path": "private/t016-ordered-routing-vm-preparation/reviewed-vm-ordered-routing-ip-first-862g1azo/canonical-output/canonical.json",
+            "sha256": "1b0647b7c5c17e7a560bcda909c7594882696f577c61f684d76c5e784e4d2b49"
+          },
+          "canonical_schema": "hoopa-t016-ordered-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 241598,
+              "path": "private/t130-followup/t016-ordered-routing-runtime-review.json",
+              "sha256": "b855694e914482bf662908a633431e3c4c158801e00e9ec63209804a888229f3"
+            }
+          ],
+          "launch": {
+            "bytes": 102820,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-ip-first-862g1azo/launch.json",
+            "sha256": "9538c9aa711f9964a1314320199ed10d76db03fa3eb32994c98bcf3969664b8e"
+          },
+          "name": "ip-first",
+          "registration": {
+            "bytes": 4150,
+            "path": "private/t016-ordered-routing-vm-preparation/registration-ip-first/registration.json",
+            "sha256": "3cfd28234f0be193f1a44eed061973fbe1b0f403444cbbbd77f7d46f5052e4d6"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-ip-first-862g1azo/result.json",
+            "sha256": "0b5572009be4f741d2c86a45f7e47bc6d69a4e9e63bb6dbe9f73613c80957450"
+          },
+          "run": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-ip-first-862g1azo",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17367,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-ip-first-862g1azo/evidence/trace/epoch-e8205240ddf86a1ef46e9990906667b8b34b6a20b1eec648cfa331e7240ebf2f.frames",
+                "sha256": "cc4eb2e44ec9507f68478e0a997152a0f11333b7efec5d170375ddfa010f9953"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-ordered-routing-vm-preparation/vm-ordered-routing-ip-first-862g1azo/evidence/trace/epoch-e8205240ddf86a1ef46e9990906667b8b34b6a20b1eec648cfa331e7240ebf2f.source.json",
+                "sha256": "6a4d85f0de29d0db39ffb1f45b9259bd727fd9ad4f7b3b06a364cc5b0372d59a"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "provider_refresh_v2": {
+      "public_record": {
+        "bytes": 8949,
+        "path": "experiments/mihomo-events/source5-provider-refresh-v2-validation.json",
+        "schema": "hoopa-t016-provider-refresh-v2-validation-v1",
+        "sha256": "3c97c3751947acd0af68fbe1bbe9d911f400f62a9269f21fb6bce474b5ba74d7",
+        "status": "finite_refresh_rejections_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 43510,
+        "path": "private/t016-multi-entry-preparation/root-provider-refresh-v2-runtime-acceptance.json",
+        "schema": "hoopa-t016-provider-refresh-v2-runtime-acceptance-v1",
+        "sha256": "56eb5df6549de2973cd4ca1570df3092cdd2e3518506a68a5f6afa99d878451d",
+        "status": "finite_refresh_rejections_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 1941,
+            "path": "private/t016-provider-refresh-vm-v2/reviewed-vm-provider-refresh-v2-gn89uigi/canonical-output/canonical.json",
+            "sha256": "d621990c16bba8c237dfc9e17dcd55990a82cd928f9e2d5c604bd952d394ecee"
+          },
+          "canonical_schema": "hoopa-t016-control-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 14461,
+              "path": "private/t130-followup/t016-provider-refresh-v2-runtime-review.json",
+              "sha256": "0ecc4ffc7078cad72bafa30ac9c6e2efcb67c7b36dbf61ececf1e8a4a9dc6ed2"
+            }
+          ],
+          "launch": {
+            "bytes": 102772,
+            "path": "private/t016-provider-refresh-vm-v2/vm-provider-refresh-v2-gn89uigi/launch.json",
+            "sha256": "43eba9eb2a3c972e06a01fe99afa52636729879d50d2959b7479850ddeff1f4f"
+          },
+          "name": "provider_refresh_v2",
+          "registration": {
+            "bytes": 5949,
+            "path": "private/t016-provider-refresh-vm-v2/registration-v1/registration.json",
+            "sha256": "81cec93f6b970ef4c974754873878275c234c1452aaf1a35bbbc1b826b2abc00"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-provider-refresh-vm-v2/vm-provider-refresh-v2-gn89uigi/result.json",
+            "sha256": "a14cd27c7ffe973a086240ae05a67c92e4476ed4b165f54dbfca134d12fd4233"
+          },
+          "run": "private/t016-provider-refresh-vm-v2/vm-provider-refresh-v2-gn89uigi",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 34250,
+                "path": "private/t016-provider-refresh-vm-v2/vm-provider-refresh-v2-gn89uigi/evidence/trace/epoch-386c0ec4dbb072ed4e29d7ff62b9ad754222865bc846508f26105d980a6be794.frames",
+                "sha256": "afe125cb5a19983a0d4db077d0b48ceae8726958b1cb0bc2649bb905b3b12763"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-provider-refresh-vm-v2/vm-provider-refresh-v2-gn89uigi/evidence/trace/epoch-386c0ec4dbb072ed4e29d7ff62b9ad754222865bc846508f26105d980a6be794.source.json",
+                "sha256": "a315f6c0cf5cf76561e955011a3085123abd677fb615a3633496263e6d2db796"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "provider_switch_v3": {
+      "public_record": {
+        "bytes": 12795,
+        "path": "experiments/mihomo-events/source5-provider-switch-v3-validation.json",
+        "schema": "hoopa-t016-provider-switch-v3-validation-v1",
+        "sha256": "55ab3ef4687c92353c348121970db10f0bad8693669d3291b0e3611b4999b30b",
+        "status": "finite_provider_switch_and_pin_rejection_accepted"
+      },
+      "root_acceptance": {
+        "bytes": 57035,
+        "path": "private/t016-multi-entry-preparation/root-provider-switch-v3-runtime-acceptance.json",
+        "schema": "hoopa-t016-provider-switch-v3-runtime-acceptance-v1",
+        "sha256": "1b454e463bd9339140387aee0dd3a6074e8b84dd3cedfb29ff07e7cf037f606e",
+        "status": "finite_provider_switch_and_pin_rejection_accepted"
+      },
+      "rows": [
+        {
+          "application_slots": 8,
+          "canonical": {
+            "bytes": 4380,
+            "path": "private/t016-provider-switch-vm-v3/reviewed-vm-provider-switch-v3-oun9x28m/canonical-output/canonical.json",
+            "sha256": "ee0dd9fe4615439b325c3227ee4e4e34d25c72f8429c0a90772af20cd72ae4d9"
+          },
+          "canonical_schema": "hoopa-t016-provider-switch-canonical-v1",
+          "canonical_status": "finite_switch_pin_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 45227,
+              "path": "private/t130-followup/t016-provider-switch-v3-attempt1-review.json",
+              "sha256": "8f420ae3600b109c70924a9d7e0f6e0fae228a457b4c4562aec38a405fbe9428"
+            }
+          ],
+          "launch": {
+            "bytes": 107284,
+            "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/launch.json",
+            "sha256": "80a7ddbc5265c649a9620f48cfbdefb15124419de929ba2f1b5ecf984e9c1edc"
+          },
+          "name": "provider_switch_v3",
+          "registration": {
+            "bytes": 9682,
+            "path": "private/t016-provider-switch-vm-v3/registration-v1/registration.json",
+            "sha256": "b1ecf953f0af85881ed45b7347abb78d9b736286fc500810654c0d1e7e31529d"
+          },
+          "result": {
+            "bytes": 308,
+            "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/result.json",
+            "sha256": "d3a37c4431a3fd0d93bca1ed6068781c2dcfde8a6bc4f8757bf38b279a494df5"
+          },
+          "run": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 17427,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-7d1d79c3bb6424aa636bbff9cb8adabcea55b52eb3b7a85f75a161f3af4a7692.frames",
+                "sha256": "eda92428bb54dee859c43d3bdc14420bd7083b3951ce8d73544720b3772a9b5e"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-7d1d79c3bb6424aa636bbff9cb8adabcea55b52eb3b7a85f75a161f3af4a7692.source.json",
+                "sha256": "3da4276da9cc28a9c3616bc4e8af8bdd3acb62512748e954548ba057201056ca"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 34250,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-9b5a0a721cbe14dc6bbb33bc50def9289b20fd0098fce42b5d1b50a0f340719d.frames",
+                "sha256": "8cbfdcfb249f888d4d35f6a07fee2a38e8bec3d4af72511f71be82431885ec4a"
+              },
+              "manifest": {
+                "bytes": 680,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-9b5a0a721cbe14dc6bbb33bc50def9289b20fd0098fce42b5d1b50a0f340719d.source.json",
+                "sha256": "4b0e6b36cfca9185d305e4e08e03ab28bdf3fc09741d0923a4169fc5865f8def"
+              }
+            },
+            {
+              "frames": {
+                "bytes": 17428,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-f77539cfca890e3a5969d469cc6b8fd8c7f0bac413174fc0c7cc26561b80dbcb.frames",
+                "sha256": "4c8ab849c03afaa5266124bb217dd26aca7edd24f853a52a223b91de86bcfd85"
+              },
+              "manifest": {
+                "bytes": 679,
+                "path": "private/t016-provider-switch-vm-v3/vm-provider-switch-v3-oun9x28m/evidence/trace/epoch-f77539cfca890e3a5969d469cc6b8fd8c7f0bac413174fc0c7cc26561b80dbcb.source.json",
+                "sha256": "1b4d4125ab291ff8a1fa568ba2644987898f7d13af2875a5506431a53e9cb950"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "unreachable_selected_endpoint_failure_host_v2": {
+      "public_record": {
+        "bytes": 7337,
+        "path": "experiments/mihomo-events/source5-unreachable-host-v2-validation.json",
+        "schema": "hoopa-t016-unreachable-validation-v2",
+        "sha256": "51e875a13f6c6dcd81d958c41ca6f23d4651782d02fae7c18dae57c3223db5f3",
+        "status": "finite_selected_endpoint_setup_failure_no_fallback_accepted_host_v2"
+      },
+      "root_acceptance": {
+        "bytes": 67979,
+        "path": "private/t016-multi-entry-preparation/root-unreachable-host-v2-runtime-acceptance.json",
+        "schema": "hoopa-t016-unreachable-runtime-root-acceptance-v2",
+        "sha256": "57d9d05e931b8500f013c657fcff252d8f8e8a2d03e424678728b161fbc38bc6",
+        "status": "finite_selected_endpoint_setup_failure_no_fallback_accepted_host_v2"
+      },
+      "rows": [
+        {
+          "application_slots": 4,
+          "canonical": {
+            "bytes": 2446,
+            "path": "private/t016-unreachable-host-v2-execution/reviewed-vm-unreachable-routing-td88vhkj/canonical-output/canonical.json",
+            "sha256": "49ba73af141f50815100f0ea073ed3b6ff119e40f50f327bef81539054ce675c"
+          },
+          "canonical_schema": "hoopa-t016-unreachable-canonical-v1",
+          "canonical_status": "finite_control_calibration_observed_pending_independent_review",
+          "independent_reviews": [
+            {
+              "bytes": 5974,
+              "path": "private/t130-followup/t016-unreachable-attempt1-review.json",
+              "sha256": "bb6c3ef61c9ae2ad335204b86aab7a4bc1a397d995b7ecde22fd27968a0630d7"
+            },
+            {
+              "bytes": 7767,
+              "path": "private/t130-followup/t016-unreachable-host-v2-runtime-review.json",
+              "sha256": "60e705233e48202d09bfc312bc3dccb7a28012b7d2bbda2cb1d76353c71072b6"
+            }
+          ],
+          "launch": {
+            "bytes": 102102,
+            "path": "private/t016-unreachable-vm-preparation/vm-unreachable-routing-td88vhkj/launch.json",
+            "sha256": "8296e15737f76c3af10cca969f3cdcf1cd0b1b10161bf2fb408fc17de9966f20"
+          },
+          "name": "unreachable_selected_endpoint_failure_host_v2",
+          "registration": {
+            "bytes": 6216,
+            "path": "private/t016-unreachable-vm-preparation/registration-unreachable/registration.json",
+            "sha256": "1805027399fc296821f4d13a157f056cbd7f6a0764b19ab4bea0fa7eb5d76b0a"
+          },
+          "result": {
+            "bytes": 307,
+            "path": "private/t016-unreachable-vm-preparation/vm-unreachable-routing-td88vhkj/result.json",
+            "sha256": "5278831cc5ecb9c6c6dc3748388d3dc9e59d4fbde08c1a820c65e2d7ac548c78"
+          },
+          "run": "private/t016-unreachable-vm-preparation/vm-unreachable-routing-td88vhkj",
+          "sources": [
+            {
+              "frames": {
+                "bytes": 53148,
+                "path": "private/t016-unreachable-vm-preparation/vm-unreachable-routing-td88vhkj/evidence/trace/epoch-73c0e3f038eecc98a7691b9d78c29069d748576a7efebc9949cca9d5082686de.frames",
+                "sha256": "ef68b734a2f821e028867c3eebc2005c2514003888258dbd430c9b096528a494"
+              },
+              "manifest": {
+                "bytes": 678,
+                "path": "private/t016-unreachable-vm-preparation/vm-unreachable-routing-td88vhkj/evidence/trace/epoch-73c0e3f038eecc98a7691b9d78c29069d748576a7efebc9949cca9d5082686de.source.json",
+                "sha256": "4378de54e6907f9abe3a6a0fe021b75c1b049d43f3bbffd5d7940c4ef9b7489f"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "helper_sha256": "1c87609972b0ac5570101c50945bfe4aa09a4687a433adb9c538722871107f95",
+  "helper_variants": {
+    "F11_persistence_matrix_v2": "dc706c0325d02aa0ef94c0b8a8d4ab468b09e3f13dd26887aad8d2c08b4856a8"
+  },
+  "new_runtime_samples": 0,
+  "root_decision": {
+    "bytes": 134116,
+    "path": "private/t016-multi-entry-preparation/root-routing-runtime-acceptance.json",
+    "sha256": "135707a26c9e72683c50e6f711933219d0a3c810df36b6e48cd82a34eb78f4c5"
+  },
+  "schema": "hoopa-source5-routing-acceptance-v1",
+  "scope": "restricted_source5_multi_entry_routing",
+  "task_T016_complete": true
+}

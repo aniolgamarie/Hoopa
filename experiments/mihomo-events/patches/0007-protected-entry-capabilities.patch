@@ -1,0 +1,1167 @@
+diff --git a/component/hoopaguard/profile/profile.go b/component/hoopaguard/profile/profile.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaguard/profile/profile.go
+@@ -0,0 +1,423 @@
++// Package capabilityprofile validates the bounded, protected experiment profile.
++// It does not perform I/O or claim support for connection process attribution.
++package capabilityprofile
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"io"
++	"net/netip"
++	"strings"
++)
++
++// ErrProfile deliberately contains no input values, including credentials.
++var ErrProfile = errors.New("invalid protected experiment profile")
++
++type Config struct {
++	Mode            string            `json:"mode"`
++	LogLevel        string            `json:"log-level"`
++	IPv6            bool              `json:"ipv6"`
++	FindProcessMode string            `json:"find-process-mode"`
++	Controller      string            `json:"external-controller"`
++	Secret          string            `json:"secret"`
++	Listeners       []Entry           `json:"listeners"`
++	Hosts           map[string]string `json:"hosts"`
++	Proxies         []Node            `json:"proxies"`
++	Groups          []Group           `json:"proxy-groups"`
++	Rules           []string          `json:"rules"`
++	Profile         CacheProfile      `json:"profile"`
++}
++type Entry struct {
++	Name   string `json:"name"`
++	Type   string `json:"type"`
++	Listen string `json:"listen"`
++	Port   uint16 `json:"port"`
++	UDP    bool   `json:"udp"`
++	Users  []User `json:"users"`
++}
++type User struct {
++	Username string `json:"username"`
++	Password string `json:"password"`
++}
++type Node struct {
++	Name        string `json:"name"`
++	Type        string `json:"type"`
++	Server      string `json:"server,omitempty"`
++	Port        uint16 `json:"port,omitempty"`
++	DialerProxy string `json:"dialer-proxy,omitempty"`
++}
++type Group struct {
++	Name    string   `json:"name"`
++	Type    string   `json:"type"`
++	Proxies []string `json:"proxies"`
++}
++type CacheProfile struct {
++	StoreSelected bool `json:"store-selected"`
++	StoreFakeIP   bool `json:"store-fake-ip"`
++}
++
++// Validate checks the entire candidate before returning any configuration. The
++// rules and reference order are retained exactly as supplied. generation is a
++// separate immutable identity and is validated, not inserted into the profile.
++func Validate(raw []byte, generation string) (Config, error) {
++	bad := func() (Config, error) { return Config{}, ErrProfile }
++	if len(raw) == 0 || len(raw) > 64*1024 || !token(generation) {
++		return bad()
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	d.UseNumber()
++	value, err := readValue(d, 0)
++	if err != nil {
++		return bad()
++	}
++	if _, err = d.Token(); err != io.EOF {
++		return bad()
++	}
++	root, ok := object(value, "mode log-level ipv6 find-process-mode external-controller secret listeners proxies rules profile", "hosts proxy-groups")
++	if !ok || !shape(root) {
++		return bad()
++	}
++	var c Config
++	if json.Unmarshal(raw, &c) != nil {
++		return bad()
++	}
++	if c.Mode != "rule" || c.LogLevel != "silent" || c.IPv6 || c.FindProcessMode != "off" || c.Profile.StoreSelected || c.Profile.StoreFakeIP || !credential(c.Secret) {
++		return bad()
++	}
++	controller, e := netip.ParseAddrPort(c.Controller)
++	if e != nil || controller.Addr().String() != "127.0.0.1" || controller.Port() == 0 {
++		return bad()
++	}
++	endpoints := map[netip.AddrPort]bool{controller: true}
++	entries := map[string]bool{}
++	credentials := map[User]bool{}
++	if len(c.Listeners) < 1 || len(c.Listeners) > 4 {
++		return bad()
++	}
++	for _, l := range c.Listeners {
++		ep := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), l.Port)
++		if !token(l.Name) || entries[l.Name] || l.Type != "mixed" || l.Listen != "127.0.0.1" || l.Port == 0 || l.UDP || endpoints[ep] || len(l.Users) != 1 {
++			return bad()
++		}
++		u := l.Users[0]
++		if !token(u.Username) || strings.Contains(u.Username, ":") || !credential(u.Password) || u.Password == c.Secret || credentials[u] {
++			return bad()
++		}
++		entries[l.Name], endpoints[ep], credentials[u] = true, true, true
++	}
++	for domain, addr := range c.Hosts {
++		if !domainToken(domain) || addr != "127.0.0.1" {
++			return bad()
++		}
++	}
++	if len(c.Proxies) == 0 || len(c.Proxies)+len(c.Groups) > 64 {
++		return bad()
++	}
++	refs := map[string]bool{}
++	edges := map[string][]string{}
++	nodes := root["proxies"].([]any)
++	for i, n := range c.Proxies {
++		if !id(n.Name, "node:") || refs[n.Name] {
++			return bad()
++		}
++		refs[n.Name] = true
++		fields := nodes[i].(map[string]any)
++		if n.Type == "direct" {
++			if has(fields, "server") || has(fields, "port") || has(fields, "dialer-proxy") {
++				return bad()
++			}
++		} else if n.Type == "http" || n.Type == "socks5" {
++			if n.Server != "127.0.0.1" || n.Port == 0 {
++				return bad()
++			}
++			ep := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), n.Port)
++			if endpoints[ep] {
++				return bad()
++			}
++			endpoints[ep] = true
++			if has(fields, "dialer-proxy") {
++				if n.DialerProxy == "" {
++					return bad()
++				}
++				edges[n.Name] = []string{n.DialerProxy}
++			}
++		} else {
++			return bad()
++		}
++	}
++	for _, g := range c.Groups {
++		if !id(g.Name, "group:") || refs[g.Name] || g.Type != "select" || len(g.Proxies) == 0 || len(g.Proxies) > 64 {
++			return bad()
++		}
++		refs[g.Name] = true
++		seen := map[string]bool{}
++		for _, member := range g.Proxies {
++			if seen[member] {
++				return bad()
++			}
++			seen[member] = true
++		}
++		edges[g.Name] = g.Proxies
++	}
++	state, depth := map[string]int{}, map[string]int{}
++	var visit func(string) bool
++	visit = func(name string) bool {
++		if !refs[name] || state[name] == 1 {
++			return false
++		}
++		if state[name] == 2 {
++			return true
++		}
++		state[name], depth[name] = 1, 1
++		for _, ref := range edges[name] {
++			if !visit(ref) {
++				return false
++			}
++			if depth[ref]+1 > depth[name] {
++				depth[name] = depth[ref] + 1
++			}
++		}
++		if depth[name] > 8 {
++			return false
++		}
++		state[name] = 2
++		return true
++	}
++	for ref := range refs {
++		if !visit(ref) {
++			return bad()
++		}
++	}
++	if len(c.Rules) < 1 || len(c.Rules) > 64 {
++		return bad()
++	}
++	target := func(s string) bool { return s == "REJECT" || refs[s] }
++	for i, rule := range c.Rules {
++		if i == len(c.Rules)-1 {
++			parts := strings.Split(rule, ",")
++			if len(parts) != 2 || parts[0] != "MATCH" || !target(parts[1]) {
++				return bad()
++			}
++		} else if !validRule(rule, target, entries) {
++			return bad()
++		}
++	}
++	return c, nil
++}
++
++// readValue rejects duplicate keys and null at every depth, before Go's normal
++// decoder can silently replace duplicates or convert null to a zero value.
++func readValue(d *json.Decoder, depth int) (any, error) {
++	if depth > 32 {
++		return nil, ErrProfile
++	}
++	t, e := d.Token()
++	if e != nil || t == nil {
++		return nil, ErrProfile
++	}
++	delim, compound := t.(json.Delim)
++	if !compound {
++		return t, nil
++	}
++	switch delim {
++	case '{':
++		v := map[string]any{}
++		for d.More() {
++			k, e := d.Token()
++			if e != nil {
++				return nil, ErrProfile
++			}
++			key, ok := k.(string)
++			if !ok {
++				return nil, ErrProfile
++			}
++			if _, ok = v[key]; ok {
++				return nil, ErrProfile
++			}
++			child, e := readValue(d, depth+1)
++			if e != nil {
++				return nil, e
++			}
++			v[key] = child
++		}
++		end, e := d.Token()
++		if e != nil || end != json.Delim('}') {
++			return nil, ErrProfile
++		}
++		return v, nil
++	case '[':
++		v := []any{}
++		for d.More() {
++			child, e := readValue(d, depth+1)
++			if e != nil {
++				return nil, e
++			}
++			v = append(v, child)
++		}
++		end, e := d.Token()
++		if e != nil || end != json.Delim(']') {
++			return nil, ErrProfile
++		}
++		return v, nil
++	}
++	return nil, ErrProfile
++}
++func object(v any, required, optional string) (map[string]any, bool) {
++	m, ok := v.(map[string]any)
++	if !ok {
++		return nil, false
++	}
++	allowed := map[string]bool{}
++	for _, k := range strings.Fields(required) {
++		if !has(m, k) {
++			return nil, false
++		}
++		allowed[k] = true
++	}
++	for _, k := range strings.Fields(optional) {
++		allowed[k] = true
++	}
++	for k := range m {
++		if !allowed[k] {
++			return nil, false
++		}
++	}
++	return m, true
++}
++func has(m map[string]any, k string) bool { _, ok := m[k]; return ok }
++func shape(root map[string]any) bool {
++	if _, ok := object(root["profile"], "store-selected store-fake-ip", ""); !ok {
++		return false
++	}
++	listeners, ok := root["listeners"].([]any)
++	if !ok {
++		return false
++	}
++	for _, v := range listeners {
++		l, ok := object(v, "name type listen port udp users", "")
++		if !ok {
++			return false
++		}
++		users, ok := l["users"].([]any)
++		if !ok {
++			return false
++		}
++		for _, u := range users {
++			if _, ok := object(u, "username password", ""); !ok {
++				return false
++			}
++		}
++	}
++	nodes, ok := root["proxies"].([]any)
++	if !ok {
++		return false
++	}
++	for _, n := range nodes {
++		if _, ok := object(n, "name type", "server port dialer-proxy"); !ok {
++			return false
++		}
++	}
++	if has(root, "proxy-groups") {
++		groups, ok := root["proxy-groups"].([]any)
++		if !ok {
++			return false
++		}
++		for _, g := range groups {
++			if _, ok := object(g, "name type proxies", ""); !ok {
++				return false
++			}
++		}
++	}
++	return true
++}
++func token(s string) bool {
++	if len(s) == 0 || len(s) > 128 {
++		return false
++	}
++	for i, c := range []byte(s) {
++		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alpha && (i == 0 || !strings.ContainsRune("._:-", rune(c))) {
++			return false
++		}
++	}
++	return true
++}
++func id(s, prefix string) bool {
++	return token(s) && strings.HasPrefix(s, prefix) && token(strings.TrimPrefix(s, prefix))
++}
++func credential(s string) bool {
++	if len(s) < 32 || len(s) > 128 {
++		return false
++	}
++	for _, c := range []byte(s) {
++		if c < 33 || c > 126 || c == ':' {
++			return false
++		}
++	}
++	return true
++}
++func domainToken(s string) bool {
++	if len(s) == 0 || len(s) > 253 {
++		return false
++	}
++	for _, label := range strings.Split(s, ".") {
++		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
++			return false
++		}
++		for _, c := range []byte(label) {
++			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
++				return false
++			}
++		}
++	}
++	return true
++}
++func atom(parts []string, entries map[string]bool) bool {
++	if len(parts) < 2 || len(parts) > 3 || parts[1] == "" || strings.ContainsAny(parts[1], ",() \t\n\r\v\f") {
++		return false
++	}
++	switch parts[0] {
++	case "DOMAIN", "DOMAIN-SUFFIX":
++		return len(parts) == 2 && domainToken(parts[1])
++	case "IN-NAME":
++		return len(parts) == 2 && entries[parts[1]]
++	case "IP-CIDR":
++		p, e := netip.ParsePrefix(parts[1])
++		return e == nil && p.Addr().Is4() && (len(parts) == 2 || parts[2] == "no-resolve")
++	}
++	return false
++}
++func validRule(rule string, target func(string) bool, entries map[string]bool) bool {
++	if strings.HasPrefix(rule, "AND,(") {
++		// The grammar is AND,((atom),(atom)),target. Splitting at the
++		// outer close keeps no-resolve inside an IP-CIDR atom intact.
++		end := strings.LastIndex(rule, ")),")
++		if end < 0 || !target(rule[end+3:]) {
++			return false
++		}
++		if !strings.HasPrefix(rule, "AND,((") || end < len("AND,((") {
++			return false
++		}
++		body := rule[len("AND,(("):end]
++		atoms := strings.Split(body, "),(")
++		if len(atoms) < 2 || len(atoms) > 8 {
++			return false
++		}
++		for _, a := range atoms {
++			if !atom(strings.Split(a, ","), entries) {
++				return false
++			}
++		}
++		return true
++	}
++	parts := strings.Split(rule, ",")
++	if len(parts) < 3 {
++		return false
++	}
++	// no-resolve is the sole supported rule option and follows the target.
++	if parts[0] == "IP-CIDR" && len(parts) == 4 {
++		return target(parts[2]) && atom([]string{parts[0], parts[1], parts[3]}, entries)
++	}
++	return len(parts) == 3 && target(parts[2]) && atom(parts[:2], entries)
++}
+diff --git a/component/hoopaguard/socket_linux.go b/component/hoopaguard/socket_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaguard/socket_linux.go
+@@ -0,0 +1,44 @@
++//go:build linux && amd64
++
++package hoopaguard
++
++import (
++	"errors"
++	"net"
++	"os"
++	"strconv"
++	"syscall"
++)
++
++var errReservation = errors.New("protected socket reservation unavailable")
++
++// Reserve binds without listen: a conflicting later endpoint cannot briefly
++// open an earlier entry. All reservations belong to this private core instance.
++func Reserve(address string) (*os.File, error) {
++	host, portText, err := net.SplitHostPort(address)
++	port, parseErr := strconv.Atoi(portText)
++	if err != nil || parseErr != nil || host != "127.0.0.1" || port <= 0 || port > 65535 {
++		return nil, errReservation
++	}
++	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, syscall.IPPROTO_TCP)
++	if err != nil {
++		return nil, errReservation
++	}
++	f := os.NewFile(uintptr(fd), "hoopa-reserved-tcp")
++	if err := syscall.Bind(fd, &syscall.SockaddrInet4{Port: port, Addr: [4]byte{127, 0, 0, 1}}); err != nil {
++		f.Close()
++		return nil, errReservation
++	}
++	return f, nil
++}
++func Listen(f *os.File) (net.Listener, error) {
++	if err := syscall.Listen(int(f.Fd()), syscall.SOMAXCONN); err != nil {
++		return nil, errReservation
++	}
++	ln, err := net.FileListener(f)
++	_ = f.Close()
++	if err != nil {
++		return nil, errReservation
++	}
++	return ln, nil
++}
+diff --git a/component/hoopaguard/socket_linux_test.go b/component/hoopaguard/socket_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopaguard/socket_linux_test.go
+@@ -0,0 +1,68 @@
++//go:build linux && amd64
++
++package hoopaguard
++
++import (
++	"net"
++	"os"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func TestHoopaGuardReservationNoListen(t *testing.T) {
++	if os.Getenv("HOOPA_GUARD_NETWORK_TEST") != "1" {
++		t.Skip("explicit local socket permission required")
++	}
++	pick, err := net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	address := pick.Addr().String()
++	pick.Close()
++	reserved, err := Reserve(address)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer reserved.Close()
++	for option, want := range map[int]int{syscall.SO_ACCEPTCONN: 0, syscall.SO_REUSEADDR: 0} {
++		got, err := syscall.GetsockoptInt(int(reserved.Fd()), syscall.SOL_SOCKET, option)
++		if err != nil || got != want {
++			t.Fatalf("socket option %d got=%d err=%v", option, got, err)
++		}
++	}
++	if conn, err := net.DialTimeout("tcp4", address, 100*time.Millisecond); err == nil {
++		conn.Close()
++		t.Fatal("reserved socket was listening")
++	}
++	if duplicate, err := Reserve(address); err == nil {
++		duplicate.Close()
++		t.Fatal("duplicate bind admitted")
++	}
++	// Failed later reservations did not start this earlier one.
++	if conn, err := net.DialTimeout("tcp4", address, 100*time.Millisecond); err == nil {
++		conn.Close()
++		t.Fatal("failed reservation opened earlier socket")
++	}
++	ln, err := Listen(reserved)
++	if err != nil {
++		t.Fatal(err)
++	}
++	conn, err := net.DialTimeout("tcp4", address, time.Second)
++	if err != nil {
++		ln.Close()
++		t.Fatal(err)
++	}
++	peer, err := ln.Accept()
++	if err != nil {
++		t.Fatal(err)
++	}
++	conn.Close()
++	peer.Close()
++	ln.Close()
++	retry, err := Reserve(address)
++	if err != nil {
++		t.Fatal("reservation not released", err)
++	}
++	retry.Close()
++}
+diff --git a/component/hoopatrace/guard_linux.go b/component/hoopatrace/guard_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/guard_linux.go
+@@ -0,0 +1,42 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import "os"
++
++// PrepareGuard runs source/mapping admission before a protected entry accepts.
++// expected maps immutable inline node/group names to the compiled adapter type.
++func PrepareGuard(generation string, expected map[string]string) error {
++	if os.Getenv("HOOPA_TRACE_PROFILE") != "2" || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
++		return ErrSource
++	}
++	global.once.Do(func() {
++		initializeWithRoutes(func(routes map[string]routeEntry) error {
++			if len(routes) != len(expected) {
++				return ErrSource
++			}
++			for name, typ := range expected {
++				r, ok := routes[name]
++				if !ok || r.AdapterType != typ || r.ProviderName != "" || r.ProviderID != nil {
++					return ErrSource
++				}
++			}
++			return nil
++		})
++	})
++	if global.err != nil {
++		return ErrSource
++	}
++	return guardReady(global.s, generation)
++}
++func guardReady(s *source, generation string) error {
++	if s == nil {
++		return ErrSource
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.generation != generation || s.epoch == "" || s.readOnly || s.poisoned || s.stopping || s.rawClosed || s.used+s.reserved+flowBudget+s.epochReserved > s.limit {
++		return ErrSource
++	}
++	return nil
++}
+diff --git a/component/hoopatrace/guard_linux_test.go b/component/hoopatrace/guard_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/guard_linux_test.go
+@@ -0,0 +1,39 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"os"
++	"testing"
++)
++
++func TestSourceGuardRejectsReadOnlyCapacity(t *testing.T) {
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	for i := 0; i < 32; i++ {
++		s, err := openSource(dir, "gen:guard", "", "", defaultLimit)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if err := guardReady(s, "gen:guard"); err != nil {
++			t.Fatal("fresh writable source rejected", i, err)
++		}
++		if err := s.shutdown(); err != nil {
++			t.Fatal(err)
++		}
++		s.close()
++	}
++	s, err := openSource(dir, "gen:guard", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer s.close()
++	if !s.readOnly {
++		t.Fatal("fixture did not reach actual epoch capacity")
++	}
++	if guardReady(s, "gen:guard") == nil {
++		t.Fatal("read-only replay source admitted protected ingress")
++	}
++}
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -178,6 +178,9 @@
+ 	return nil
+ }
+ func openSource(dir, generation, receiver, secret string, limit int64) (*source, error) {
++	return openSourceChecked(dir, generation, receiver, secret, limit, nil)
++}
++func openSourceChecked(dir, generation, receiver, secret string, limit int64, checkRoutes func(map[string]routeEntry) error) (*source, error) {
+ 	if !filepath.IsAbs(dir) || !token(generation) || limit < flowBudget || limit > defaultLimit {
+ 		return nil, ErrSource
+ 	}
+@@ -227,6 +230,12 @@
+ 		if err != nil {
+ 			s.close()
+ 			return nil, err
++		}
++	}
++	if checkRoutes != nil {
++		if err := checkRoutes(s.routes); err != nil {
++			s.close()
++			return nil, ErrSource
+ 		}
+ 	}
+ 	ok = false
+@@ -335,7 +344,8 @@
+ 		}
+ 	})
+ }
+-func initialize() {
++func initialize() { initializeWithRoutes(nil) }
++func initializeWithRoutes(checkRoutes func(map[string]routeEntry) error) {
+ 	limit := int64(defaultLimit)
+ 	if v := os.Getenv("HOOPA_TRACE_MAX_BYTES"); v != "" {
+ 		n, e := strconv.ParseInt(v, 10, 64)
+@@ -345,7 +355,7 @@
+ 		}
+ 		limit = n
+ 	}
+-	global.s, global.err = openSource(os.Getenv("HOOPA_TRACE_DIR"), os.Getenv("HOOPA_TRACE_GENERATION"), os.Getenv("HOOPA_TRACE_RECEIVER"), os.Getenv("HOOPA_TRACE_SECRET"), limit)
++	global.s, global.err = openSourceChecked(os.Getenv("HOOPA_TRACE_DIR"), os.Getenv("HOOPA_TRACE_GENERATION"), os.Getenv("HOOPA_TRACE_RECEIVER"), os.Getenv("HOOPA_TRACE_SECRET"), limit, checkRoutes)
+ 	if global.err == nil && global.s.receiver != "" {
+ 		go global.s.send()
+ 	}
+diff --git a/constant/hoopa_guard.go b/constant/hoopa_guard.go
+new file mode 100644
+--- /dev/null
++++ b/constant/hoopa_guard.go
+@@ -0,0 +1,5 @@
++package constant
++
++// HoopaProtected is set once before starting the opt-in guarded data plane.
++// It is never a mutable control API or a process-identity capability claim.
++var HoopaProtected bool
+diff --git a/hoopa_guard_linux.go b/hoopa_guard_linux.go
+new file mode 100644
+--- /dev/null
++++ b/hoopa_guard_linux.go
+@@ -0,0 +1,338 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"crypto/sha256"
++	"crypto/subtle"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"flag"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"os/signal"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"sync"
++	"syscall"
++	"time"
++
++	"github.com/metacubex/mihomo/adapter/inbound"
++	"github.com/metacubex/mihomo/component/auth"
++	"github.com/metacubex/mihomo/component/hoopaguard"
++	profile "github.com/metacubex/mihomo/component/hoopaguard/profile"
++	"github.com/metacubex/mihomo/component/hoopatrace"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/hub/executor"
++	authStore "github.com/metacubex/mihomo/listener/auth"
++	"github.com/metacubex/mihomo/listener/mixed"
++	"github.com/metacubex/mihomo/log"
++	"github.com/metacubex/mihomo/tunnel"
++)
++
++var errHoopaGuard = errors.New("Hoopa protected configuration rejected")
++
++func hoopaGuardRequested() bool {
++	_, h := os.LookupEnv("HOOPA_GUARD_CONFIG_SHA256")
++	_, g := os.LookupEnv("HOOPA_GUARD_GENERATION")
++	return h || g
++}
++
++func guardPrivateDir(path string) bool {
++	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
++		return false
++	}
++	real, err := filepath.EvalSymlinks(path)
++	if err != nil || real != path {
++		return false
++	}
++	fi, err := os.Lstat(path)
++	if err != nil || !fi.IsDir() || fi.Mode().Perm() != 0700 {
++		return false
++	}
++	st, ok := fi.Sys().(*syscall.Stat_t)
++	return ok && st.Uid == uint32(os.Geteuid())
++}
++
++func guardReadConfig(path string) ([]byte, error) {
++	if !filepath.IsAbs(path) || !guardPrivateDir(filepath.Dir(path)) {
++		return nil, errHoopaGuard
++	}
++	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
++	if err != nil {
++		return nil, errHoopaGuard
++	}
++	defer f.Close()
++	fi, err := f.Stat()
++	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0600 || fi.Size() > 65536 {
++		return nil, errHoopaGuard
++	}
++	st, ok := fi.Sys().(*syscall.Stat_t)
++	if !ok || st.Uid != uint32(os.Geteuid()) {
++		return nil, errHoopaGuard
++	}
++	raw, err := io.ReadAll(io.LimitReader(f, 65537))
++	if err != nil || len(raw) > 65536 {
++		return nil, errHoopaGuard
++	}
++	return raw, nil
++}
++
++func guardTraceConfig(p profile.Config, generation string) (bool, map[string]string, error) {
++	name := os.Getenv("HOOPA_TRACE_INBOUND")
++	if name == "" {
++		for _, kv := range os.Environ() {
++			if strings.HasPrefix(kv, "HOOPA_TRACE_") && strings.SplitN(kv, "=", 2)[1] != "" {
++				return false, nil, errHoopaGuard
++			}
++		}
++		return false, nil, nil
++	}
++	found := false
++	for _, e := range p.Listeners {
++		if e.Name == name {
++			found = true
++		}
++	}
++	if !found || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_PROFILE") != "2" || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
++		return false, nil, errHoopaGuard
++	}
++	expected := map[string]string{}
++	for _, n := range p.Proxies {
++		expected[n.Name] = map[string]string{"direct": "Direct", "http": "Http", "socks5": "Socks5"}[n.Type]
++	}
++	for _, g := range p.Groups {
++		expected[g.Name] = "Selector"
++	}
++	return true, expected, nil
++}
++
++func runHoopaGuard() error {
++	// Protected startup does not enter stock init, CLI override, reload or shell paths.
++	log.SetLevel(log.SILENT)
++	if configString != "" || configFile == "-" || !guardPrivateDir(homeDir) || geodataMode || postUp != "" || postDown != "" || externalUI != "" || externalController != "" || externalControllerUnix != "" || externalControllerPipe != "" || secret != "" || flag.NArg() != 0 {
++		return errHoopaGuard
++	}
++	raw, err := guardReadConfig(configFile)
++	if err != nil {
++		return errHoopaGuard
++	}
++	digest := sha256.Sum256(raw)
++	hash := hex.EncodeToString(digest[:])
++	if os.Getenv("HOOPA_GUARD_CONFIG_SHA256") != hash {
++		return errHoopaGuard
++	}
++	generation := os.Getenv("HOOPA_GUARD_GENERATION")
++	p, err := profile.Validate(raw, generation)
++	if err != nil {
++		return errHoopaGuard
++	}
++	tracing, expected, err := guardTraceConfig(p, generation)
++	if err != nil {
++		return errHoopaGuard
++	}
++	C.SetHomeDir(homeDir)
++	C.SetConfig(configFile)
++	cfg, err := executor.ParseWithBytes(raw)
++	if err != nil {
++		return errHoopaGuard
++	}
++	// No generated default/hidden listener, rule provider or automatic update is admitted.
++	g := cfg.General
++	if g.Port != 0 || g.SocksPort != 0 || g.RedirPort != 0 || g.TProxyPort != 0 || g.MixedPort != 0 || g.Tun.Enable || g.TuicServer.Enable || len(cfg.Tunnels) != 0 || len(cfg.RuleProviders) != 0 || g.GeoAutoUpdate {
++		return errHoopaGuard
++	}
++	if testConfig {
++		return nil
++	}
++	if tracing {
++		if err := hoopatrace.PrepareGuard(generation, expected); err != nil {
++			return errHoopaGuard
++		}
++	}
++	defer hoopatrace.Shutdown()
++	// Apply routes/proxies without opening any stock listener or controller.
++	cfg.Listeners = nil
++	C.HoopaProtected = true
++	executor.ApplyConfig(cfg, true)
++	defer executor.Shutdown()
++	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}}
++	defer r.stop()
++	// Reserve every socket first. A later bind failure closes the earlier ones;
++	// no auth/CONNECT response or payload can be dispatched before all succeed.
++	addresses := make([]string, 0, len(p.Listeners)+1)
++	for _, e := range p.Listeners {
++		addresses = append(addresses, net.JoinHostPort(e.Listen, strconv.Itoa(int(e.Port))))
++	}
++	addresses = append(addresses, p.Controller)
++	for _, address := range addresses {
++		f, err := hoopaguard.Reserve(address)
++		if err != nil {
++			return errHoopaGuard
++		}
++		r.reserved = append(r.reserved, f)
++	}
++	for i, f := range r.reserved {
++		ln, err := hoopaguard.Listen(f)
++		if err != nil {
++			return errHoopaGuard
++		}
++		if i == len(p.Listeners) {
++			r.controller = ln
++		} else {
++			r.entries = append(r.entries, ln)
++		}
++	}
++	terms, hups := make(chan os.Signal, 1), make(chan os.Signal, 1)
++	signal.Notify(terms, syscall.SIGINT, syscall.SIGTERM)
++	signal.Notify(hups, syscall.SIGHUP)
++	defer signal.Stop(terms)
++	defer signal.Stop(hups)
++	r.mu.Lock()
++	r.state = "running"
++	r.mu.Unlock()
++	for i, e := range p.Listeners {
++		store := authStore.NewAuthStore(auth.NewAuthenticator([]auth.AuthUser{{User: e.Users[0].Username, Pass: e.Users[0].Password}}))
++		r.accept.Add(1)
++		go r.serveEntry(r.entries[i], e.Name, store)
++	}
++	r.server = &http.Server{Handler: r, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 3 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 8192}
++	serve := make(chan error, 1)
++	go func() { serve <- r.server.Serve(r.controller) }()
++
++	for {
++		select {
++		case <-terms:
++			return nil
++		case <-hups: // Explicitly unsupported: immutable config requires full process replace.
++		case <-serve:
++			return errHoopaGuard
++		}
++	}
++}
++
++type hoopaGuardRuntime struct {
++	mu                              sync.Mutex
++	state, generation, hash, secret string
++	entries                         []net.Listener
++	reserved                        []*os.File
++	controller                      net.Listener
++	server                          *http.Server
++	conns                           map[net.Conn]bool
++	accept, workers                 sync.WaitGroup
++}
++
++func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore) {
++	defer r.accept.Done()
++	for {
++		c, err := ln.Accept()
++		if err != nil {
++			return
++		}
++		r.mu.Lock()
++		if r.state != "running" {
++			r.mu.Unlock()
++			c.Close()
++			continue
++		}
++		r.conns[c] = true
++		r.workers.Add(1)
++		r.mu.Unlock()
++		go func() {
++			defer r.workers.Done()
++			defer func() { c.Close(); r.mu.Lock(); delete(r.conns, c); r.mu.Unlock() }()
++			mixed.HandleHoopaConn(c, tunnel.Tunnel, store, inbound.WithInName(name), inbound.WithSpecialRules(""), inbound.WithSpecialProxy(""))
++		}()
++	}
++}
++
++func (r *hoopaGuardRuntime) drain() bool {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if r.state == "draining" {
++		return true
++	}
++	if r.state != "running" {
++		return false
++	}
++	r.state = "draining"
++	for _, ln := range r.entries {
++		if err := ln.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
++			r.state = "degraded"
++		}
++	}
++	return r.state == "draining"
++}
++func (r *hoopaGuardRuntime) stop() {
++	for _, f := range r.reserved {
++		_ = f.Close()
++	}
++	r.mu.Lock()
++	r.state = "stopped"
++	for _, ln := range r.entries {
++		_ = ln.Close()
++	}
++	r.mu.Unlock()
++	r.accept.Wait()
++	if r.server != nil {
++		_ = r.server.Close()
++	} else if r.controller != nil {
++		_ = r.controller.Close()
++	}
++	r.mu.Lock()
++	for c := range r.conns {
++		_ = c.Close()
++	}
++	r.mu.Unlock()
++	// Source shutdown after known handlers settle; a bounded incomplete shutdown
++	// still becomes pending/gap via the existing source rules, never a fake final.
++	done := make(chan struct{})
++	go func() { r.workers.Wait(); close(done) }()
++	select {
++	case <-done:
++	case <-time.After(2 * time.Second):
++	}
++}
++func (r *hoopaGuardRuntime) ServeHTTP(w http.ResponseWriter, q *http.Request) {
++	host, _, err := net.SplitHostPort(q.RemoteAddr)
++	headers := q.Header.Values("Authorization")
++	if err != nil || host != "127.0.0.1" || len(headers) != 1 || subtle.ConstantTimeCompare([]byte(headers[0]), []byte("Bearer "+r.secret)) != 1 {
++		http.Error(w, "unauthorized", http.StatusUnauthorized)
++		return
++	}
++	known := q.Method == "GET" && q.URL.Path == "/hoopa/status" || q.Method == "POST" && q.URL.Path == "/hoopa/drain"
++	if known && (q.URL.RawQuery != "" || q.ContentLength != 0 || len(q.TransferEncoding) != 0) {
++		http.Error(w, "invalid request", 400)
++		return
++	}
++	switch {
++	case q.Method == "GET" && q.URL.Path == "/hoopa/status":
++		r.mu.Lock()
++		result := struct {
++			Schema           int    `json:"schema_version"`
++			Generation       string `json:"config_generation"`
++			Hash             string `json:"config_sha256"`
++			State            string `json:"state"`
++			IdentityInstance bool   `json:"identity_instance"`
++			IdentityName     bool   `json:"identity_name"`
++			IdentityPath     bool   `json:"identity_path"`
++			Connections      int    `json:"accepted_tcp_connections"`
++		}{Schema: 1, Generation: r.generation, Hash: r.hash, State: r.state, Connections: len(r.conns)}
++		r.mu.Unlock()
++		w.Header().Set("Content-Type", "application/json")
++		_ = json.NewEncoder(w).Encode(result)
++	case q.Method == "POST" && q.URL.Path == "/hoopa/drain":
++		if !r.drain() {
++			http.Error(w, "drain incomplete", 503)
++			return
++		}
++		w.Header().Set("Content-Type", "application/json")
++		_, _ = io.WriteString(w, "{\"state\":\"draining\"}\n")
++	default:
++		http.Error(w, "full replace required", http.StatusConflict)
++	}
++}
+diff --git a/listener/http/proxy.go b/listener/http/proxy.go
+--- a/listener/http/proxy.go
++++ b/listener/http/proxy.go
+@@ -59,7 +59,9 @@
+ 		keepAlive := strings.TrimSpace(strings.ToLower(request.Header.Get("Proxy-Connection"))) == "keep-alive"
+ 
+ 		resp, user := authenticate(request, authenticator) // always call authenticate function to get user
+-		if resp == nil {
++		if C.HoopaProtected {
++			trusted = resp == nil // Every HTTP request must authenticate independently.
++		} else if resp == nil {
+ 			trusted = true
+ 		}
+ 		additions[inUserIdx] = inbound.WithInUser(user)
+diff --git a/listener/mixed/hoopa_handler.go b/listener/mixed/hoopa_handler.go
+new file mode 100644
+--- /dev/null
++++ b/listener/mixed/hoopa_handler.go
+@@ -0,0 +1,14 @@
++package mixed
++
++import (
++	"github.com/metacubex/mihomo/adapter/inbound"
++	"github.com/metacubex/mihomo/component/auth"
++	C "github.com/metacubex/mihomo/constant"
++	"net"
++)
++
++// HandleHoopaConn reuses the core protocol handler on an already reserved,
++// authenticated-profile TCP listener. It never opens a listener or UDP socket.
++func HandleHoopaConn(conn net.Conn, tunnel C.Tunnel, store auth.AuthStore, additions ...inbound.Addition) {
++	handleConn(conn, tunnel, store, additions...)
++}
+diff --git a/listener/socks/tcp.go b/listener/socks/tcp.go
+--- a/listener/socks/tcp.go
++++ b/listener/socks/tcp.go
+@@ -174,7 +174,11 @@
+ 
+ func HandleSocks5(conn net.Conn, tunnel C.Tunnel, store auth.AuthStore, additions ...inbound.Addition) {
+ 	authenticator := store.Authenticator()
+-	target, command, user, err := socks5.ServerHandshake(conn, authenticator)
++	handshake := socks5.ServerHandshake
++	if C.HoopaProtected {
++		handshake = socks5.ServerHandshakeTCPOnly
++	}
++	target, command, user, err := handshake(conn, authenticator)
+ 	if err != nil {
+ 		conn.Close()
+ 		return
+diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -104,6 +104,14 @@
+ 		return
+ 	}
+ 
++	if hoopaGuardRequested() {
++		if err := runHoopaGuard(); err != nil {
++			fmt.Fprintln(os.Stderr, "Hoopa protected configuration rejected")
++			os.Exit(1)
++		}
++		return
++	}
++
+ 	if homeDir != "" {
+ 		if !filepath.IsAbs(homeDir) {
+ 			currentDir, _ := os.Getwd()
+diff --git a/transport/socks5/socks5.go b/transport/socks5/socks5.go
+--- a/transport/socks5/socks5.go
++++ b/transport/socks5/socks5.go
+@@ -107,14 +107,33 @@
+ 
+ // ServerHandshake fast-tracks SOCKS initialization to get target address to connect on server side.
+ func ServerHandshake(rw net.Conn, authenticator auth.Authenticator) (addr Addr, command Command, user string, err error) {
++	return serverHandshake(rw, authenticator, false)
++}
++
++// ServerHandshakeTCPOnly requires credential negotiation and rejects UDP/BIND.
++func ServerHandshakeTCPOnly(rw net.Conn, authenticator auth.Authenticator) (addr Addr, command Command, user string, err error) {
++	return serverHandshake(rw, authenticator, true)
++}
++
++func serverHandshake(rw net.Conn, authenticator auth.Authenticator, tcpOnly bool) (addr Addr, command Command, user string, err error) {
+ 	// Read RFC 1928 for request and reply structure and sizes.
+ 	buf := make([]byte, MaxAddrLen)
+ 	// read VER, NMETHODS, METHODS
+ 	if _, err = io.ReadFull(rw, buf[:2]); err != nil {
+ 		return
+ 	}
++	if tcpOnly && (buf[0] != Version || buf[1] == 0 || authenticator == nil) {
++		err = ErrAuth
++		return
++	}
+ 	nmethods := buf[1]
+ 	if _, err = io.ReadFull(rw, buf[:nmethods]); err != nil {
++		return
++	}
++
++	if tcpOnly && !bytes.Contains(buf[:nmethods], []byte{2}) {
++		_, _ = rw.Write([]byte{5, 255})
++		err = ErrAuth
+ 		return
+ 	}
+ 
+@@ -134,6 +153,11 @@
+ 			return
+ 		}
+ 
++		if tcpOnly && header[0] != 1 {
++			_, _ = rw.Write([]byte{1, 1})
++			err = ErrAuth
++			return
++		}
+ 		authBuf := make([]byte, MaxAuthLen)
+ 		// Get username
+ 		userLen := int(header[1])
+@@ -184,6 +208,11 @@
+ 		return
+ 	}
+ 
++	if tcpOnly && (buf[0] != Version || buf[2] != 0 || buf[1] != CmdConnect) {
++		_, _ = rw.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
++		err = ErrCommandNotSupported
++		return
++	}
+ 	command = buf[1]
+ 	addr, err = ReadAddr(rw, buf)
+ 	if err != nil {

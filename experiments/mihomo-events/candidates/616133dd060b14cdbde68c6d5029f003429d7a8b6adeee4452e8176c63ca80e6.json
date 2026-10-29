@@ -1,0 +1,502 @@
+{
+  "schema_version": 1,
+  "task": "T136 additive candidate after T137",
+  "date": "2026-10-25",
+  "status": "frozen_for_finite_control_prototype",
+  "root_decision": {
+    "path": "private/t136-rebind-fix/acceptance-decision.md",
+    "bytes": 2725,
+    "sha256": "498f55bdce35bf169103146121b1d6be6b0bb0fe1c3fed237bdc93ba5ca53a56"
+  },
+  "creation_manifest": {
+    "path": "experiments/mihomo-events/core-rebind-candidate-manifest.json",
+    "bytes": 14918,
+    "sha256": "5a6d265f4338b744dd4521a5a931810f8625edac6a6e9b57a6abce05a248ff03"
+  },
+  "previous_candidate": {
+    "path": "experiments/mihomo-events/candidates/1ef1b53ae41435596844c264ae5e1e5201ce95b5d2762be872371023f4d6af25.json",
+    "bytes": 16211,
+    "sha256": "962a65c149a8fbe4d09217491786a1e55259397ac4968d8f7158821d851bc8c4"
+  },
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0014-enforce-connector-namespace.patch",
+      "bytes": 14486,
+      "sha256": "1f3353b523a4a8201924bf71562018e9f3d656006de20a28cffbc05c7bf05ae6"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0015-add-restricted-field-profile.patch",
+      "bytes": 76418,
+      "sha256": "b953ef468978a5e8cf1f3285256d550f9f08e332620b00747ae50f703158a3d0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0016-reuse-protected-listener-address.patch",
+      "bytes": 6680,
+      "sha256": "4030d6075372734f5d343fd55a7054121fc2394990ef83cc0bca1c9a44516533"
+    }
+  ],
+  "binary": {
+    "path": "private/t136-rebind-fix/artifact-cgo1/mihomo-protected-rebind",
+    "bytes": 51321239,
+    "sha256": "616133dd060b14cdbde68c6d5029f003429d7a8b6adeee4452e8176c63ca80e6"
+  },
+  "source": {
+    "fresh_applied": "private/t136-rebind-fix/artifact-cgo1/source",
+    "reviewed_target": "private/t136-rebind-fix/reviewed-source",
+    "tree_sha256": "86b7d167d88e0e6378a792f636b06928b0d12688bd0c935e1050fa4f23d7f570",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1192,
+    "file_count": 995,
+    "reviewed_tree_equal": true,
+    "changed_from_0015": [
+      "component/hoopaguard/socket_linux.go",
+      "component/hoopaguard/socket_linux_test.go"
+    ],
+    "build_evidence": {
+      "path": "private/t136-rebind-fix/build-result.json",
+      "bytes": 198639,
+      "sha256": "eb6cc755b479b88abf9b5ef51c542cc8688c0df929d3607db90ba04d53b52958"
+    }
+  },
+  "build": {
+    "toolchain": {
+      "path": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+      "bytes": 17164222,
+      "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b"
+    },
+    "version": "go version go1.27.3 linux/amd64",
+    "core_cgo_enabled": "1",
+    "core_cgo_matches_0015": true,
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    },
+    "core_compile_command": {
+      "label": "compile",
+      "argv": [
+        "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+        "build",
+        "-p=2",
+        "-trimpath",
+        "-buildvcs=false",
+        "-o",
+        "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/mihomo-protected-rebind",
+        "."
+      ],
+      "cwd": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/source",
+      "exit_code": 0,
+      "stdout": {
+        "path": "private/t136-rebind-fix/cgo1-compile.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "private/t136-rebind-fix/cgo1-compile.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "printed_version": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time",
+    "printed_version_not_source_version": true,
+    "build_script": {
+      "path": "private/t136-rebind-fix/build_core.py",
+      "bytes": 5786,
+      "sha256": "8b336be52d44234119eef9b994e8d5cd1451cdf6bbdcc54686ef5a56eeca721c"
+    },
+    "freeze": {
+      "path": "private/t136-rebind-fix/freeze.json",
+      "bytes": 1296,
+      "sha256": "ebd4809e9de333416e2f33daf15880c8f5e2b0c57737418703b6ef72c054c849"
+    },
+    "correction": {
+      "path": "private/t136-rebind-fix/build-correction.md",
+      "bytes": 456,
+      "sha256": "534b16fea3c2986a7bf4ff0f4342005cd4985417633b8e7294d061afefb10cea"
+    }
+  },
+  "dependencies": {
+    "unchanged_from_0015": true,
+    "checksum_provenance": {
+      "path": "experiments/mihomo-events/closure-candidate-manifest.json",
+      "bytes": 12458,
+      "sha256": "43543ec28cc9fa4198d21690b3bf15e5866a2cea036f35cdfdf21fa269d2fcd6"
+    },
+    "files": [
+      {
+        "name": "go.mod",
+        "fresh": {
+          "path": "private/t136-rebind-fix/artifact-cgo1/source/go.mod",
+          "bytes": 6961,
+          "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+        },
+        "previous": {
+          "path": "private/t132-core-field-profile/artifact/source/go.mod",
+          "bytes": 6961,
+          "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+        },
+        "unchanged": true
+      },
+      {
+        "name": "go.sum",
+        "fresh": {
+          "path": "private/t136-rebind-fix/artifact-cgo1/source/go.sum",
+          "bytes": 29819,
+          "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+        },
+        "previous": {
+          "path": "private/t132-core-field-profile/artifact/source/go.sum",
+          "bytes": 29819,
+          "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+        },
+        "unchanged": true
+      }
+    ],
+    "network_downloads": "none; GOPROXY=off"
+  },
+  "scope": {
+    "platform": "linux/amd64",
+    "kernel": "6.18.54.1-microsoft-standard-WSL2",
+    "kernel_sha256": "b3dc3a9c3774fda2b9d7bceac7495248df50a6e0cd4ba9596ef98933f384d495",
+    "btf_sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9",
+    "bpf_object": {
+      "bytes": 924400,
+      "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+      "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+    },
+    "libbpf_sha256": "1c928f61158f25d39cd3fbc7ddafeebec2448886225e2c1824455fcfcd15d04c",
+    "handoff": "hoopa-core-identity-handoff-v4",
+    "fds": 21,
+    "address_family": "IPv4 127.0.0.1 TCP",
+    "namespace": "registered initial pid/net/user/mount",
+    "client": "uid/gid65534, empty groups, five capability sets zero, NNP1, pre-attach controlled leaf",
+    "trusted_admin_required": true,
+    "exclusions": [
+      "IPv6",
+      "UDP/QUIC",
+      "TFO",
+      "simultaneous open",
+      "TCP_REPAIR",
+      "arbitrary privileged mutation",
+      "production launcher",
+      "other platforms"
+    ]
+  },
+  "socket_change": {
+    "setsockopt_before_bind": "SO_REUSEADDR=1",
+    "setsockopt_failure": "close owned socket and reject",
+    "reuseport_enabled": false,
+    "reserve_semantics": "bind without listen; reusable unlistening reservations may coexist; successful bind does not guarantee later Listen success",
+    "live_listener_exclusive": true,
+    "startup_order_unchanged": true,
+    "all_owned_reservations_closed_on_failure": true
+  },
+  "capability_record": {
+    "schema_version": 1,
+    "binary_sha256": "616133dd060b14cdbde68c6d5029f003429d7a8b6adeee4452e8176c63ca80e6",
+    "status": "verified_for_finite_restricted_control_matrix",
+    "source_profile": 5,
+    "manifest_version": 2,
+    "profile_id": "linux_amd64_loopback_connect_v1",
+    "definition": "connect_initiator_v1",
+    "identity_instance": "available; actual boot/PID/start/socket oracle bound to each new source",
+    "identity_name": "available as executable basename, not product/script name",
+    "identity_path": "available as captured executable path bytes; text validity separate",
+    "comm": "unverified",
+    "process_rules": "unsupported; field availability is not a process-rule consumer",
+    "legacy_status_identity_flags": false,
+    "fd_transfer_monitoring": "unverified; attribution remains original connector",
+    "quality": "actual http_connect_accepted ready and node:a/node:b linkage checked in this matrix; duration floors are not RTT or application TTFB",
+    "segment_bytes": "mihomo_proxy_stream_v1 integer terminal/segment conservation for all 9 flows",
+    "lifecycle": "7 active complete source epochs and one failed-target complete zero-flow epoch; same-core takeover and fresh-instance replacement/rollback",
+    "control_matrix": [
+      "rollback",
+      "replace",
+      "identity-conflict",
+      "takeover",
+      "spawn-window"
+    ],
+    "socket_native_tests": {
+      "passed": 2,
+      "skipped": 0,
+      "run": "vm-rollback-g2kmeg3g"
+    },
+    "formal_g01_new_samples": 0
+  },
+  "evidence": [
+    {
+      "mode": "rollback",
+      "run": "private/t136-rebind-replace-vm/vm-rollback-g2kmeg3g",
+      "host_check": {
+        "path": "private/t136-rebind-replace-vm/vm-rollback-g2kmeg3g/host-check.json",
+        "bytes": 1848,
+        "sha256": "295835729de92a350d13ad9e4d6501f80569cc7d60d05fba2174a31a11e83cf5"
+      },
+      "archive": {
+        "path": "private/t136-rebind-replace-vm/vm-rollback-g2kmeg3g/evidence.tar.gz",
+        "bytes": 1998450,
+        "sha256": "cbdfc8bd0a404253fd98b81d88192f80042449c1396dbcb620485adac9368bc8"
+      },
+      "export": {
+        "path": "private/t136-rebind-replace-vm/vm-rollback-g2kmeg3g/export.json",
+        "bytes": 9772,
+        "sha256": "fc94d2c52714af611a11ed75a82256df01904500ec5bb22a02e519702292b41a"
+      },
+      "readiness": {
+        "path": "private/t136-rebind-replace-vm/vm-rollback-g2kmeg3g/evidence/readiness.json",
+        "bytes": 2921,
+        "sha256": "fa53c6977d846ce2fb8a64fa1d629ce87027d5a0f502b193b947d701e5aeb478"
+      },
+      "configuration_material": "Original immutable per-launch bundle digests and raw files retained privately in the bound archive; no credentials published."
+    },
+    {
+      "mode": "replace",
+      "run": "private/t136-rebind-replace-vm/vm-replace-vdihp61_",
+      "host_check": {
+        "path": "private/t136-rebind-replace-vm/vm-replace-vdihp61_/host-check.json",
+        "bytes": 1678,
+        "sha256": "0e4e1dffd9e82a933decb6a9258b9355ab1b60cd49e3bf10e25677ab70c390d8"
+      },
+      "archive": {
+        "path": "private/t136-rebind-replace-vm/vm-replace-vdihp61_/evidence.tar.gz",
+        "bytes": 1993805,
+        "sha256": "4dab5d2dae4bf12193da0179d450be47e508260dc7b203dc324f69b8593b2e8d"
+      },
+      "export": {
+        "path": "private/t136-rebind-replace-vm/vm-replace-vdihp61_/export.json",
+        "bytes": 7268,
+        "sha256": "5f7f4f5244e8df61c7bbb28c1641905a311f60faf9621d61e88bbaabbfcd5bc3"
+      },
+      "readiness": {
+        "path": "private/t136-rebind-replace-vm/vm-replace-vdihp61_/evidence/readiness.json",
+        "bytes": 2636,
+        "sha256": "036254c166a16423e3fb0777297952175928185e1948c71ab2ecba5b2a9699b4"
+      },
+      "configuration_material": "Original immutable per-launch bundle digests and raw files retained privately in the bound archive; no credentials published."
+    },
+    {
+      "mode": "identity-conflict",
+      "run": "private/t136-rebind-replace-vm/vm-identity-conflict-quolgk55",
+      "host_check": {
+        "path": "private/t136-rebind-replace-vm/vm-identity-conflict-quolgk55/host-check.json",
+        "bytes": 1278,
+        "sha256": "d8f6d89c03d46f4db62fdf3b9f21ee23c0fc10245354cbb0e1cbb402ffdb0bb2"
+      },
+      "archive": {
+        "path": "private/t136-rebind-replace-vm/vm-identity-conflict-quolgk55/evidence.tar.gz",
+        "bytes": 1987944,
+        "sha256": "e25cbebf319d3ef73376194f7d68e968b831dd67137403a39e94fe6e19fdef59"
+      },
+      "export": {
+        "path": "private/t136-rebind-replace-vm/vm-identity-conflict-quolgk55/export.json",
+        "bytes": 5320,
+        "sha256": "d9ac247c7ec6316c1a34a7cf52e42e03e2b4d65ed94adf67e68f4fa5a25f6d5d"
+      },
+      "readiness": {
+        "path": "private/t136-rebind-replace-vm/vm-identity-conflict-quolgk55/evidence/readiness.json",
+        "bytes": 2656,
+        "sha256": "fb06ee257a6aa30d52cd8f23abc635b9ab8abee11ae3a8e2cdee60f146c0db8f"
+      },
+      "configuration_material": "Original immutable per-launch bundle digests and raw files retained privately in the bound archive; no credentials published."
+    },
+    {
+      "mode": "takeover",
+      "run": "private/t136-rebind-takeover-vm/vm-takeover-tf1wzz52",
+      "host_check": {
+        "path": "private/t136-rebind-takeover-vm/vm-takeover-tf1wzz52/host-check.json",
+        "bytes": 1379,
+        "sha256": "998f56b6814b470a66503d62d4969bb1901df8f0b7afd2da80c47b97d0f2e683"
+      },
+      "archive": {
+        "path": "private/t136-rebind-takeover-vm/vm-takeover-tf1wzz52/evidence.tar.gz",
+        "bytes": 1986987,
+        "sha256": "47d1360d6b11ef7a0fb78143910c4b2f28c9d1ce1e2bb7e3f51ecc9d0994433f"
+      },
+      "export": {
+        "path": "private/t136-rebind-takeover-vm/vm-takeover-tf1wzz52/export.json",
+        "bytes": 4815,
+        "sha256": "a2d1495411c4f00b6793a7763e96409e17a8482f979719c88ed31793d6df1c6d"
+      },
+      "readiness": {
+        "path": "private/t136-rebind-takeover-vm/vm-takeover-tf1wzz52/evidence/readiness.json",
+        "bytes": 2436,
+        "sha256": "47e7f787bca4be33cd043d21b64848e16aac89a2adae40e61bf0ecc5b62ce889"
+      },
+      "configuration_material": "Original immutable per-launch bundle digests and raw files retained privately in the bound archive; no credentials published."
+    },
+    {
+      "mode": "spawn-window",
+      "run": "private/t136-rebind-takeover-vm/vm-spawn-window-nh6okw5u",
+      "host_check": {
+        "path": "private/t136-rebind-takeover-vm/vm-spawn-window-nh6okw5u/host-check.json",
+        "bytes": 1384,
+        "sha256": "87eb4d63c23f727253616448247144e5ba16a9f4cc5a3df61c585682cb2d087f"
+      },
+      "archive": {
+        "path": "private/t136-rebind-takeover-vm/vm-spawn-window-nh6okw5u/evidence.tar.gz",
+        "bytes": 1987418,
+        "sha256": "0974927c4410c8ce39fcd4a2d6f460a42b8229bba230dd1bec2931031f07a935"
+      },
+      "export": {
+        "path": "private/t136-rebind-takeover-vm/vm-spawn-window-nh6okw5u/export.json",
+        "bytes": 4815,
+        "sha256": "523fb893738604dcffe33545439bfd2e543bb8fc42f502cd571f1c205d5847c2"
+      },
+      "readiness": {
+        "path": "private/t136-rebind-takeover-vm/vm-spawn-window-nh6okw5u/evidence/readiness.json",
+        "bytes": 2444,
+        "sha256": "a37fe67bfa55abd142d6c2714cb41030c9a0eb9b883cd77fe30108a100be1e17"
+      },
+      "configuration_material": "Original immutable per-launch bundle digests and raw files retained privately in the bound archive; no credentials published."
+    }
+  ],
+  "validation": {
+    "path": "experiments/mihomo-events/control-rebind-validation.json",
+    "bytes": 78351,
+    "sha256": "42d9f494ae3741b6da027a626537c1d926f451e4b5658a79617134a7b59251a5"
+  },
+  "reviews": [
+    {
+      "path": "private/t136-control-preparation/rebind-source-review.md",
+      "bytes": 5151,
+      "sha256": "e1787fb80f03c59f594c6272387ab17ba26d59cd607b6cbdf41cccd260cbd0eb"
+    },
+    {
+      "path": "private/t136-control-preparation/rebind-harness-final-review.md",
+      "bytes": 3291,
+      "sha256": "040aab9bbd77cbf59ff6fa63b6535bf16fd36e04b4ba2415c375c425371e79bd"
+    },
+    {
+      "path": "private/t136-control-preparation/rebind-rollback-runtime-review.md",
+      "bytes": 4454,
+      "sha256": "fc1a15ba7b19f70d5e6ec8cfde0823174698296ef800a2ff89df1210494a3586"
+    },
+    {
+      "path": "private/t136-control-preparation/rebind-matrix-final-review.md",
+      "bytes": 4111,
+      "sha256": "509b7f28eb971df8fbf77c5b9316aa5a01fe13179ae2aec29a59fda52ac9c66b"
+    }
+  ],
+  "prior_evidence_impact": [
+    {
+      "area": "T132",
+      "change": "No BPF, ABI, Owner, executable or namespace logic change",
+      "new_evidence": "ordinary initial-namespace connector fields rechecked in all 9 new flows",
+      "not_rerun": "PID reuse, transferred FD, namespace negative, selective link loss"
+    },
+    {
+      "area": "T133",
+      "change": "No source/wire/recovery/lock/ACK/GC or stream accounting code change",
+      "new_evidence": "all new complete source epochs decoded and terminal totals compared to applications",
+      "not_rerun": "crash, corrupt tail, storage faults, collector backpressure"
+    },
+    {
+      "area": "T134",
+      "change": "No ready/actual Conn/segment implementation change",
+      "new_evidence": "HTTP upstream setup and actual two-node linkage in new flows",
+      "not_rerun": "all protocols and failure/timeout/cancel cases"
+    },
+    {
+      "area": "T135/T136",
+      "change": "SO_REUSEADDR enabled before Bind; unlistening reservation no longer exclusive",
+      "new_evidence": "two real socket tests plus five real control modes",
+      "not_rerun": "full protocol auth and OS isolation matrix; no mixed-version 0015-to-0016 rebind claim"
+    }
+  ],
+  "unchanged_old_results_not_reassigned": true,
+  "limits": {
+    "T136_complete": true,
+    "formal_g01_old": "0/100",
+    "formal_g01_new_samples": 0,
+    "P0_released": false,
+    "P1_released": false,
+    "production_support": false,
+    "other_kernels_platforms": false,
+    "ssh_logout_suspend": false,
+    "full_performance_budget_measured": false,
+    "mixed_version_rebind_verified": false
+  }
+}

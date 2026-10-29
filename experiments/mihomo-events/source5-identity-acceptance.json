@@ -1,0 +1,96 @@
+{
+  "schema": "hoopa-source5-identity-acceptance-v1",
+  "date": "2026-10-26",
+  "core_sha256": "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967",
+  "scope": "restricted_source5_identity",
+  "positive": {
+    "registered": 100,
+    "passed": 100
+  },
+  "boundaries": {
+    "pidreuse": {
+      "registered": 2,
+      "passed": 2
+    },
+    "permission": {
+      "registered": 1,
+      "passed": 1
+    },
+    "missing-proof": {
+      "registered": 2,
+      "passed": 2
+    },
+    "threevalue": {
+      "registered": 14,
+      "passed": 14
+    }
+  },
+  "task_T127_complete": true,
+  "P0_released": false,
+  "P1_released": false,
+  "reports": {
+    "positive": {
+      "path": "experiments/mihomo-events/source5-identity-positive-validation.json",
+      "bytes": 816530,
+      "sha256": "639b8bf02fbc72b0ed9241105a88ca581bc7826cd172ec1ac491af0c2ffc47e4"
+    },
+    "pidreuse": {
+      "path": "experiments/mihomo-events/source5-identity-pidreuse-validation.json",
+      "bytes": 54498,
+      "sha256": "d7db908dde0808684b674f87dc83892f3b996486db3d220b5db5c4a2b7f9308e"
+    },
+    "permission": {
+      "path": "experiments/mihomo-events/source5-identity-permission-validation.json",
+      "bytes": 21450,
+      "sha256": "51c52b6bf25aa2fb8482800a170774a500ed1de607f9e120737c2f6e3025ed5f"
+    },
+    "missing-proof": {
+      "path": "experiments/mihomo-events/source5-identity-missing-proof-validation.json",
+      "bytes": 60937,
+      "sha256": "9bc2856ea1f77044db99f7d42442cc6e82acc3662e8a1cfc7fc07dfaf64158d0"
+    },
+    "threevalue": {
+      "path": "experiments/mihomo-events/source5-identity-threevalue-validation.json",
+      "bytes": 662234,
+      "sha256": "e6602285a164272da6e55ce606195ef5753915cec0d194107c65c977631b167f"
+    }
+  },
+  "root_decision": {
+    "path": "private/t127-preparation/t127-acceptance-decision.md",
+    "bytes": 2885,
+    "sha256": "28c3fbdde6847edc07bd0fac8cf7fc47b7169699e1666a88dade4264258b78aa"
+  },
+  "historical_failures": [
+    {
+      "path": "docs/validation/native-candidate.summary.json",
+      "bytes": 6381,
+      "sha256": "a903bd0f0455be761e8d9a6a8f934b22876bbb0479f6b1038c2e6e6ab9394008"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-identity-first-formal-validation.json",
+      "bytes": 80898,
+      "sha256": "b6a68df332016f7befe47580db3155c8403808675dc718300028f87dee30de82"
+    },
+    {
+      "path": "private/t127-source5-missing-proof-vm/preparation-v1/summary.json",
+      "bytes": 1904,
+      "sha256": "638968c07827f55c17128ffbf0898533fa73334659198cd7e467eee9e2a6c468"
+    }
+  ],
+  "gate": {
+    "path": "experiments/mihomo-events/source5_identity_gate.py",
+    "bytes": 10612,
+    "sha256": "ae4fc6917b97df64e9b05358a86c56c8f28e4847f77b2ca118f85aecd76a482d"
+  },
+  "gate_source_review": {
+    "path": "private/t127-preparation/gate-stable-review.md",
+    "bytes": 3862,
+    "sha256": "41264147dc387602e65132285c531e04322f6c8076aa7f88a4d3020571a468b8"
+  },
+  "limits": [
+    "Restricted trusted-root Linux/amd64 source5 evidence only",
+    "Separate positive/boundary denominators; preparation excluded",
+    "No new runtime samples; source/receipt/SQL recovery and completeG05 remain later tasks",
+    "Private evidence tree required for integrity verification"
+  ]
+}

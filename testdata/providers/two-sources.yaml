@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "synthetic": true,
+  "format_note": "JSON subset of YAML 1.2; provider payloads are fixtures, not live subscriptions.",
+  "sources": [
+    {
+      "id": "source-a",
+      "snapshots": [
+        {
+          "id": "a-initial",
+          "provider": {
+            "proxies": [
+              {
+                "name": "US shared",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 24001
+              },
+              {
+                "name": "JP shared",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 24002
+              }
+            ]
+          }
+        },
+        {
+          "id": "a-renamed",
+          "provider": {
+            "proxies": [
+              {
+                "name": "US renamed",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 24001
+              },
+              {
+                "name": "JP renamed",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 24002
+              }
+            ]
+          }
+        },
+        {
+          "id": "a-missing-jp",
+          "provider": {
+            "proxies": [
+              {
+                "name": "US shared",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 24001
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "source-b",
+      "snapshots": [
+        {
+          "id": "b-initial",
+          "provider": {
+            "proxies": [
+              {
+                "name": "US shared",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 25001
+              },
+              {
+                "name": "JP shared",
+                "type": "socks5",
+                "server": "127.0.0.1",
+                "port": 25002
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

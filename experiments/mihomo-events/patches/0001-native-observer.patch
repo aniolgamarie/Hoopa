@@ -1,0 +1,2464 @@
+diff --git a/adapter/inbound/http.go b/adapter/inbound/http.go
+--- a/adapter/inbound/http.go
++++ b/adapter/inbound/http.go
+@@ -1,7 +1,9 @@
+ package inbound
+ 
+ import (
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	"net"
++	"time"
+ 
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"github.com/metacubex/mihomo/transport/socks5"
+@@ -16,5 +18,8 @@
+ 	metadata.RawDstAddr = srcConn.LocalAddr()
+ 	ApplyAdditions(metadata, WithSrcAddr(srcConn.RemoteAddr()), WithInAddr(srcConn.LocalAddr()))
+ 	ApplyAdditions(metadata, additions...)
++	if hoopatrace.Enabled(metadata.InName) {
++		metadata.HoopaStartedAt = time.Now()
++	}
+ 	return conn, metadata
+ }
+diff --git a/adapter/inbound/https.go b/adapter/inbound/https.go
+--- a/adapter/inbound/https.go
++++ b/adapter/inbound/https.go
+@@ -1,7 +1,9 @@
+ package inbound
+ 
+ import (
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	"net"
++	"time"
+ 
+ 	C "github.com/metacubex/mihomo/constant"
+ 
+@@ -16,5 +18,8 @@
+ 	metadata.RawDstAddr = conn.LocalAddr()
+ 	ApplyAdditions(metadata, WithSrcAddr(conn.RemoteAddr()), WithInAddr(conn.LocalAddr()))
+ 	ApplyAdditions(metadata, additions...)
++	if hoopatrace.Enabled(metadata.InName) {
++		metadata.HoopaStartedAt = time.Now()
++	}
+ 	return conn, metadata
+ }
+diff --git a/adapter/inbound/socket.go b/adapter/inbound/socket.go
+--- a/adapter/inbound/socket.go
++++ b/adapter/inbound/socket.go
+@@ -1,7 +1,9 @@
+ package inbound
+ 
+ import (
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	"net"
++	"time"
+ 
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"github.com/metacubex/mihomo/transport/socks5"
+@@ -14,5 +16,8 @@
+ 	metadata.Type = source
+ 	ApplyAdditions(metadata, WithSrcAddr(conn.RemoteAddr()), WithInAddr(conn.LocalAddr()))
+ 	ApplyAdditions(metadata, additions...)
++	if hoopatrace.Enabled(metadata.InName) {
++		metadata.HoopaStartedAt = time.Now()
++	}
+ 	return conn, metadata
+ }
+diff --git a/component/hoopatrace/identity_linux.go b/component/hoopatrace/identity_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/identity_linux.go
+@@ -0,0 +1,210 @@
++//go:build linux && amd64
++
++// This experimental Linux resolver originates in Hoopa (MIT).
++// It proves only the explicitly qualified held-socket scope; not FD-transfer safety.
++package hoopatrace
++
++import (
++	"errors"
++	"fmt"
++	"net/netip"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"syscall"
++)
++
++var (
++	ErrUnknown    = errors.New("source ownership unavailable")
++	ErrShared     = errors.New("socket shared by processes")
++	ErrVisibility = errors.New("process owner set not fully visible")
++)
++
++type Identity struct {
++	PID         int
++	Name        string
++	StartTicks  string
++	BootID      string
++	NetNS       string
++	SocketInode string
++}
++
++func procAddress(addr netip.AddrPort) (string, error) {
++	if !addr.Addr().Is4() || !addr.Addr().IsLoopback() || addr.Port() == 0 {
++		return "", ErrUnknown
++	}
++	b := addr.Addr().As4()
++	return fmt.Sprintf("%02X%02X%02X%02X:%04X", b[3], b[2], b[1], b[0], addr.Port()), nil
++}
++
++func socketInode(source, entry netip.AddrPort) (string, error) {
++	local, err := procAddress(source)
++	if err != nil {
++		return "", err
++	}
++	remote, err := procAddress(entry)
++	if err != nil {
++		return "", err
++	}
++	raw, err := os.ReadFile("/proc/self/net/tcp")
++	if err != nil {
++		return "", ErrUnknown
++	}
++	found := ""
++	for _, line := range strings.Split(string(raw), "\n") {
++		f := strings.Fields(line)
++		if len(f) < 10 || f[1] != local || f[2] != remote || f[3] != "01" {
++			continue
++		}
++		uid, err := strconv.Atoi(f[7])
++		if err != nil || uid != os.Geteuid() || f[9] == "0" || found != "" {
++			return "", ErrUnknown
++		}
++		if _, err := strconv.ParseUint(f[9], 10, 64); err != nil {
++			return "", ErrUnknown
++		}
++		found = f[9]
++	}
++	if found == "" {
++		return "", ErrUnknown
++	}
++	return found, nil
++}
++
++func processIdentity(pid int) (Identity, error) {
++	dir := filepath.Join("/proc", strconv.Itoa(pid))
++	raw, err := os.ReadFile(filepath.Join(dir, "stat"))
++	if err != nil {
++		return Identity{}, ErrUnknown
++	}
++	text := string(raw)
++	left, right := strings.IndexByte(text, '('), strings.LastIndexByte(text, ')')
++	if left < 1 || right <= left || strings.TrimSpace(text[:left]) != strconv.Itoa(pid) {
++		return Identity{}, ErrUnknown
++	}
++	f := strings.Fields(text[right+1:])
++	if len(f) < 20 || f[0] == "Z" {
++		return Identity{}, ErrUnknown
++	}
++	if _, err := strconv.ParseUint(f[19], 10, 64); err != nil {
++		return Identity{}, ErrUnknown
++	}
++	ns, err := os.Readlink(filepath.Join(dir, "ns/net"))
++	if err != nil {
++		return Identity{}, ErrUnknown
++	}
++	return Identity{PID: pid, Name: text[left+1 : right], StartTicks: f[19], NetNS: ns}, nil
++}
++
++func owns(pid int, inode string) (bool, error) {
++	dir := filepath.Join("/proc", strconv.Itoa(pid), "fd")
++	fds, err := os.ReadDir(dir)
++	if err != nil {
++		return false, err
++	}
++	for _, fd := range fds {
++		v, err := os.Readlink(filepath.Join(dir, fd.Name()))
++		if err != nil && !errors.Is(err, os.ErrNotExist) {
++			return false, err
++		}
++		if v == "socket:["+inode+"]" {
++			return true, nil
++		}
++	}
++	return false, nil
++}
++
++// Resolve is deliberately limited to same-user, same-network-namespace IPv4
++// loopback sockets that remain ESTABLISHED while an entry holds admission.
++// /proc enumeration is not an atomic kernel ownership oracle: FD transfer races,
++// invisible processes and platform variants still need separate qualification.
++func Resolve(source, entry netip.AddrPort) (Identity, error) {
++	inode, err := socketInode(source, entry)
++	if err != nil {
++		return Identity{}, fmt.Errorf("source_socket: %w", err)
++	}
++	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
++	if err != nil {
++		return Identity{}, fmt.Errorf("boot_identity: %w", ErrUnknown)
++	}
++	ns, err := os.Readlink("/proc/self/ns/net")
++	if err != nil {
++		return Identity{}, fmt.Errorf("network_namespace: %w", ErrUnknown)
++	}
++	processes, err := os.ReadDir("/proc")
++	if err != nil {
++		return Identity{}, fmt.Errorf("process_listing: %w", ErrUnknown)
++	}
++	var owner Identity
++	inspected := 0
++	for _, p := range processes {
++		pid, err := strconv.Atoi(p.Name())
++		if err != nil || pid <= 0 {
++			continue
++		}
++		info, err := os.Stat(filepath.Join("/proc", p.Name()))
++		if errors.Is(err, os.ErrNotExist) {
++			continue
++		}
++		if err != nil {
++			return Identity{}, fmt.Errorf("process_stat: %w", ErrUnknown)
++		}
++		stat, ok := info.Sys().(*syscall.Stat_t)
++		if !ok {
++			return Identity{}, fmt.Errorf("process_uid: %w", ErrUnknown)
++		}
++		if stat.Uid != uint32(os.Geteuid()) {
++			continue
++		}
++		inspected++
++		if inspected > 4096 {
++			return Identity{}, fmt.Errorf("process_limit: %w", ErrUnknown)
++		}
++		match, err := owns(pid, inode)
++		if errors.Is(err, os.ErrNotExist) {
++			continue
++		}
++		if err != nil {
++			if errors.Is(err, os.ErrPermission) {
++				return Identity{}, fmt.Errorf("%w: %w", ErrUnknown, ErrVisibility)
++			}
++			return Identity{}, fmt.Errorf("descriptor_listing: %w", ErrUnknown)
++		}
++		if !match {
++			continue
++		}
++		// Unrelated zombies have no descriptors and need no live identity.
++		// Bookend a second descriptor check for each actual candidate owner.
++		before, err := processIdentity(pid)
++		if err != nil {
++			return Identity{}, fmt.Errorf("candidate_identity: %w", ErrUnknown)
++		}
++		if match, err := owns(pid, inode); err != nil || !match {
++			return Identity{}, fmt.Errorf("candidate_descriptor: %w", ErrUnknown)
++		}
++		after, err := processIdentity(pid)
++		if err != nil || before != after || after.NetNS != ns {
++			return Identity{}, fmt.Errorf("candidate_changed: %w", ErrUnknown)
++		}
++		if owner.PID != 0 {
++			return Identity{}, ErrShared
++		}
++		owner = after
++	}
++	if owner.PID == 0 {
++		return Identity{}, fmt.Errorf("no_owner: %w", ErrUnknown)
++	}
++	if current, err := socketInode(source, entry); err != nil || current != inode {
++		return Identity{}, fmt.Errorf("socket_changed: %w", ErrUnknown)
++	}
++	if match, err := owns(owner.PID, inode); err != nil || !match {
++		return Identity{}, fmt.Errorf("owner_descriptor_changed: %w", ErrUnknown)
++	}
++	if current, err := processIdentity(owner.PID); err != nil || current != owner {
++		return Identity{}, fmt.Errorf("owner_identity_changed: %w", ErrUnknown)
++	}
++	owner.BootID = strings.TrimSpace(string(boot))
++	owner.SocketInode = inode
++	return owner, nil
++}
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/trace_linux.go
+@@ -0,0 +1,768 @@
++//go:build linux && amd64
++
++// Package hoopatrace is an opt-in TCP source experiment, not a production API.
++// New code copyright Hoopa contributors, MIT; combined core remains subject to
++// upstream Mihomo's GNU GPL version 3. No payload, argv or environment is stored.
++package hoopatrace
++
++import (
++	"bytes"
++	"crypto/rand"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"net/netip"
++	"net/url"
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"sync"
++	"syscall"
++	"time"
++)
++
++const maxFrame = 8192
++const flowBudget = 20 * (maxFrame + 36)
++const maxActive = 32
++const defaultLimit = 8 * 1024 * 1024
++
++var ErrSource = errors.New("experimental source unavailable")
++
++type ProcessEvidence struct {
++	Status      string `json:"status"`
++	Reason      string `json:"reason,omitempty"`
++	PID         int    `json:"pid,omitempty"`
++	Name        string `json:"name,omitempty"`
++	NameSource  string `json:"name_source,omitempty"`
++	StartTicks  string `json:"start_ticks,omitempty"`
++	BootID      string `json:"boot_id,omitempty"`
++	PIDNS       string `json:"pid_namespace,omitempty"`
++	NetNS       string `json:"network_namespace,omitempty"`
++	SocketInode string `json:"socket_inode,omitempty"`
++	Path        string `json:"path,omitempty"`
++}
++
++type source struct {
++	mu                    sync.Mutex
++	root                  *os.Root
++	lock, file            *os.File
++	epoch, generation     string
++	seq                   uint64
++	used, reserved, limit int64
++	poisoned              bool
++	readOnly              bool
++	flows                 map[string]*Flow
++	wake                  chan struct{}
++	done                  chan struct{}
++	closeOnce             sync.Once
++	receiver, secret      string
++}
++type Flow struct {
++	mu             sync.Mutex
++	once           sync.Once
++	s              *source
++	id             string
++	identity       ProcessEvidence
++	started        time.Time
++	attempt        int
++	connection     string
++	up, down       uint64
++	invalid        bool
++	counterInvalid bool
++	reserved       int64
++}
++type Attempt struct {
++	once    sync.Once
++	f       *Flow
++	id      string
++	started time.Time
++}
++
++var global struct {
++	once sync.Once
++	s    *source
++	err  error
++}
++
++func Enabled(inName string) bool {
++	name := os.Getenv("HOOPA_TRACE_INBOUND")
++	return name != "" && name == inName
++}
++func token(s string) bool {
++	if len(s) == 0 || len(s) > 128 {
++		return false
++	}
++	for i, c := range []byte(s) {
++		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
++		if !alpha && (i == 0 || c != '.' && c != '_' && c != ':' && c != '-') {
++			return false
++		}
++	}
++	return true
++}
++func randomID(prefix string) (string, error) {
++	var b [16]byte
++	if _, err := rand.Read(b[:]); err != nil {
++		return "", ErrSource
++	}
++	return prefix + hex.EncodeToString(b[:]), nil
++}
++func privateFile(root *os.Root, name string, flags int) (*os.File, error) {
++	if fi, err := root.Lstat(name); err == nil {
++		st, ok := fi.Sys().(*syscall.Stat_t)
++		if !ok || st.Uid != uint32(os.Geteuid()) || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0600 {
++			return nil, ErrSource
++		}
++	} else if !errors.Is(err, os.ErrNotExist) {
++		return nil, ErrSource
++	}
++	f, err := root.OpenFile(name, flags|syscall.O_NOFOLLOW, 0600)
++	if err != nil {
++		return nil, ErrSource
++	}
++	fi, err := f.Stat()
++	if err != nil {
++		f.Close()
++		return nil, ErrSource
++	}
++	st, ok := fi.Sys().(*syscall.Stat_t)
++	if !ok || st.Uid != uint32(os.Geteuid()) || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0600 {
++		f.Close()
++		return nil, ErrSource
++	}
++	return f, nil
++}
++func syncDir(root *os.Root) error {
++	f, err := root.Open(".")
++	if err != nil {
++		return ErrSource
++	}
++	defer f.Close()
++	if f.Sync() != nil {
++		return ErrSource
++	}
++	return nil
++}
++func openSource(dir, generation, receiver, secret string, limit int64) (*source, error) {
++	if !filepath.IsAbs(dir) || !token(generation) || limit < flowBudget || limit > defaultLimit {
++		return nil, ErrSource
++	}
++	fi, err := os.Lstat(dir)
++	if err != nil || !fi.IsDir() || fi.Mode().Perm() != 0700 {
++		return nil, ErrSource
++	}
++	st, ok := fi.Sys().(*syscall.Stat_t)
++	if !ok || st.Uid != uint32(os.Geteuid()) {
++		return nil, ErrSource
++	}
++	if receiver != "" {
++		u, e := url.Parse(receiver)
++		if e != nil || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || secret == "" {
++			return nil, ErrSource
++		}
++		ip, e := netip.ParseAddr(u.Hostname())
++		if e != nil || !ip.IsLoopback() || u.Port() == "" {
++			return nil, ErrSource
++		}
++	}
++	root, err := os.OpenRoot(dir)
++	if err != nil {
++		return nil, ErrSource
++	}
++	lock, err := privateFile(root, "source.lock", os.O_CREATE|os.O_RDWR)
++	if err != nil {
++		root.Close()
++		return nil, err
++	}
++	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
++		lock.Close()
++		root.Close()
++		return nil, ErrSource
++	}
++	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret}
++	ok = false
++	defer func() {
++		if !ok {
++			s.close()
++		}
++	}()
++	entries, err := root.Open(".")
++	if err != nil {
++		return nil, ErrSource
++	}
++	names, err := entries.ReadDir(-1)
++	entries.Close()
++	if err != nil {
++		return nil, ErrSource
++	}
++	epochs := 0
++	for _, entry := range names {
++		if strings.HasPrefix(entry.Name(), "epoch-") && strings.HasSuffix(entry.Name(), ".source.json") {
++			f, e := privateFile(root, entry.Name(), os.O_RDONLY)
++			if e != nil {
++				return nil, e
++			}
++			info, e := f.Stat()
++			f.Close()
++			if e != nil || info.Size() > maxFrame {
++				return nil, ErrSource
++			}
++			s.used += info.Size()
++			if s.used > limit {
++				return nil, ErrSource
++			}
++			continue
++		}
++		if !strings.HasPrefix(entry.Name(), "epoch-") || !strings.HasSuffix(entry.Name(), ".frames") {
++			continue
++		}
++		epochs++
++		if epochs > 32 {
++			return nil, ErrSource
++		}
++		f, e := privateFile(root, entry.Name(), os.O_RDONLY)
++		if e != nil {
++			return nil, e
++		}
++		info, e := f.Stat()
++		if e != nil {
++			f.Close()
++			return nil, ErrSource
++		}
++		s.used += info.Size()
++		if s.used > limit {
++			f.Close()
++			return nil, ErrSource
++		}
++		expectedEpoch := "epoch:" + strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "epoch-"), ".frames")
++		_, e = readFrames(f, func(raw []byte) error {
++			var m struct {
++				SourceEpoch string `json:"source_epoch"`
++			}
++			if json.Unmarshal(raw, &m) != nil || m.SourceEpoch != expectedEpoch {
++				return ErrSource
++			}
++			return nil
++		})
++		f.Close()
++		if e != nil {
++			return nil, e
++		}
++	}
++	// Capacity prevents new source epochs/flows, but never prevents replay of
++	// already durable records. This prototype deliberately performs no reclamation.
++	if epochs == 32 || s.used+flowBudget+maxFrame > limit {
++		s.readOnly = true
++		ok = true
++		return s, nil
++	}
++	self, err := processIdentity(os.Getpid())
++	if err != nil {
++		return nil, ErrSource
++	}
++	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
++	if err != nil {
++		return nil, ErrSource
++	}
++	exe, err := os.Executable()
++	if err != nil {
++		return nil, ErrSource
++	}
++	f, err := os.Open(exe)
++	if err != nil {
++		return nil, ErrSource
++	}
++	h := sha256.New()
++	_, err = io.Copy(h, f)
++	f.Close()
++	if err != nil {
++		return nil, ErrSource
++	}
++	nonce, err := randomID("")
++	if err != nil {
++		return nil, err
++	}
++	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%x|%s|%d|%s|%s", exe, h.Sum(nil), strings.TrimSpace(string(boot)), self.PID, self.StartTicks, nonce)))
++	s.epoch = "epoch:" + hex.EncodeToString(digest[:])
++	manifest, err := json.Marshal(map[string]any{"schema_version": 1, "source_epoch": s.epoch, "binary_path": exe, "binary_sha256": hex.EncodeToString(h.Sum(nil)), "boot_id": strings.TrimSpace(string(boot)), "pid": self.PID, "start_ticks": self.StartTicks, "nonce": nonce, "config_generation": generation, "max_source_bytes": limit, "max_frame_bytes": maxFrame, "max_active_flows": maxActive, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"})
++	if err != nil || len(manifest) > maxFrame || s.used+int64(len(manifest))+flowBudget > limit {
++		return nil, ErrSource
++	}
++	meta, err := privateFile(root, "epoch-"+hex.EncodeToString(digest[:])+".source.json", os.O_CREATE|os.O_EXCL|os.O_WRONLY)
++	if err != nil {
++		return nil, err
++	}
++	n, err := meta.Write(manifest)
++	if err != nil || n != len(manifest) || meta.Sync() != nil {
++		meta.Close()
++		return nil, ErrSource
++	}
++	meta.Close()
++	s.used += int64(len(manifest))
++	s.file, err = privateFile(root, "epoch-"+hex.EncodeToString(digest[:])+".frames", os.O_CREATE|os.O_EXCL|os.O_WRONLY)
++	if err != nil {
++		return nil, err
++	}
++	if s.file.Sync() != nil || syncDir(root) != nil {
++		return nil, ErrSource
++	}
++	ok = true
++	return s, nil
++}
++func (s *source) close() {
++	s.closeOnce.Do(func() {
++		close(s.done)
++		if s.file != nil {
++			s.file.Close()
++		}
++		if s.lock != nil {
++			s.lock.Close()
++		}
++		if s.root != nil {
++			s.root.Close()
++		}
++	})
++}
++func initialize() {
++	limit := int64(defaultLimit)
++	if v := os.Getenv("HOOPA_TRACE_MAX_BYTES"); v != "" {
++		n, e := strconv.ParseInt(v, 10, 64)
++		if e != nil {
++			global.err = ErrSource
++			return
++		}
++		limit = n
++	}
++	global.s, global.err = openSource(os.Getenv("HOOPA_TRACE_DIR"), os.Getenv("HOOPA_TRACE_GENERATION"), os.Getenv("HOOPA_TRACE_RECEIVER"), os.Getenv("HOOPA_TRACE_SECRET"), limit)
++	if global.err == nil && global.s.receiver != "" {
++		go global.s.send()
++	}
++}
++func evidence(peer, local net.Addr) ProcessEvidence {
++	unknown := func(reason string) ProcessEvidence { return ProcessEvidence{Status: "unknown", Reason: reason} }
++	if peer == nil || local == nil {
++		return unknown("socket_scope")
++	}
++	p, e := netip.ParseAddrPort(peer.String())
++	if e != nil {
++		return unknown("socket_scope")
++	}
++	l, e := netip.ParseAddrPort(local.String())
++	if e != nil {
++		return unknown("socket_scope")
++	}
++	id, e := Resolve(p, l)
++	if e != nil {
++		reason := "owner_unavailable"
++		if errors.Is(e, ErrShared) {
++			reason = "shared_socket"
++		}
++		if errors.Is(e, ErrVisibility) {
++			reason = "owner_visibility"
++		}
++		return unknown(reason)
++	}
++	pidns, e := os.Readlink(fmt.Sprintf("/proc/%d/ns/pid", id.PID))
++	if e != nil {
++		return unknown("pid_namespace_unavailable")
++	}
++	path, e := os.Readlink(fmt.Sprintf("/proc/%d/exe", id.PID))
++	if e != nil {
++		return unknown("executable_unavailable")
++	}
++	after, e := processIdentity(id.PID)
++	if e != nil || after.StartTicks != id.StartTicks || after.Name != id.Name || after.NetNS != id.NetNS {
++		return unknown("identity_changed")
++	}
++	ownsNow, e := owns(id.PID, id.SocketInode)
++	if e != nil || !ownsNow {
++		return unknown("socket_changed")
++	}
++	return ProcessEvidence{Status: "identified", PID: id.PID, Name: id.Name, NameSource: "linux_proc_comm", StartTicks: id.StartTicks, BootID: id.BootID, PIDNS: pidns, NetNS: id.NetNS, SocketInode: id.SocketInode, Path: path}
++}
++func Begin(inName string, peer, local net.Addr, host, dstIP string, started time.Time) (*Flow, error) {
++	if !Enabled(inName) {
++		return nil, nil
++	}
++	global.once.Do(initialize)
++	if global.err != nil {
++		return nil, ErrSource
++	}
++	return global.s.begin(peer, local, host, dstIP, started)
++}
++func (s *source) begin(peer, local net.Addr, host, dstIP string, started time.Time) (*Flow, error) {
++	id, err := randomID("flow:")
++	if err != nil {
++		return nil, err
++	}
++	if started.IsZero() {
++		return nil, ErrSource
++	}
++	ident := evidence(peer, local)
++	f := &Flow{s: s, id: id, identity: ident, started: started, reserved: flowBudget}
++	s.mu.Lock()
++	if s.poisoned || s.readOnly || len(s.flows) >= maxActive || s.used+s.reserved+flowBudget > s.limit {
++		s.mu.Unlock()
++		return nil, ErrSource
++	}
++	s.flows[id] = f
++	s.reserved += flowBudget
++	s.mu.Unlock()
++	targetKind, target := "unknown", ""
++	if host != "" {
++		targetKind, target = "host", host
++	} else if dstIP != "" {
++		targetKind, target = "ip_only", dstIP
++	}
++	f.mu.Lock()
++	peerText, localText := "", ""
++	if peer != nil {
++		peerText = peer.String()
++	}
++	if local != nil {
++		localText = local.String()
++	}
++	err = s.append(f, "opened", f.attemptID(), map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"})
++	f.mu.Unlock()
++	if err != nil {
++		s.mu.Lock()
++		if !s.poisoned {
++			s.reserved -= f.reserved
++			f.reserved = 0
++			delete(s.flows, f.id)
++		}
++		s.mu.Unlock()
++		return nil, err
++	}
++	return f, nil
++}
++func (s *source) append(f *Flow, kind, attempt string, extra map[string]any) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.poisoned {
++		return ErrSource
++	}
++	if s.seq == ^uint64(0) {
++		s.poisoned = true
++		return ErrSource
++	}
++	seq := s.seq + 1
++	obj := map[string]any{"schema_version": 1, "source_instance_id": "source:" + strings.TrimPrefix(s.epoch, "epoch:"), "source_epoch": s.epoch, "event_id": "event:" + strings.TrimPrefix(s.epoch, "epoch:") + ":" + strconv.FormatUint(seq, 10), "source_seq": strconv.FormatUint(seq, 10), "flow_id": f.id, "attempt_id": attempt, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "config_generation": s.generation, "boundary_ref": "mihomo_proxy_stream_v1", "kind": kind}
++	for k, v := range extra {
++		obj[k] = v
++	}
++	raw, err := json.Marshal(obj)
++	if err != nil || len(raw) > maxFrame {
++		return ErrSource
++	}
++	frame := make([]byte, 4+len(raw)+sha256.Size)
++	binary.BigEndian.PutUint32(frame[:4], uint32(len(raw)))
++	copy(frame[4:], raw)
++	sum := sha256.Sum256(raw)
++	copy(frame[4+len(raw):], sum[:])
++	if int64(len(frame)) > f.reserved || s.used+int64(len(frame)) > s.limit {
++		return ErrSource
++	}
++	// The final cumulative frame and an explicit dimension gap have independent
++	// headroom. Intermediate events cannot borrow either terminal reservation.
++	terminalReserve := int64(2 * (maxFrame + 36))
++	if kind != "closed" && kind != "gap" && f.reserved-int64(len(frame)) < terminalReserve {
++		return ErrSource
++	}
++	n, err := s.file.Write(frame)
++	if err != nil || n != len(frame) || s.file.Sync() != nil {
++		s.poisoned = true
++		return ErrSource
++	}
++	s.seq = seq
++	s.used += int64(len(frame))
++	f.reserved -= int64(len(frame))
++	s.reserved -= int64(len(frame))
++	select {
++	case s.wake <- struct{}{}:
++	default:
++	}
++	return nil
++}
++func readFrames(r io.Reader, visit func([]byte) error) (uint64, error) {
++	var seq uint64
++	for {
++		var head [4]byte
++		_, err := io.ReadFull(r, head[:])
++		if err == io.EOF {
++			return seq, nil
++		}
++		if err != nil {
++			return seq, ErrSource
++		}
++		n := binary.BigEndian.Uint32(head[:])
++		if n == 0 || n > maxFrame {
++			return seq, ErrSource
++		}
++		b := make([]byte, int(n)+sha256.Size)
++		if _, err = io.ReadFull(r, b); err != nil {
++			return seq, ErrSource
++		}
++		sum := sha256.Sum256(b[:n])
++		if !bytes.Equal(sum[:], b[n:]) {
++			return seq, ErrSource
++		}
++		var meta struct {
++			SourceSeq string `json:"source_seq"`
++		}
++		if json.Unmarshal(b[:n], &meta) != nil {
++			return seq, ErrSource
++		}
++		got, e := strconv.ParseUint(meta.SourceSeq, 10, 64)
++		if e != nil || got != seq+1 || strconv.FormatUint(got, 10) != meta.SourceSeq {
++			return seq, ErrSource
++		}
++		seq = got
++		if visit != nil {
++			if err = visit(b[:n]); err != nil {
++				return seq, err
++			}
++		}
++	}
++}
++func (s *source) send() {
++	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
++	// Per-file positions are advisory only: restart replays stable IDs. No source
++	// segment is reclaimed by this bounded prototype, including after HTTP ACK.
++	positions := map[string]uint64{}
++	for {
++		entries, err := s.root.Open(".")
++		if err != nil {
++			return
++		}
++		names, err := entries.ReadDir(-1)
++		entries.Close()
++		if err != nil {
++			return
++		}
++		for _, name := range names {
++			if !strings.HasPrefix(name.Name(), "epoch-") || !strings.HasSuffix(name.Name(), ".frames") {
++				continue
++			}
++			s.mu.Lock()
++			f, e := privateFile(s.root, name.Name(), os.O_RDONLY)
++			var rawFrames [][]byte
++			if e == nil {
++				_, e = readFrames(f, func(raw []byte) error { rawFrames = append(rawFrames, append([]byte(nil), raw...)); return nil })
++				f.Close()
++			}
++			s.mu.Unlock()
++			if e != nil {
++				continue
++			}
++			for i, raw := range rawFrames {
++				if uint64(i+1) <= positions[name.Name()] {
++					continue
++				}
++				req, e := http.NewRequest(http.MethodPost, s.receiver, bytes.NewReader(raw))
++				if e != nil {
++					break
++				}
++				req.Header.Set("Content-Type", "application/json")
++				req.Header.Set("Authorization", "Bearer "+s.secret)
++				resp, e := client.Do(req)
++				if e != nil {
++					break
++				}
++				io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
++				resp.Body.Close()
++				if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++					break
++				}
++				positions[name.Name()] = uint64(i + 1)
++			}
++		}
++		select {
++		case <-s.done:
++			return
++		case <-s.wake:
++		case <-time.After(250 * time.Millisecond):
++		}
++	}
++}
++func Lookup(id string) *Flow {
++	s := global.s
++	if s == nil {
++		return nil
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return s.flows[id]
++}
++func (f *Flow) ID() string {
++	if f == nil {
++		return ""
++	}
++	return f.id
++}
++func (f *Flow) Identity() ProcessEvidence {
++	if f == nil {
++		return ProcessEvidence{Status: "unknown", Reason: "not_traced"}
++	}
++	return f.identity
++}
++func (f *Flow) attemptID() string { return f.id + ":attempt:" + strconv.Itoa(f.attempt) }
++func (f *Flow) Decide(rule, rulePayload, target string) error {
++	if f == nil {
++		return nil
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	err := f.s.append(f, "route_decided", f.attemptID(), map[string]any{"rule": rule, "rule_payload": rulePayload, "logical_target": target, "process": f.identity})
++	if err != nil {
++		f.invalid = true
++	}
++	return err
++}
++func (f *Flow) NewAttempt() *Attempt {
++	if f == nil {
++		return nil
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.attempt++
++	return &Attempt{f: f, id: f.attemptID(), started: time.Now()}
++}
++func (a *Attempt) Finish(err error, chains, providers []string, ready bool) {
++	if a == nil {
++		return
++	}
++	a.once.Do(func() {
++		f := a.f
++		f.mu.Lock()
++		defer f.mu.Unlock()
++		outcome, stage := "success", ""
++		var duration any
++		if err != nil {
++			outcome = "failure"
++			stage = "dial_or_handshake"
++			if ne, ok := err.(net.Error); ok && ne.Timeout() {
++				outcome = "timeout"
++			}
++		} else if !ready {
++			outcome = "unknown"
++			stage = "ready_unproven"
++		} else {
++			duration = time.Since(a.started).Milliseconds()
++		}
++		var flowDuration any
++		if err == nil && ready {
++			flowDuration = time.Since(f.started).Milliseconds()
++		}
++		extra := map[string]any{"definition": "attempt_dial_handshake_v1_candidate", "duration_ms": duration, "waited_ms": time.Since(a.started).Milliseconds(), "flow_duration_ms": flowDuration, "flow_waited_ms": time.Since(f.started).Milliseconds(), "flow_definition": "request_known_to_ready_v1_candidate", "outcome": outcome, "failure_stage": stage, "ordered_chain": append([]string{}, chains...), "provider_chain": append([]string{}, providers...), "route_evidence": "returned_conn_only", "protocol_ready_validation": "unverified"}
++		if f.s.append(f, "setup_finished", a.id, extra) != nil {
++			f.invalid = true
++		}
++	})
++}
++func (f *Flow) Bind(id string) {
++	if f == nil {
++		return
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.connection = id
++	if f.s.append(f, "route_decided", f.attemptID(), map[string]any{"phase": "connection_binding", "connection_id": id}) != nil {
++		f.invalid = true
++	}
++}
++
++// Check is used before admitting relay after the connection binding is durable.
++func (f *Flow) Check() error {
++	if f == nil {
++		return nil
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.s.mu.Lock()
++	defer f.s.mu.Unlock()
++	if f.invalid || f.s.poisoned {
++		return ErrSource
++	}
++	return nil
++}
++func (f *Flow) AddUpload(n int) {
++	if f == nil || n <= 0 {
++		return
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if ^uint64(0)-f.up < uint64(n) {
++		f.invalid = true
++		f.counterInvalid = true
++		return
++	}
++	f.up += uint64(n)
++}
++func (f *Flow) AddDownload(n int) {
++	if f == nil || n <= 0 {
++		return
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if ^uint64(0)-f.down < uint64(n) {
++		f.invalid = true
++		f.counterInvalid = true
++		return
++	}
++	f.down += uint64(n)
++}
++func (f *Flow) Close() {
++	if f == nil {
++		return
++	}
++	f.once.Do(func() {
++		f.mu.Lock()
++		defer f.mu.Unlock()
++		if !f.counterInvalid {
++			// Counter frames deliberately have exactly the 13 frozen profile fields.
++			if f.s.append(f, "closed", f.attemptID(), map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}) != nil {
++				f.invalid = true
++			}
++		}
++		if f.invalid {
++			dimensions := []string{"route_or_setup"}
++			if f.counterInvalid {
++				dimensions = []string{"bytes", "route_or_setup"}
++			}
++			_ = f.s.append(f, "gap", f.attemptID(), map[string]any{"reason": "source_event_uncertain", "dimensions": dimensions, "upload_bytes": nil, "download_bytes": nil, "connection_id": f.connection})
++		}
++		f.s.mu.Lock()
++		f.s.reserved -= f.reserved
++		f.reserved = 0
++		delete(f.s.flows, f.id)
++		f.s.mu.Unlock()
++	})
++}
++func (f *Flow) MatchProcess(field, pattern string) int8 {
++	if f == nil || f.identity.Status != "identified" {
++		return -1
++	}
++	var value string
++	switch field {
++	case "name":
++		value = f.identity.Name
++	case "path":
++		value = f.identity.Path
++	case "instance":
++		value = f.identity.BootID + ":" + f.identity.PIDNS + ":" + strconv.Itoa(f.identity.PID) + ":" + f.identity.StartTicks
++	default:
++		return -1
++	}
++	if value == pattern {
++		return 1
++	}
++	return 0
++}
+diff --git a/component/hoopatrace/trace_linux_test.go b/component/hoopatrace/trace_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/trace_linux_test.go
+@@ -0,0 +1,373 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"encoding/json"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++)
++
++func testSource(t *testing.T, limit int64) *source {
++	t.Helper()
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	s, err := openSource(dir, "test-generation", "", "", limit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(s.close)
++	return s
++}
++func frames(t *testing.T, s *source) [][]byte {
++	t.Helper()
++	f, err := s.root.Open(filepath.Base(s.file.Name()))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	var rows [][]byte
++	if _, err = readFrames(f, func(b []byte) error { rows = append(rows, append([]byte{}, b...)); return nil }); err != nil {
++		t.Fatal(err)
++	}
++	return rows
++}
++func TestSourceCumulativeFinalAndStableReplay(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err = f.Decide("MATCH", "", "group-a"); err != nil {
++		t.Fatal(err)
++	}
++	a := f.NewAttempt()
++	a.Finish(nil, []string{"node-a", "group-a"}, []string{"provider-a"}, true)
++	f.Bind("tracker-1")
++	f.AddUpload(9007199254740993)
++	f.AddDownload(73)
++	f.Close()
++	f.Close()
++	first, second := frames(t, s), frames(t, s)
++	if len(first) != 5 || len(first) != len(second) {
++		t.Fatalf("unexpected lifecycle count %d", len(first))
++	}
++	for i := range first {
++		if !bytes.Equal(first[i], second[i]) {
++			t.Fatal("replay changed original frame")
++		}
++	}
++	var m map[string]json.RawMessage
++	if json.Unmarshal(first[len(first)-1], &m) != nil {
++		t.Fatal("bad json")
++	}
++	if len(m) != 13 || string(m["kind"]) != `"closed"` || string(m["upload_bytes"]) != `"9007199254740993"` || string(m["download_bytes"]) != `"73"` || string(m["source_seq"]) != `"5"` {
++		t.Fatalf("counter profile changed: %s", first[len(first)-1])
++	}
++	if _, ok := m["receipt_seq"]; ok {
++		t.Fatal("receipt sequence in source")
++	}
++	if len(s.flows) != 0 || s.reserved != 0 {
++		t.Fatal("flow reservation leaked")
++	}
++}
++func TestSourceManifestAndNewCoreEpoch(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	dir := s.root.Name()
++	name := strings.TrimSuffix(s.file.Name(), ".frames") + ".source.json"
++	raw, err := os.ReadFile(name)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var m map[string]json.RawMessage
++	if json.Unmarshal(raw, &m) != nil {
++		t.Fatal("invalid source manifest")
++	}
++	for _, key := range []string{"source_epoch", "binary_path", "binary_sha256", "boot_id", "pid", "start_ticks", "nonce", "config_generation"} {
++		if len(m[key]) == 0 {
++			t.Fatal("missing identity", key)
++		}
++	}
++	if string(m["source_epoch"]) != strconvQuote(s.epoch) {
++		t.Fatal("source epoch not bound")
++	}
++	old := s.epoch
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	_ = f
++	s.close()
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer next.close()
++	if next.epoch == old {
++		t.Fatal("new core reused previous source identity")
++	}
++	previous, err := os.Open(strings.TrimSuffix(name, ".source.json") + ".frames")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer previous.Close()
++	seq, err := readFrames(previous, nil)
++	if err != nil || seq != 1 {
++		t.Fatal("unclosed opened census lost", seq, err)
++	}
++}
++func strconvQuote(v string) string { b, _ := json.Marshal(v); return string(b) }
++func TestSourceSharedWriterAndCorruptionRefused(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	dir := s.root.Name()
++	if other, err := openSource(dir, "test-generation", "", "", defaultLimit); err == nil {
++		other.close()
++		t.Fatal("second source writer accepted")
++	}
++	f, err := s.begin(nil, nil, "", "127.0.0.1", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.Close()
++	name := s.file.Name()
++	s.close()
++	file, err := os.OpenFile(name, os.O_APPEND|os.O_WRONLY, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	file.Write([]byte{1})
++	file.Close()
++	before, _ := os.ReadFile(name)
++	if other, err := openSource(dir, "test-generation", "", "", defaultLimit); err == nil {
++		other.close()
++		t.Fatal("corrupt tail accepted")
++	}
++	after, _ := os.ReadFile(name)
++	if !bytes.Equal(before, after) {
++		t.Fatal("corrupt tail auto repaired")
++	}
++}
++func TestSourceBoundedAdmissionReservesFinal(t *testing.T) {
++	s := testSource(t, 2*flowBudget+maxFrame)
++	a, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	b, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++		t.Fatal("unreserved admission accepted")
++	}
++	a.Close()
++	b.Close()
++	if s.used > s.limit || s.reserved != 0 || s.poisoned {
++		t.Fatal("terminal reservation failed")
++	}
++	if len(frames(t, s)) != 4 {
++		t.Fatal("missing durable opened/final")
++	}
++}
++func TestSourceIntermediateBudgetCannotConsumeTerminal(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	failed := false
++	for i := 0; i < 100; i++ {
++		if f.Decide("MATCH", strings.Repeat("a", 7000), "target") != nil {
++			failed = true
++			break
++		}
++	}
++	if !failed {
++		t.Fatal("unbounded flow event budget")
++	}
++	f.Close()
++	rows := frames(t, s)
++	closed, gaps := 0, 0
++	for _, r := range rows {
++		var m struct {
++			Kind string `json:"kind"`
++		}
++		json.Unmarshal(r, &m)
++		if m.Kind == "closed" {
++			closed++
++		}
++		if m.Kind == "gap" {
++			gaps++
++		}
++	}
++	if closed != 1 || gaps != 1 || s.poisoned {
++		t.Fatalf("terminal/gap reserve lost: closed=%d gap=%d", closed, gaps)
++	}
++}
++func TestSourceOpenedPrewriteFailureReleasesAdmission(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	if _, err := s.begin(nil, nil, strings.Repeat("x", 9000), "", time.Now()); err == nil {
++		t.Fatal("oversized opened accepted")
++	}
++	if len(s.flows) != 0 || s.reserved != 0 || s.poisoned {
++		t.Fatal("prewrite error leaked flow/reservation")
++	}
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.Close()
++}
++func TestSourceEpochLimitRetainsReplayOnlyAccess(t *testing.T) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0700)
++	var old string
++	for i := 0; i < 32; i++ {
++		s, err := openSource(dir, "test-generation", "", "", defaultLimit)
++		if err != nil {
++			t.Fatal(i, err)
++		}
++		if i == 0 {
++			f, e := s.begin(nil, nil, "example.test", "", time.Now())
++			if e != nil {
++				t.Fatal(e)
++			}
++			_ = f
++			old = s.file.Name()
++		}
++		s.close()
++	}
++	s, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal("old source replay disabled at epoch capacity", err)
++	}
++	defer s.close()
++	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++		t.Fatal("new flow admitted at epoch capacity")
++	}
++	f, err := os.Open(old)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	seq, err := readFrames(f, nil)
++	if err != nil || seq != 1 {
++		t.Fatal("old census unavailable")
++	}
++}
++func TestSourceWriteFailurePoisonsAndKeepsCensus(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	s.file.Close()
++	f.Close()
++	if !s.poisoned {
++		t.Fatal("failed terminal did not poison source")
++	}
++	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++		t.Fatal("admitted after uncertain source")
++	}
++	rows := frames(t, s)
++	if len(rows) != 1 || !bytes.Contains(rows[0], []byte(`"kind":"opened"`)) {
++		t.Fatal("lost opened census")
++	}
++}
++func TestSourceUnknownReadyAndErrorDoNotHaveSuccessDuration(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.NewAttempt().Finish(nil, nil, nil, false)
++	f.NewAttempt().Finish(io.ErrUnexpectedEOF, nil, nil, false)
++	f.Close()
++	rows := frames(t, s)
++	for _, row := range rows[1:3] {
++		var m map[string]json.RawMessage
++		json.Unmarshal(row, &m)
++		if string(m["duration_ms"]) != "null" || string(m["flow_duration_ms"]) != "null" {
++			t.Fatal("unproven/failed ready presented as success")
++		}
++	}
++}
++func TestSourceUnsafeDirectoryOrReceiverRejected(t *testing.T) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0755)
++	if s, err := openSource(dir, "test-generation", "", "", defaultLimit); err == nil {
++		s.close()
++		t.Fatal("public directory accepted")
++	}
++	os.Chmod(dir, 0700)
++	for _, receiver := range []string{"http://example.com:80/events", "https://127.0.0.1:80/events", "http://user:secret@127.0.0.1:80/events", "http://127.0.0.1:80/events?secret=x"} {
++		if s, err := openSource(dir, "test-generation", receiver, "secret", defaultLimit); err == nil {
++			s.close()
++			t.Fatal("unsafe receiver accepted")
++		}
++	}
++	if err := os.Symlink("/dev/null", filepath.Join(dir, "source.lock")); err != nil {
++		t.Fatal(err)
++	}
++	if s, err := openSource(dir, "test-generation", "", "", defaultLimit); err == nil {
++		s.close()
++		t.Fatal("symlink lock accepted")
++	}
++}
++func TestSourceSenderRetriesSamePersistedEvent(t *testing.T) {
++	if os.Getenv("HOOPA_TRACE_NETWORK_TEST") != "1" {
++		t.Skip("explicit loopback test only")
++	}
++	var mu sync.Mutex
++	var bodies [][]byte
++	done := make(chan struct{})
++	var once sync.Once
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Header.Get("Authorization") != "Bearer test-secret" {
++			w.WriteHeader(403)
++			return
++		}
++		b, _ := io.ReadAll(io.LimitReader(r.Body, maxFrame+1))
++		mu.Lock()
++		bodies = append(bodies, b)
++		n := len(bodies)
++		mu.Unlock()
++		if n == 1 {
++			w.WriteHeader(503)
++			return
++		}
++		w.WriteHeader(204)
++		once.Do(func() { close(done) })
++	}))
++	defer server.Close()
++	s := testSource(t, defaultLimit)
++	s.receiver = server.URL + "/events"
++	s.secret = "test-secret"
++	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	go s.send()
++	select {
++	case <-done:
++	case <-time.After(5 * time.Second):
++		t.Fatal("source did not retransmit")
++	}
++	s.close()
++	mu.Lock()
++	defer mu.Unlock()
++	if len(bodies) < 2 || !bytes.Equal(bodies[0], bodies[1]) || !strings.Contains(string(bodies[0]), `"source_seq":"1"`) {
++		t.Fatal("retry changed event identity/raw frame")
++	}
++	_ = f
++}
+diff --git a/constant/metadata.go b/constant/metadata.go
+--- a/constant/metadata.go
++++ b/constant/metadata.go
+@@ -6,6 +6,7 @@
+ 	"net"
+ 	"net/netip"
+ 	"strconv"
++	"time"
+ )
+ 
+ // SOCKS address types as defined in RFC 1928 section 5.
+@@ -183,29 +184,31 @@
+ 
+ // Metadata is used to store connection address
+ type Metadata struct {
+-	NetWork      NetWork    `json:"network"`
+-	Type         Type       `json:"type"`
+-	SrcIP        netip.Addr `json:"sourceIP"`
+-	DstIP        netip.Addr `json:"destinationIP"`
+-	SrcGeoIP     []string   `json:"sourceGeoIP"`      // can be nil if never queried, empty slice if got no result
+-	DstGeoIP     []string   `json:"destinationGeoIP"` // can be nil if never queried, empty slice if got no result
+-	SrcIPASN     string     `json:"sourceIPASN"`
+-	DstIPASN     string     `json:"destinationIPASN"`
+-	SrcPort      uint16     `json:"sourcePort,string"`      // `,string` is used to compatible with old version json output
+-	DstPort      uint16     `json:"destinationPort,string"` // `,string` is used to compatible with old version json output
+-	InIP         netip.Addr `json:"inboundIP"`
+-	InPort       uint16     `json:"inboundPort,string"` // `,string` is used to compatible with old version json output
+-	InName       string     `json:"inboundName"`
+-	InUser       string     `json:"inboundUser"`
+-	Host         string     `json:"host"`
+-	DNSMode      DNSMode    `json:"dnsMode"`
+-	Uid          uint32     `json:"uid"`
+-	Process      string     `json:"process"`
+-	ProcessPath  string     `json:"processPath"`
+-	SpecialProxy string     `json:"specialProxy"`
+-	SpecialRules string     `json:"specialRules"`
+-	RemoteDst    string     `json:"remoteDestination"`
+-	DSCP         uint8      `json:"dscp"`
++	HoopaFlowID    string     `json:"-"`
++	HoopaStartedAt time.Time  `json:"-"`
++	NetWork        NetWork    `json:"network"`
++	Type           Type       `json:"type"`
++	SrcIP          netip.Addr `json:"sourceIP"`
++	DstIP          netip.Addr `json:"destinationIP"`
++	SrcGeoIP       []string   `json:"sourceGeoIP"`      // can be nil if never queried, empty slice if got no result
++	DstGeoIP       []string   `json:"destinationGeoIP"` // can be nil if never queried, empty slice if got no result
++	SrcIPASN       string     `json:"sourceIPASN"`
++	DstIPASN       string     `json:"destinationIPASN"`
++	SrcPort        uint16     `json:"sourcePort,string"`      // `,string` is used to compatible with old version json output
++	DstPort        uint16     `json:"destinationPort,string"` // `,string` is used to compatible with old version json output
++	InIP           netip.Addr `json:"inboundIP"`
++	InPort         uint16     `json:"inboundPort,string"` // `,string` is used to compatible with old version json output
++	InName         string     `json:"inboundName"`
++	InUser         string     `json:"inboundUser"`
++	Host           string     `json:"host"`
++	DNSMode        DNSMode    `json:"dnsMode"`
++	Uid            uint32     `json:"uid"`
++	Process        string     `json:"process"`
++	ProcessPath    string     `json:"processPath"`
++	SpecialProxy   string     `json:"specialProxy"`
++	SpecialRules   string     `json:"specialRules"`
++	RemoteDst      string     `json:"remoteDestination"`
++	DSCP           uint8      `json:"dscp"`
+ 
+ 	RawSrcAddr net.Addr `json:"-"`
+ 	RawDstAddr net.Addr `json:"-"`
+diff --git a/rules/common/hoopa_process_test.go b/rules/common/hoopa_process_test.go
+new file mode 100644
+--- /dev/null
++++ b/rules/common/hoopa_process_test.go
+@@ -0,0 +1,50 @@
++package common
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"testing"
++)
++
++func TestHoopaProcessKeepsExactPatternAndUnknown(t *testing.T) {
++	p, _ := NewProcess("Agent", "DIRECT", C.ProcessName)
++	state, target := p.matchHoopa(func(field, pattern string) int8 {
++		if field != "name" || pattern != "Agent" {
++			t.Fatal(field, pattern)
++		}
++		return -1
++	})
++	if state != -1 || target != "DIRECT" {
++		t.Fatal(state, target)
++	}
++	if state, _ = p.MatchHoopa(&C.Metadata{HoopaFlowID: "missing-flow"}, C.RuleMatchHelper{}); state != -1 {
++		t.Fatal("missing flow must be unknown")
++	}
++	if matched, _ := p.Match(&C.Metadata{Process: "agent"}, C.RuleMatchHelper{}); !matched {
++		t.Fatal("legacy matching changed")
++	}
++	path, _ := NewProcess("/exact/Agent", "DIRECT", C.ProcessPath)
++	state, _ = path.matchHoopa(func(field, pattern string) int8 {
++		if field != "path" || pattern != "/exact/Agent" {
++			t.Fatal(field, pattern)
++		}
++		return 1
++	})
++	if state != 1 {
++		t.Fatal(state)
++	}
++	wildcard, _ := NewProcess("*", "DIRECT", C.ProcessNameWildcard)
++	if ValidateHoopaRules([]C.Rule{wildcard}) == nil {
++		t.Fatal("wildcard reported supported")
++	}
++	if state, _ = wildcard.matchHoopa(func(string, string) int8 { return 1 }); state != -1 {
++		t.Fatal("unsupported process matcher accepted")
++	}
++}
++func TestHoopaRuleCapabilityWhitelist(t *testing.T) {
++	if err := ValidateHoopaRules([]C.Rule{NewDomain("example.test", "DIRECT")}); err != nil {
++		t.Fatal(err)
++	}
++	if _, ok := any(NewDomain("example.test", "DIRECT")).(C.Rule); !ok {
++		t.Fatal("bad fixture")
++	}
++}
+diff --git a/rules/common/process.go b/rules/common/process.go
+--- a/rules/common/process.go
++++ b/rules/common/process.go
+@@ -1,6 +1,8 @@
+ package common
+ 
+ import (
++	"errors"
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	"strings"
+ 
+ 	"github.com/metacubex/mihomo/component/wildcard"
+@@ -72,3 +74,81 @@
+ }
+ 
+ var _ C.Rule = (*Process)(nil)
++
++// ValidateHoopaRules rejects unsupported candidate rule capabilities before a
++// trace flow begins. It does not perform configuration-loader validation.
++func ValidateHoopaRules(rules []C.Rule) error {
++	for _, rule := range rules {
++		if err := ValidateHoopaRule(rule); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++func ValidateHoopaRule(rule C.Rule) error {
++	if wrapper, ok := rule.(C.RuleWrapper); ok {
++		return ValidateHoopaRule(wrapper.Unwrap())
++	}
++	if supported, ok := rule.(interface{ ValidateHoopa() error }); ok {
++		return supported.ValidateHoopa()
++	}
++	if rule != nil && hoopaAtomic(rule.RuleType()) {
++		return nil
++	}
++	return errors.New("unsupported Hoopa trace rule capability")
++}
++func hoopaAtomic(kind C.RuleType) bool {
++	switch kind {
++	case C.Domain, C.DomainSuffix, C.DomainKeyword, C.DomainRegex, C.DomainWildcard, C.GEOSITE, C.GEOIP, C.SrcGEOIP, C.IPASN, C.SrcIPASN, C.IPCIDR, C.SrcIPCIDR, C.IPSuffix, C.SrcIPSuffix, C.SrcPort, C.DstPort, C.InPort, C.DSCP, C.InUser, C.InName, C.InType, C.Network, C.MATCH:
++		return true
++	default:
++		return false
++	}
++}
++
++// MatchHoopa preserves ordered evaluation. Unknown is not boolean false: an
++// encountered unknown that can change the selected target must reject the flow.
++func MatchHoopa(rule C.Rule, metadata *C.Metadata, helper C.RuleMatchHelper) (int8, string) {
++	if wrapper, ok := rule.(C.RuleWrapper); ok {
++		if wrapper.IsDisabled() {
++			return 0, ""
++		}
++		return MatchHoopa(wrapper.Unwrap(), metadata, helper)
++	}
++	if matcher, ok := rule.(interface {
++		MatchHoopa(*C.Metadata, C.RuleMatchHelper) (int8, string)
++	}); ok {
++		return matcher.MatchHoopa(metadata, helper)
++	}
++	if rule == nil || !hoopaAtomic(rule.RuleType()) {
++		return -1, ""
++	}
++	matched, target := rule.Match(metadata, helper)
++	if matched {
++		return 1, target
++	}
++	return 0, target
++}
++func (ps *Process) ValidateHoopa() error {
++	if ps.ruleType != C.ProcessName && ps.ruleType != C.ProcessPath {
++		return errors.New("unsupported Hoopa process rule capability")
++	}
++	return nil
++}
++func (ps *Process) matchHoopa(match func(string, string) int8) (int8, string) {
++	if ps.ValidateHoopa() != nil {
++		return -1, ps.adapter
++	}
++	field := "name"
++	if ps.ruleType == C.ProcessPath {
++		field = "path"
++	}
++	return match(field, ps.pattern), ps.adapter
++}
++func (ps *Process) MatchHoopa(metadata *C.Metadata, _ C.RuleMatchHelper) (int8, string) {
++	flow := hoopatrace.Lookup(metadata.HoopaFlowID)
++	if flow == nil {
++		return -1, ps.adapter
++	}
++	return ps.matchHoopa(flow.MatchProcess)
++}
+diff --git a/rules/logic/hoopa_logic_test.go b/rules/logic/hoopa_logic_test.go
+new file mode 100644
+--- /dev/null
++++ b/rules/logic/hoopa_logic_test.go
+@@ -0,0 +1,51 @@
++package logic
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/rules/common"
++	"testing"
++)
++
++type triRule struct {
++	common.Base
++	state int8
++}
++
++func (r triRule) RuleType() C.RuleType                                     { return C.Domain }
++func (r triRule) Match(*C.Metadata, C.RuleMatchHelper) (bool, string)      { return r.state == 1, "DIRECT" }
++func (r triRule) MatchHoopa(*C.Metadata, C.RuleMatchHelper) (int8, string) { return r.state, "DIRECT" }
++func (r triRule) Adapter() string                                          { return "DIRECT" }
++func (r triRule) Payload() string                                          { return "synthetic" }
++func TestHoopaANDFalseOverridesUnknown(t *testing.T) {
++	for _, tc := range []struct {
++		states []int8
++		want   int8
++	}{
++		{[]int8{-1, 0}, 0}, {[]int8{0, -1}, 0}, {[]int8{-1, 1}, -1}, {[]int8{1, 1}, 1}, {[]int8{-1, -1}, -1},
++	} {
++		logic := &Logic{ruleType: C.AND, adapter: "DIRECT"}
++		for _, s := range tc.states {
++			logic.rules = append(logic.rules, &triRule{state: s})
++		}
++		got, target := logic.MatchHoopa(&C.Metadata{}, C.RuleMatchHelper{})
++		if got != tc.want || target != "DIRECT" {
++			t.Fatal(tc.states, got, target)
++		}
++	}
++}
++func TestHoopaRejectsUnsupportedLogicAndRecursesCapability(t *testing.T) {
++	for _, kind := range []C.RuleType{C.OR, C.NOT, C.SubRules} {
++		rule := &Logic{ruleType: kind, rules: []C.Rule{&triRule{state: 1}}}
++		if common.ValidateHoopaRules([]C.Rule{rule}) == nil {
++			t.Fatal("unsupported logic accepted", kind)
++		}
++		if state, _ := rule.MatchHoopa(&C.Metadata{}, C.RuleMatchHelper{}); state != -1 {
++			t.Fatal("unsupported logic silently matched", kind)
++		}
++	}
++	unsupported := &Logic{ruleType: C.OR, rules: []C.Rule{&triRule{state: 1}}}
++	and := &Logic{ruleType: C.AND, rules: []C.Rule{&triRule{state: 1}, unsupported}}
++	if common.ValidateHoopaRules([]C.Rule{and}) == nil {
++		t.Fatal("nested unsupported logic passed")
++	}
++}
+diff --git a/rules/logic/logic.go b/rules/logic/logic.go
+--- a/rules/logic/logic.go
++++ b/rules/logic/logic.go
+@@ -255,3 +255,31 @@
+ }
+ 
+ var _ C.Rule = (*Logic)(nil)
++
++// Only AND has candidate trace support. Unsupported combinations are rejected
++// by capability validation rather than being advertised as permanently false.
++func (logic *Logic) ValidateHoopa() error {
++	if logic.ruleType != C.AND || len(logic.rules) == 0 {
++		return fmt.Errorf("unsupported Hoopa logic rule capability")
++	}
++	return common.ValidateHoopaRules(logic.rules)
++}
++func (logic *Logic) MatchHoopa(metadata *C.Metadata, helper C.RuleMatchHelper) (int8, string) {
++	if logic.ruleType != C.AND || len(logic.rules) == 0 {
++		return -1, logic.adapter
++	}
++	unknown := false
++	for _, rule := range logic.rules {
++		state, _ := common.MatchHoopa(rule, metadata, helper)
++		if state == 0 {
++			return 0, logic.adapter
++		}
++		if state != 1 {
++			unknown = true
++		}
++	}
++	if unknown {
++		return -1, logic.adapter
++	}
++	return 1, logic.adapter
++}
+diff --git a/tunnel/hoopa_trace_test.go b/tunnel/hoopa_trace_test.go
+new file mode 100644
+--- /dev/null
++++ b/tunnel/hoopa_trace_test.go
+@@ -0,0 +1,66 @@
++package tunnel
++
++import (
++	"errors"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/rules/common"
++	"net"
++	"testing"
++)
++
++func TestHoopaReadyNeverUsesEmptyLazyPeek(t *testing.T) {
++	for _, tc := range []struct {
++		before, after bool
++		n             int
++		err           error
++		want          bool
++	}{
++		{true, true, 0, nil, false}, {true, false, 0, nil, false}, {true, false, 1, nil, true}, {true, true, 1, nil, false}, {false, false, 0, nil, true}, {true, false, 1, errors.New("write failed"), false},
++	} {
++		if got := hoopaSetupReady(tc.before, tc.after, tc.n, tc.err); got != tc.want {
++			t.Fatal(tc, got)
++		}
++	}
++}
++func TestHoopaRuleOrderKeepsEarlierCertainMatch(t *testing.T) {
++	oldRules, oldProxies := rules, proxies
++	defer func() { rules, proxies = oldRules, oldProxies }()
++	proxy := &hoopaProxyFake{}
++	proxies = map[string]C.Proxy{"DIRECT": proxy}
++	processRule, _ := common.NewProcess("agent", "DIRECT", C.ProcessName)
++	rules = []C.Rule{common.NewDomain("early.test", "DIRECT"), processRule}
++	selected, rule, err := match(&C.Metadata{Host: "early.test", HoopaFlowID: "missing-flow"}, C.RuleMatchHelper{})
++	if err != nil || selected != proxy || rule != rules[0] {
++		t.Fatal("unknown identity bypassed earlier certain match", err)
++	}
++	if _, _, err := match(&C.Metadata{Host: "later.test", HoopaFlowID: "missing-flow"}, C.RuleMatchHelper{}); err == nil {
++		t.Fatal("encountered unknown fell through")
++	}
++}
++
++type hoopaProxyFake struct{ C.Proxy }
++
++func (*hoopaProxyFake) Name() string                     { return "DIRECT" }
++func (*hoopaProxyFake) Type() C.AdapterType              { return C.Direct }
++func (*hoopaProxyFake) Unwrap(*C.Metadata, bool) C.Proxy { return nil }
++
++type hoopaSourceConnFake struct {
++	net.Conn
++	peer, local net.Addr
++}
++
++func (c hoopaSourceConnFake) RemoteAddr() net.Addr { return c.peer }
++func (c hoopaSourceConnFake) LocalAddr() net.Addr  { return c.local }
++func TestHoopaHTTPSourceUsesRawSocketInsteadOfPipe(t *testing.T) {
++	peer := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32100}
++	local := &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32101}
++	pipe := hoopaSourceConnFake{peer: &net.UnixAddr{Name: "internal-peer", Net: "unix"}, local: &net.UnixAddr{Name: "internal-local", Net: "unix"}}
++	gotPeer, gotLocal := hoopaSourceAddrs(&C.Metadata{RawSrcAddr: peer, RawDstAddr: local}, pipe)
++	if gotPeer != peer || gotLocal != local {
++		t.Fatal("HTTP pipe address replaced actual socket")
++	}
++	gotPeer, gotLocal = hoopaSourceAddrs(&C.Metadata{}, pipe)
++	if gotPeer != pipe.peer || gotLocal != pipe.local {
++		t.Fatal("socket fallback lost actual address")
++	}
++}
+diff --git a/tunnel/statistic/hoopa_tcp.go b/tunnel/statistic/hoopa_tcp.go
+new file mode 100644
+--- /dev/null
++++ b/tunnel/statistic/hoopa_tcp.go
+@@ -0,0 +1,117 @@
++package statistic
++
++import (
++	"io"
++	"net"
++	"sync"
++	"time"
++
++	"github.com/metacubex/mihomo/common/buf"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++// HoopaTCPCounter is the same-flow stream boundary, not wire/TLS byte accounting.
++type HoopaTCPCounter interface {
++	AddUpload(int)
++	AddDownload(int)
++	Close()
++}
++type hoopaTCPConn struct {
++	inner    C.Conn
++	counter  HoopaTCPCounter
++	mu       sync.Mutex
++	cond     *sync.Cond
++	active   int
++	closing  bool
++	once     sync.Once
++	closeErr error
++}
++
++// NewHoopaTCPConn deliberately does not embed C.Conn or expose upstream/unwrap,
++// syscall, cached, ReaderFrom or WriterTo paths that could skip actual n counts.
++func NewHoopaTCPConn(inner C.Conn, counter HoopaTCPCounter) C.Conn {
++	conn := &hoopaTCPConn{inner: inner, counter: counter}
++	conn.cond = sync.NewCond(&conn.mu)
++	return conn
++}
++func (c *hoopaTCPConn) begin() bool {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	if c.closing {
++		return false
++	}
++	c.active++
++	return true
++}
++func (c *hoopaTCPConn) end() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.active--
++	if c.active == 0 {
++		c.cond.Broadcast()
++	}
++}
++func (c *hoopaTCPConn) Read(p []byte) (int, error) {
++	if !c.begin() {
++		return 0, net.ErrClosed
++	}
++	defer c.end()
++	n, err := c.inner.Read(p)
++	if n > 0 {
++		c.counter.AddDownload(n)
++	}
++	return n, err
++}
++func (c *hoopaTCPConn) Write(p []byte) (int, error) {
++	if !c.begin() {
++		return 0, net.ErrClosed
++	}
++	defer c.end()
++	n, err := c.inner.Write(p)
++	if n > 0 {
++		c.counter.AddUpload(n)
++	}
++	return n, err
++}
++func (c *hoopaTCPConn) ReadBuffer(buffer *buf.Buffer) error {
++	n, err := buffer.ReadOnceFrom(c)
++	if n > 0 && err == io.EOF {
++		return nil
++	}
++	return err
++}
++func (c *hoopaTCPConn) WriteBuffer(buffer *buf.Buffer) error {
++	defer buffer.Release()
++	size := buffer.Len()
++	n, err := c.Write(buffer.Bytes())
++	if err == nil && n != size {
++		return io.ErrShortWrite
++	}
++	return err
++}
++func (c *hoopaTCPConn) Close() error {
++	c.once.Do(func() {
++		c.mu.Lock()
++		c.closing = true
++		c.mu.Unlock()
++		c.closeErr = c.inner.Close() // terminate blocking IO without holding the mutex
++		c.mu.Lock()
++		for c.active != 0 {
++			c.cond.Wait()
++		}
++		c.mu.Unlock()
++		c.counter.Close()
++	})
++	return c.closeErr
++}
++func (c *hoopaTCPConn) LocalAddr() net.Addr                   { return c.inner.LocalAddr() }
++func (c *hoopaTCPConn) RemoteAddr() net.Addr                  { return c.inner.RemoteAddr() }
++func (c *hoopaTCPConn) SetDeadline(t time.Time) error         { return c.inner.SetDeadline(t) }
++func (c *hoopaTCPConn) SetReadDeadline(t time.Time) error     { return c.inner.SetReadDeadline(t) }
++func (c *hoopaTCPConn) SetWriteDeadline(t time.Time) error    { return c.inner.SetWriteDeadline(t) }
++func (c *hoopaTCPConn) Chains() C.Chain                       { return c.inner.Chains() }
++func (c *hoopaTCPConn) ProviderChains() C.Chain               { return c.inner.ProviderChains() }
++func (c *hoopaTCPConn) AppendToChains(adapter C.ProxyAdapter) { c.inner.AppendToChains(adapter) }
++func (c *hoopaTCPConn) RemoteDestination() string             { return c.inner.RemoteDestination() }
++
++var _ C.Conn = (*hoopaTCPConn)(nil)
+diff --git a/tunnel/statistic/hoopa_tcp_test.go b/tunnel/statistic/hoopa_tcp_test.go
+new file mode 100644
+--- /dev/null
++++ b/tunnel/statistic/hoopa_tcp_test.go
+@@ -0,0 +1,211 @@
++package statistic
++
++import (
++	"errors"
++	"io"
++	"net"
++	"sync"
++	"testing"
++
++	"github.com/metacubex/mihomo/common/buf"
++	N "github.com/metacubex/mihomo/common/net"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++type hoopaCounterFake struct {
++	mu                                sync.Mutex
++	upload, download, closed, atClose int
++}
++
++func (c *hoopaCounterFake) AddUpload(n int)   { c.mu.Lock(); defer c.mu.Unlock(); c.upload += n }
++func (c *hoopaCounterFake) AddDownload(n int) { c.mu.Lock(); defer c.mu.Unlock(); c.download += n }
++func (c *hoopaCounterFake) Close() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.closed++
++	c.atClose = c.download
++}
++
++type hoopaConnFake struct {
++	net.Conn
++	started, closed chan struct{}
++	once            sync.Once
++	block           bool
++}
++
++func (c *hoopaConnFake) Read(p []byte) (int, error) {
++	if c.block {
++		close(c.started)
++		<-c.closed
++	}
++	return copy(p, "abc"), io.EOF
++}
++func (c *hoopaConnFake) Write(p []byte) (int, error) {
++	if len(p) > 2 {
++		return 2, io.ErrUnexpectedEOF
++	}
++	return len(p), nil
++}
++func (c *hoopaConnFake) Close() error { c.once.Do(func() { close(c.closed) }); return nil }
++func (c *hoopaConnFake) ReadBuffer(*buf.Buffer) error {
++	panic("underlying fast read bypassed accounting")
++}
++func (c *hoopaConnFake) WriteBuffer(*buf.Buffer) error {
++	panic("underlying fast write bypassed accounting")
++}
++func (c *hoopaConnFake) Chains() C.Chain               { return C.Chain{"node"} }
++func (c *hoopaConnFake) ProviderChains() C.Chain       { return C.Chain{"provider"} }
++func (c *hoopaConnFake) AppendToChains(C.ProxyAdapter) {}
++func (c *hoopaConnFake) RemoteDestination() string     { return "127.0.0.1:123" }
++func TestHoopaTCPCountsActualPartialIOAndBlocksFastPaths(t *testing.T) {
++	inner := &hoopaConnFake{closed: make(chan struct{})}
++	counter := &hoopaCounterFake{}
++	conn := NewHoopaTCPConn(inner, counter)
++	if _, ok := conn.(interface{ Upstream() any }); ok {
++		t.Fatal("upstream escape exposed")
++	}
++	if _, ok := conn.(interface {
++		UnwrapReader() (io.Reader, []N.CountFunc)
++	}); ok {
++		t.Fatal("reader escape exposed")
++	}
++	b := buf.New()
++	defer b.Release()
++	if err := conn.ReadBuffer(b); err != nil {
++		t.Fatal("n>0 with EOF lost buffered data", err)
++	}
++	if b.Len() != 3 || counter.download != 3 {
++		t.Fatal("read buffer counted initial contents", b.Len(), counter.download)
++	}
++	out := buf.As([]byte("12345"))
++	if err := conn.WriteBuffer(out); err == nil {
++		t.Fatal("partial write hidden")
++	}
++	if counter.upload != 2 {
++		t.Fatal("requested length was counted", counter.upload)
++	}
++	if conn.Chains()[0] != "node" || conn.ProviderChains()[0] != "provider" || conn.RemoteDestination() != "127.0.0.1:123" {
++		t.Fatal("connection metadata lost")
++	}
++	conn.Close()
++	conn.Close()
++	if counter.closed != 1 {
++		t.Fatal("multiple terminal counters")
++	}
++}
++func TestHoopaTCPCloseUnblocksThenWaitsForAccounting(t *testing.T) {
++	inner := &hoopaConnFake{closed: make(chan struct{}), started: make(chan struct{}), block: true}
++	counter := &hoopaCounterFake{}
++	conn := NewHoopaTCPConn(inner, counter)
++	finished := make(chan struct{})
++	go func() { defer close(finished); _, _ = conn.Read(make([]byte, 8)) }()
++	<-inner.started
++	if err := conn.Close(); err != nil {
++		t.Fatal(err)
++	}
++	<-finished
++	if counter.closed != 1 || counter.atClose != 3 {
++		t.Fatal("terminal fact preceded inflight accounting", counter.closed, counter.atClose)
++	}
++	if n, err := conn.Write([]byte("x")); n != 0 || !errors.Is(err, net.ErrClosed) {
++		t.Fatal("new IO admitted after close", n, err)
++	}
++}
++
++type hoopaTrackerCounterFake struct {
++	*hoopaCounterFake
++	manager                        *Manager
++	boundID                        string
++	boundBeforeJoin, activeAtFinal bool
++}
++
++func (c *hoopaTrackerCounterFake) Bind(id string) {
++	c.boundID = id
++	c.boundBeforeJoin = c.manager.Get(id) == nil
++}
++func (c *hoopaTrackerCounterFake) Close() {
++	c.activeAtFinal = c.manager.Get(c.boundID) != nil
++	c.hoopaCounterFake.Close()
++}
++func TestHoopaTrackerDirectCloseFinalizesBeforeLeave(t *testing.T) {
++	manager := &Manager{}
++	counter := &hoopaTrackerCounterFake{hoopaCounterFake: &hoopaCounterFake{}, manager: manager}
++	inner := &hoopaConnFake{closed: make(chan struct{}), started: make(chan struct{}), block: true}
++	tracker := NewHoopaTCPTracker(inner, manager, &C.Metadata{}, nil, 0, 0, true, counter)
++	if !counter.boundBeforeJoin || counter.boundID != tracker.ID() || manager.Get(tracker.ID()) == nil {
++		t.Fatal("identity was not bound before active publication")
++	}
++	finished := make(chan struct{})
++	go func() { defer close(finished); _, _ = tracker.Read(make([]byte, 8)) }()
++	<-inner.started
++	// A controller closes the tracker obtained from the active manager, not an outer wrapper.
++	if err := manager.Get(tracker.ID()).Close(); err != nil {
++		t.Fatal(err)
++	}
++	<-finished
++	if !counter.activeAtFinal || counter.atClose != 3 || counter.closed != 1 {
++		t.Fatal("source final was not after IO and before Leave", counter.activeAtFinal, counter.atClose, counter.closed)
++	}
++	if manager.Get(tracker.ID()) != nil {
++		t.Fatal("closed tracker remained active")
++	}
++	tracker.Close()
++	if counter.closed != 1 {
++		t.Fatal("source finalized twice")
++	}
++}
++func TestHoopaTrackerFastCountersCannotBypassSource(t *testing.T) {
++	manager := &Manager{}
++	counter := &hoopaTrackerCounterFake{hoopaCounterFake: &hoopaCounterFake{}, manager: manager}
++	tracker := NewHoopaTCPTracker(&hoopaConnFake{closed: make(chan struct{})}, manager, &C.Metadata{}, nil, 7, 0, true, counter)
++	reader, readCounters := tracker.UnwrapReader()
++	n, _ := reader.Read(make([]byte, 8))
++	for _, count := range readCounters {
++		count(int64(n))
++	}
++	writer, writeCounters := tracker.UnwrapWriter()
++	n, _ = writer.Write([]byte("up"))
++	for _, count := range writeCounters {
++		count(int64(n))
++	}
++	buffer := buf.New()
++	defer buffer.Release()
++	if err := tracker.ReadBuffer(buffer); err != nil {
++		t.Fatal(err)
++	}
++	if err := tracker.WriteBuffer(buf.As([]byte("up"))); err != nil {
++		t.Fatal(err)
++	}
++	if counter.download != 6 || counter.upload != 4 {
++		t.Fatal("source counter bypassed or double-counted", counter.download, counter.upload)
++	}
++	if tracker.UploadTotal.Load() != 11 || tracker.DownloadTotal.Load() != 6 {
++		t.Fatal("tracker count functions changed or initial peek re-counted")
++	}
++	if _, ok := tracker.Upstream().(interface{ Upstream() any }); ok {
++		t.Fatal("source upstream escaped to raw conn")
++	}
++	tracker.Close()
++}
++
++type hoopaStockCloseConn struct {
++	*hoopaConnFake
++	manager            *Manager
++	id                 string
++	removedBeforeClose bool
++}
++
++func (c *hoopaStockCloseConn) Close() error {
++	c.removedBeforeClose = c.manager.Get(c.id) == nil
++	return c.hoopaConnFake.Close()
++}
++func TestHoopaTrackerStockCloseOrderUnchanged(t *testing.T) {
++	manager := &Manager{}
++	conn := &hoopaStockCloseConn{hoopaConnFake: &hoopaConnFake{closed: make(chan struct{})}, manager: manager}
++	tracker := NewTCPTracker(conn, manager, &C.Metadata{}, nil, 0, 0, true)
++	conn.id = tracker.ID()
++	tracker.Close()
++	if !conn.removedBeforeClose {
++		t.Fatal("stock tracker close order changed")
++	}
++}
+diff --git a/tunnel/statistic/tracker.go b/tunnel/statistic/tracker.go
+--- a/tunnel/statistic/tracker.go
++++ b/tunnel/statistic/tracker.go
+@@ -38,7 +38,8 @@
+ 	*TrackerInfo
+ 	manager *Manager
+ 
+-	pushToManager bool `json:"-"`
++	pushToManager    bool `json:"-"`
++	closeBeforeLeave bool
+ }
+ 
+ func (tt *tcpTracker) ID() string {
+@@ -108,6 +109,11 @@
+ }
+ 
+ func (tt *tcpTracker) Close() error {
++	if tt.closeBeforeLeave {
++		err := tt.Conn.Close() // source quiescence + durable final precede activity removal
++		tt.manager.Leave(tt)
++		return err
++	}
+ 	tt.manager.Leave(tt)
+ 	return tt.Conn.Close()
+ }
+@@ -117,6 +123,19 @@
+ }
+ 
+ func NewTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool) *tcpTracker {
++	return newTCPTracker(conn, manager, metadata, rule, uploadTotal, downloadTotal, pushToManager, nil)
++}
++
++// NewHoopaTCPTracker keeps the source boundary inside the controller-visible
++// tracker, so both direct closes and unwrapped IO preserve source finalization.
++func NewHoopaTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool, counter HoopaTCPCounter) *tcpTracker {
++	return newTCPTracker(NewHoopaTCPConn(conn, counter), manager, metadata, rule, uploadTotal, downloadTotal, pushToManager, func(id string) {
++		if binding, ok := counter.(interface{ Bind(string) }); ok {
++			binding.Bind(id)
++		}
++	})
++}
++func newTCPTracker(conn C.Conn, manager *Manager, metadata *C.Metadata, rule C.Rule, uploadTotal int64, downloadTotal int64, pushToManager bool, prepare func(string)) *tcpTracker {
+ 	metadata.RemoteDst = conn.RemoteDestination()
+ 
+ 	t := &tcpTracker{
+@@ -132,7 +151,8 @@
+ 			UploadTotal:   atomic.NewInt64(uploadTotal),
+ 			DownloadTotal: atomic.NewInt64(downloadTotal),
+ 		},
+-		pushToManager: pushToManager,
++		pushToManager:    pushToManager,
++		closeBeforeLeave: prepare != nil,
+ 	}
+ 
+ 	if pushToManager {
+@@ -149,6 +169,9 @@
+ 		t.TrackerInfo.RulePayload = rule.Payload()
+ 	}
+ 
++	if prepare != nil {
++		prepare(t.ID())
++	}
+ 	manager.Join(t)
+ 	return t
+ }
+diff --git a/tunnel/tunnel.go b/tunnel/tunnel.go
+--- a/tunnel/tunnel.go
++++ b/tunnel/tunnel.go
+@@ -4,6 +4,7 @@
+ 	"context"
+ 	"errors"
+ 	"fmt"
++	"io"
+ 	"net"
+ 	"net/netip"
+ 	"path/filepath"
+@@ -15,6 +16,7 @@
+ 	"github.com/metacubex/mihomo/common/atomic"
+ 	N "github.com/metacubex/mihomo/common/net"
+ 	"github.com/metacubex/mihomo/common/utils"
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	"github.com/metacubex/mihomo/component/loopback"
+ 	"github.com/metacubex/mihomo/component/nat"
+ 	"github.com/metacubex/mihomo/component/process"
+@@ -27,6 +29,7 @@
+ 	P "github.com/metacubex/mihomo/constant/provider"
+ 	icontext "github.com/metacubex/mihomo/context"
+ 	"github.com/metacubex/mihomo/log"
++	rulescommon "github.com/metacubex/mihomo/rules/common"
+ 	"github.com/metacubex/mihomo/tunnel/statistic"
+ )
+ 
+@@ -323,7 +326,7 @@
+ 	}
+ 	var (
+ 		resolved             bool
+-		attemptProcessLookup = metadata.Type != C.INNER
++		attemptProcessLookup = metadata.Type != C.INNER && metadata.HoopaFlowID == ""
+ 	)
+ 
+ 	if node, ok := resolver.DefaultHosts.Search(metadata.Host, false); ok {
+@@ -496,6 +499,34 @@
+ 	}(connCtx.Conn())
+ 
+ 	metadata := connCtx.Metadata()
++	var traceFlow *hoopatrace.Flow
++	traceTransferred := false
++	if hoopatrace.Enabled(metadata.InName) {
++		if metadata.SpecialProxy != "" || metadata.HoopaStartedAt.IsZero() {
++			return
++		}
++		if err := validateHoopaRulesForFlow(metadata); err != nil {
++			log.Warnln("[Hoopa] unsupported trace rule capability")
++			return
++		}
++		dstIP := ""
++		if metadata.DstIP.IsValid() {
++			dstIP = metadata.DstIP.String()
++		}
++		var beginErr error
++		peer, local := hoopaSourceAddrs(metadata, connCtx.Conn())
++		traceFlow, beginErr = hoopatrace.Begin(metadata.InName, peer, local, metadata.Host, dstIP, metadata.HoopaStartedAt)
++		if beginErr != nil || traceFlow == nil {
++			log.Warnln("[Hoopa] trace flow initialization failed")
++			return
++		}
++		metadata.HoopaFlowID = traceFlow.ID()
++		defer func() {
++			if !traceTransferred {
++				traceFlow.Close()
++			}
++		}()
++	}
+ 	if !metadata.Valid() {
+ 		log.Warnln("[Metadata] not valid: %#v", metadata)
+ 		return
+@@ -539,8 +570,28 @@
+ 
+ 	proxy, rule, err := resolveMetadata(metadata)
+ 	if err != nil {
+-		log.Warnln("[Metadata] parse failed: %s", err.Error())
+-		return
++		if traceFlow != nil {
++			_ = traceFlow.Decide("REJECT", "unknown_or_route_failure", "REJECT")
++			log.Warnln("[Hoopa] route rejected")
++		} else {
++			log.Warnln("[Metadata] parse failed: %s", err.Error())
++		}
++		return
++	}
++
++	if traceFlow != nil {
++		ruleName, payload := "DEFAULT", ""
++		if rule != nil {
++			ruleName = rule.RuleType().String()
++			payload = rule.Payload()
++		} else if mode == Direct {
++			ruleName = "DIRECT_MODE"
++		} else if mode == Global {
++			ruleName = "GLOBAL_MODE"
++		}
++		if err := traceFlow.Decide(ruleName, payload, proxy.Name()); err != nil {
++			return
++		}
+ 	}
+ 
+ 	dialMetadata := metadata
+@@ -560,17 +611,38 @@
+ 	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+ 	defer cancel()
+ 	remoteConn, err := retry(ctx, func(ctx context.Context) (remoteConn C.Conn, err error) {
++		attempt := traceFlow.NewAttempt()
++		var attemptConn C.Conn
++		ready := false
++		defer func() {
++			var chains, providers []string
++			if attemptConn != nil {
++				chains = append([]string(nil), attemptConn.Chains()...)
++				providers = append([]string(nil), attemptConn.ProviderChains()...)
++			}
++			if err != nil {
++				ready = false
++			}
++			attempt.Finish(err, chains, providers, ready)
++		}()
+ 		remoteConn, err = proxy.DialContext(ctx, dialMetadata)
++		attemptConn = remoteConn
+ 		if err != nil {
+ 			return
+ 		}
+ 
+-		if N.NeedHandshake(remoteConn) {
++		if traceFlow != nil && remoteConn == nil {
++			err = errors.New("Hoopa dial returned no connection")
++			return
++		}
++		neededHandshake := N.NeedHandshake(remoteConn)
++		ready = !neededHandshake
++		if neededHandshake {
+ 			defer func() {
+ 				if err != nil {
+ 					_ = remoteConn.Close()
+ 					for _, chain := range remoteConn.Chains() {
+-						if chain == "REJECT" {
++						if chain == "REJECT" && traceFlow == nil {
+ 							err = nil
+ 							return
+ 						}
+@@ -581,12 +653,30 @@
+ 			peekMutex.Lock()
+ 			defer peekMutex.Unlock()
+ 			peekBytes, _ = conn.Peek(conn.Buffered())
+-			_, err = remoteConn.Write(peekBytes)
++			n := 0
++			n, err = remoteConn.Write(peekBytes)
++			if traceFlow != nil {
++				traceFlow.AddUpload(n)
++				if err == nil && n != len(peekBytes) {
++					err = io.ErrShortWrite
++				}
++				ready = hoopaSetupReady(true, N.NeedHandshake(remoteConn), n, err)
++			}
+ 			if err != nil {
+ 				return
+ 			}
+ 			if peekLen = len(peekBytes); peekLen > 0 {
+ 				_, _ = conn.Discard(peekLen)
++			}
++		}
++		if proxy.Type() == C.Reject || proxy.Type() == C.RejectDrop {
++			ready = false
++		}
++		if attemptConn != nil {
++			for _, chain := range attemptConn.Chains() {
++				if chain == "REJECT" || chain == "REJECT-DROP" {
++					ready = false
++				}
+ 			}
+ 		}
+ 		return
+@@ -598,7 +688,17 @@
+ 	}
+ 	logMetadata(metadata, rule, remoteConn)
+ 
+-	remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true)
++	if traceFlow != nil {
++		tracker := statistic.NewHoopaTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true, traceFlow)
++		remoteConn = tracker
++		traceTransferred = true
++		if err := traceFlow.Check(); err != nil {
++			_ = tracker.Close()
++			return
++		}
++	} else {
++		remoteConn = statistic.NewTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true)
++	}
+ 	defer func(remoteConn C.Conn) {
+ 		_ = remoteConn.Close()
+ 	}(remoteConn)
+@@ -640,9 +740,25 @@
+ func match(metadata *C.Metadata, helper C.RuleMatchHelper) (C.Proxy, C.Rule, error) {
+ 	configMux.RLock()
+ 	defer configMux.RUnlock()
++	if metadata.HoopaFlowID != "" {
++		if err := rulescommon.ValidateHoopaRules(getRules(metadata)); err != nil {
++			return nil, nil, err
++		}
++	}
+ 
+ 	for _, rule := range getRules(metadata) {
+-		if matched, ada := rule.Match(metadata, helper); matched {
++		var matched bool
++		var ada string
++		if metadata.HoopaFlowID != "" {
++			state, target := rulescommon.MatchHoopa(rule, metadata, helper)
++			if state != 0 && state != 1 {
++				return nil, rule, errors.New("Hoopa rule result unknown")
++			}
++			matched, ada = state == 1, target
++		} else {
++			matched, ada = rule.Match(metadata, helper)
++		}
++		if matched {
+ 			adapter, ok := proxies[ada]
+ 			if !ok {
+ 				continue
+@@ -721,3 +837,30 @@
+ 	}
+ 	return
+ }
++
++// This is a per-flow candidate preflight, not a configuration-loader guarantee.
++func validateHoopaRulesForFlow(metadata *C.Metadata) error {
++	configMux.RLock()
++	defer configMux.RUnlock()
++	if mode == Direct || mode == Global {
++		return nil
++	}
++	return rulescommon.ValidateHoopaRules(getRules(metadata))
++}
++func hoopaSetupReady(before, after bool, written int, err error) bool {
++	return err == nil && !after && (!before || written > 0)
++}
++
++// Ordinary HTTP uses an internal pipe; its stored raw source addresses identify
++// the actual client socket. The trace unit is that upstream stream, not each
++// request later reused on the HTTP transport connection.
++func hoopaSourceAddrs(metadata *C.Metadata, conn net.Conn) (peer, local net.Addr) {
++	peer, local = metadata.RawSrcAddr, metadata.RawDstAddr
++	if peer == nil {
++		peer = conn.RemoteAddr()
++	}
++	if local == nil {
++		local = conn.LocalAddr()
++	}
++	return
++}

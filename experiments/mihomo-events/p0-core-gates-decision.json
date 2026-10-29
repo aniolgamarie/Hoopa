@@ -1,0 +1,189 @@
+{
+  "schema": "hoopa-p0-core-gates-decision-v1",
+  "status": "restricted_feasibility_accepted_db_free_P1_entry_allowed",
+  "decision_owner": "root",
+  "date": "2026-10-26",
+  "task_T018_complete": true,
+  "DB_free_P1_entry_allowed": true,
+  "P0_complete": false,
+  "P1_complete": false,
+  "adjudication": [
+    {
+      "question": "Unchanged IPC/owner/store plus current integration",
+      "resolution": "Accept as qualified implementation lineage for a bounded feasibility gate. The old G07 7/11/14 remains tied to 5693/ad4a; no new current-hash security matrix is claimed. Product tests T025/T034/T060/T063 still test the production implementation."
+    },
+    {
+      "question": "Current native owner tests excluded",
+      "resolution": "No native algorithm or same-connection credential-ordering change was found. Prior native evidence remains on its old helper; current fake proofs and real current-helper adoption/verification retain supporting scope. No automatic duplicate of the old matrix."
+    },
+    {
+      "question": "Status union and per-entry health changed",
+      "resolution": "Root inspected the strict union, whole inventory/generation binding, non-null required branches, all-entry observed-zero checks and mode-specific executable validation. Current targeted regressions and actual two-entry adoption/degradation cover these changed paths."
+    },
+    {
+      "question": "Per-entry auth/admission caller changed",
+      "resolution": "Root read current runHoopaGuard, serveEntry and controller auth prefix. Each entry keeps its own validated auth store, owner.Admit occurs before the unchanged authenticated HandleHoopaConn, missing owner/proof moves shared state to degraded, and controller authorization precedes schema branches. Actual two-entry success and missing-proof/refusal coverage plus unchanged auth implementations are adequate for the limited engineering-entry decision; not a newly run unauthorized-credential matrix."
+    },
+    {
+      "question": "Deployment, privilege and durability expansion",
+      "resolution": "Rejected. Isolated trusted-root evidence does not authorize default privileged deployment or establish arbitrary production support. Source/receiver/SQL guarantees remain separate; basic management remains DB/GOST/TUI independent."
+    }
+  ],
+  "models": {
+    "management": "External core survives control frontend; explicit control-only is observe-only, recovery remains explicit and identity-checked. Production process backend must not copy root guest guards into default installation.",
+    "identity": "boot/PID/start, executable hash/path, private nonce/intent/workdir and same-connected-controller owner proof; PID or port alone is insufficient.",
+    "compile": "Complete immutable bundle with all referenced assets, stable provider-scoped nodes/groups, ordered rules; unsupported capabilities rejected before mutation.",
+    "entry": "Explicit committed profile entries, no per-launch implicit reload; no missing-target/direct/provider fallback.",
+    "publication": "Durable operation before runtime effects; verified publishing then active then terminal. Recovery reobserves owned processes; failed complete rollback produces degraded.",
+    "telemetry": "Experimental same-data-plane source only under verified capability; stock/compatibility do not acquire this capability by proxy."
+  },
+  "remaining_tasks": [
+    "T019 SQLite driver/transaction probe",
+    "T020 scale/resource/cleanup baseline",
+    "T021 P0 total acceptance",
+    "T022-T068 DB-free P1 implementation and its own production acceptance",
+    "P2 telemetry storage/GC/UI and P3 platform acceptance"
+  ],
+  "critical_blockers": [],
+  "new_runtime_samples": 0,
+  "candidate_bindings": {
+    "baseline_core": {
+      "path": "private/t140-program-rules/artifact/mihomo-program-rules",
+      "bytes": 51339954,
+      "sha256": "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967"
+    },
+    "baseline_helper": {
+      "path": "private/t015-controller-owner-fix/artifact/offline-v1/controlprobe",
+      "bytes": 11408390,
+      "sha256": "ad4a8069691e6668c658eb98c18c845bc3b2f5f903a08fe1db28560c2c92e13f"
+    },
+    "multi_entry_core": {
+      "path": "private/t016-multi-entry-candidate/mihomo-build-stable",
+      "bytes": 51336161,
+      "sha256": "5e934bdc28dd07e7b7f8cf372d1d4f7a553a3aa3bd835de24f982dfed011a388"
+    },
+    "multi_entry_helper": {
+      "path": "private/t016-control-adapter-v2/controlprobe",
+      "bytes": 11535031,
+      "sha256": "1c87609972b0ac5570101c50945bfe4aa09a4687a433adb9c538722871107f95"
+    }
+  },
+  "gates": {
+    "G01": {
+      "accepted": true,
+      "scope": "Old 0017 100/100 and independent boundaries plus T017 qualified unchanged-source/current-delta evidence",
+      "evidence": {
+        "path": "experiments/mihomo-events/source5-identity-gate-validation.json",
+        "bytes": 2750,
+        "sha256": "2cd5695bf4e957db773fdab603387039b3def3ad01a2f01397ae3e6ef1acc4ae"
+      }
+    },
+    "G02": {
+      "accepted": true,
+      "scope": "Old 0017 8 VM/16 slots, source/replay/reopen and explicit derived gaps plus unchanged source lineage",
+      "evidence": {
+        "path": "experiments/mihomo-events/source5-recovery-gate-validation.json",
+        "bytes": 2565,
+        "sha256": "dcd85735270bac80f76e046a9d1e85b436154cbfe527806a18e1f2dc87cf0558"
+      }
+    },
+    "G03": {
+      "accepted": true,
+      "scope": "Old 0017 6 VM/21 slots, protocol-ready/actual routes; synthetic/injected checks separate",
+      "evidence": {
+        "path": "experiments/mihomo-events/source5-quality-gate-validation.json",
+        "bytes": 6229,
+        "sha256": "e582d15a83b68fae81ac6d37f430d8aaf89b6ad4f922243c0d18907d89059363"
+      }
+    },
+    "G04": {
+      "accepted": true,
+      "scope": "Old T015 11 VM/22 attempts; current helper affected adoption/entry paths separately covered in T016",
+      "evidence": {
+        "path": "experiments/mihomo-events/source5-lifecycle-gate-validation.json",
+        "bytes": 16259,
+        "sha256": "bbcae68b60c676f3b2ff2df68a3e59c262f1d70201038caa50cf466488b78f08"
+      }
+    },
+    "G05": {
+      "accepted": true,
+      "scope": "Current T016 16 families/39 VM/127 attempts/124 admitted; final gate adds no runtime samples",
+      "evidence": {
+        "path": "experiments/mihomo-events/source5-routing-gate-validation.json",
+        "bytes": 3238,
+        "sha256": "2773b0ce8047dd8cc983568c0b145c776119ffeddfa6f7c0cc4ef4ad208609c7"
+      }
+    },
+    "G07_minimum": {
+      "accepted": true,
+      "scope": "Old actual 7/11/14 plus unchanged protections/current affected tests/integration/root semantic review; no new full current-hash G07 matrix",
+      "evidence": {
+        "path": "experiments/mihomo-events/control-0017-g07-calibration-validation.json",
+        "bytes": 31131,
+        "sha256": "8f9198e8fdb8cb3c8aa7531976daf32c8991f3049294693c2c8db8506e763597"
+      }
+    },
+    "G06": {
+      "accepted": false,
+      "state": "not_executed_T019",
+      "blocks_db_free_P1_entry": false
+    },
+    "G07_scale": {
+      "accepted": false,
+      "state": "not_executed_T020",
+      "blocks_db_free_P1_entry": false
+    }
+  },
+  "references": [
+    {
+      "path": "private/t018-root-decision-preparation/scope.json",
+      "bytes": 3627,
+      "sha256": "6155d9abb5fe4fccc62eb78b318413c60b6067c234d32dd2451ef09d1fa792d5"
+    },
+    {
+      "path": "private/t018-protection-lineage/report.json",
+      "bytes": 85041,
+      "sha256": "4fdaa5d00aafb2c4e9d5e7b2ea4cc036fb8cc478d184fd92048d1b9310cefa51"
+    },
+    {
+      "path": "private/t018-protection-lineage/report.md",
+      "bytes": 6919,
+      "sha256": "abdd1f7418b4f38276e1d74d5315c4b49a3c20cf1f4e5c367c909bc2a4261915"
+    },
+    {
+      "path": "private/t018-protection-lineage/receipt.json",
+      "bytes": 1429,
+      "sha256": "9ded416678e4762f009ec48509b0e496712da5a86018aaeaf50d0529ff128e73"
+    },
+    {
+      "path": "private/t130-followup/t018-protection-lineage-review.json",
+      "bytes": 2699,
+      "sha256": "e428f6f636f9a72839f9244f9b6ba246fb4b2494fa5a28c1128417a0d0b71454"
+    },
+    {
+      "path": "private/t130-followup/t018-protection-lineage-review.md",
+      "bytes": 3400,
+      "sha256": "f634ed7cb6be46a48f4943c7eee2ff1966f7137707ab45f6e6e3444516aee47a"
+    },
+    {
+      "path": "private/t130-followup/t017-root-decision-review.json",
+      "bytes": 2692,
+      "sha256": "e8f6371fb6074370ec424a33f24d1b9c460a200729064157f3a400aa85d6888d"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-event-source-decision.json",
+      "bytes": 5176,
+      "sha256": "9d7c21b4b9dcfdf9ba1f7a08923d127c9c4365601d2b7ef82120560d17983a63"
+    },
+    {
+      "path": "experiments/mihomo-events/core-program-rules-candidate-manifest.json",
+      "bytes": 12836,
+      "sha256": "c4e2268f2a232bf7c0f2e4a9e74832149d7cdf524de0b97b04487e548d24c5c8"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-routing-acceptance.json",
+      "bytes": 130439,
+      "sha256": "acb2c953a71d63b02ac1c11ac0e94008ebfcef7bee065d28b6b9be4f09274a24"
+    }
+  ]
+}

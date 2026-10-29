@@ -1,0 +1,304 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "scope": "T132 profile4 route quality capture correction; finite executable-online candidate; not T137",
+  "status": "fresh 001-012 build; new candidate actual VM unverified at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-executable-quality-fix/artifact/mihomo-identity-executable-quality",
+    "bytes": 51243330,
+    "sha256": "4bc907d7c675ec886b1342f6b05f675f693b2d72f21c5da8557d4958f1d68d27"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-executable-candidate-manifest.json",
+    "bytes": 9556,
+    "sha256": "8f524670d0f36fbabc042d0c92a66d0d4c0c6139a551c1216ec6dc1135ba2f6d"
+  },
+  "source": {
+    "fresh_applied": "private/t132-executable-quality-fix/artifact/source",
+    "reviewed_target": "private/t132-executable-quality-fix/reviewed-source",
+    "tree_sha256": "5319e202419b1673fe2980d4cd81eb0b44e7a20a758b4bf1b155965971a87f35",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF for each entry; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1176,
+    "file_count": 980,
+    "reviewed_tree_equal": true,
+    "independent_full_tree_recheck": true,
+    "build_evidence": {
+      "path": "private/t132-executable-quality-fix/build-result.json",
+      "bytes": 180004,
+      "sha256": "5b57bdcf305ff62973da950c84914cc6a0b70593336490558e615164d88a609d"
+    },
+    "build_command": [
+      "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+      "build",
+      "-p=2",
+      "-trimpath",
+      "-buildvcs=false",
+      "-o",
+      "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-executable-quality-fix/artifact/mihomo-identity-executable-quality",
+      "."
+    ],
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    }
+  },
+  "version_probe": {
+    "exit_code": 0,
+    "stdout": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time\n",
+    "stderr": "",
+    "evidence": {
+      "path": "private/t132-executable-quality-fix/manifest-version-probe.json",
+      "bytes": 465,
+      "sha256": "69834ec8a46eeb693b25a88fa1b2a245019df88f5fad84da5654447f1a4f9805"
+    }
+  },
+  "version_interpretation": "No version ldflags: printed default 1.10.0 is not the source version; source is fixed v1.19.26 commit fc8c5a24b16991f98cd736950c17d1aa306a5041.",
+  "change": {
+    "production": "Append exact HOOPA_TRACE_PROFILE value 4 to HoopaQualityEnabled initialization, preserving 2/3 and other false values.",
+    "files": [
+      {
+        "path": "private/t132-executable-quality-fix/artifact/source/constant/hoopa_quality.go",
+        "bytes": 1067,
+        "sha256": "2ae0c1c709d4cec506e88fb90ffb9f82bb4b7811e6679430f4d2cc360e58a2be"
+      },
+      {
+        "path": "private/t132-executable-quality-fix/artifact/source/constant/hoopa_quality_profile_test.go",
+        "bytes": 1862,
+        "sha256": "fb72849f4bc5e15e798aa258a0589054e0fca28ac3d855a8513fc315f1d51231"
+      }
+    ],
+    "test_method": "os.Executable invokes the current test binary with exact -test.run; dedicated child and explicit expected environment; no same-process Setenv validation of a cached variable."
+  },
+  "tests": [
+    {
+      "name": "0012-constant-race",
+      "evidence": {
+        "path": "private/t132-executable-quality-fix/constant-race.jsonl",
+        "bytes": 8250,
+        "sha256": "1943ac33229681838af963b2ed011d5f82f1ee979e36f80bcc23015c7e05b32e"
+      },
+      "stderr": {
+        "path": "private/t132-executable-quality-fix/constant-race.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "passed_including_subtests": 9,
+      "top_level_pass": 1,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "fresh subprocess package initialization across empty/1/2/3/4/03/04/invalid profiles"
+    },
+    {
+      "name": "0012-outbound-race",
+      "evidence": {
+        "path": "private/t132-executable-quality-fix/outbound-race.jsonl",
+        "bytes": 12688,
+        "sha256": "b1c43c954f4b37d7e4c756808070882e3ec138c4dde0ce417a0291deda27d60e"
+      },
+      "stderr": {
+        "path": "private/t132-executable-quality-fix/outbound-race.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit_code": 0,
+      "passed_including_subtests": 13,
+      "top_level_pass": 3,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "profile4 environment; three selected Hoopa HTTP/SOCKS/wrapper quality tests; no full upstream suite"
+    }
+  ],
+  "targeted_validation": {
+    "path": "private/t132-executable-quality-fix/quality-fix-validation.json",
+    "bytes": 4080,
+    "sha256": "1928d211788fe1e72e95b694be2311916f4e0383dbb269c5100df8043084456f"
+  },
+  "patch_apply_check": {
+    "exit_code": 0,
+    "stdout": {
+      "path": "private/t132-executable-quality-fix/apply-check-whitespace.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "stderr": {
+      "path": "private/t132-executable-quality-fix/apply-check-whitespace.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "prior_0011_runtime": {
+    "run": "private/t132-executable-core-positive/vm-core-executable-positive-oqznnj4m",
+    "status": "failed_host_acceptance",
+    "stage": "actual_route_binding",
+    "checker_exit_code": 1,
+    "failure": {
+      "path": "private/t132-executable-core-positive/vm-core-executable-positive-oqznnj4m/host-failure.json",
+      "bytes": 745,
+      "sha256": "57cfcba2d02d3fe72ed5ef3dc41fd14100e5dc68790a50d1162b453a0b1e4d42"
+    },
+    "binary": {
+      "path": "private/t132-executable-online/artifact/mihomo-identity-executable",
+      "bytes": 51243666,
+      "sha256": "4fab2b7f44513d57c2629a7b68c3c4ee4634130a10135e59930b0f57925788bb"
+    },
+    "partial_observations": [
+      "VM and core exited0",
+      "two client exchanges each33/33",
+      "schema4 opened paths /bin/python3 and distinct call tokens1/3"
+    ],
+    "reason": "actual_connection node_id null and adapter_type unverified",
+    "limits": "Two 33/33 exchanges and v4 executable frames did not pass whole-run route acceptance. Preserve the original failed run and do not inherit it as a new-candidate pass."
+  },
+  "wire_version": 4,
+  "handoff_version": 2,
+  "resource_counts": {
+    "maps": 9,
+    "programs": 6,
+    "links": 5,
+    "total_fds": 20
+  },
+  "combined_bpf": {
+    "object": {
+      "path": "private/t132-executable-online/executable_online.bpf.o",
+      "bytes": 905720,
+      "sha256": "1bf999df3affd167b06c923b7dde3ef27ec521e7e0afaf2accb3f447a6059500"
+    },
+    "sources": [
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/connect_snapshot.bpf.c",
+        "bytes": 6573,
+        "sha256": "719eb1ce3c979c0f8bc8d8af3ac7d57d693b0f92ceee77564feba070443b10d1"
+      },
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/executable_online.bpf.c",
+        "bytes": 6708,
+        "sha256": "10190df39526e3b9eaccacc3297a9d7e47350f7588bd63a25a441bf2eddc3788"
+      },
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/online_snapshot.bpf.c",
+        "bytes": 6931,
+        "sha256": "369f08cffe3768b86a72eec1b3ae7c0febfeae2d41449ba192f5a5f73113aa5e"
+      }
+    ],
+    "inspection": {
+      "path": "private/t132-executable-online/object-inspection.json",
+      "bytes": 2738,
+      "sha256": "c4eef1a73a8479c4a0714ffbb509d329286014033779f27d8489843f056cb770"
+    },
+    "verifier": "Prior unchanged-object load observations belong to the failed 0011 run; this new candidate VM remains unverified."
+  },
+  "unchanged_decoders": {
+    "relative_to": "private/t132-executable-core-positive original prepared v4 decoder tools",
+    "files": [
+      {
+        "path": "private/t132-executable-core-positive/strictinspect",
+        "bytes": 4869499,
+        "sha256": "4ca37d7404e6041649c47f515901e7ad0757e3ca95bc9d17a95d774a1d779de4"
+      },
+      {
+        "path": "private/t132-executable-core-positive/sourceinspect",
+        "bytes": 4981912,
+        "sha256": "b0cb920a246cf26813562461431604a063588b9e0a82e3ff53473a20280a2c3c"
+      }
+    ],
+    "note": "0012 changes neither BPF nor wire decoder. Actual VM validation of the new core is still pending at manifest creation."
+  },
+  "identity_capability": "unverified",
+  "formal_identity_instance": false,
+  "formal_identity_name": false,
+  "formal_identity_path": false,
+  "formal_g01_new_samples": 0,
+  "formal_g01_previous_samples": "0/100",
+  "t132_complete": false,
+  "t137_complete": false,
+  "runtime": "unverified_at_creation",
+  "old_0011_candidate_preserved": true,
+  "old_001_to_009_binary_unchanged": true,
+  "limitations": [
+    "Targeted package tests and fresh apply/build are not VM or formal identity acceptance.",
+    "Previous upstream test/failure history remains in the previous manifest; these runs are not repeated or reclassified here.",
+    "This manifest records creation-time status and does not anticipate future VM outcomes."
+  ]
+}

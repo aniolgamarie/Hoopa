@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hoopa P1 management lifecycle data v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Status"
+    },
+    {
+      "$ref": "#/$defs/Operation"
+    },
+    {
+      "$ref": "#/$defs/ControlOnly"
+    }
+  ],
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "Phase": {
+      "enum": [
+        "prepared",
+        "validated",
+        "applying",
+        "verifying",
+        "publishing",
+        "committed",
+        "rolling_back",
+        "rolled_back",
+        "degraded"
+      ]
+    },
+    "Recovery": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "const": "durable_operation_journal"
+        },
+        "record_sha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "compacted": {
+          "type": "boolean"
+        },
+        "step_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "last_evidence_sha256": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "target_operation_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source",
+        "record_sha256",
+        "compacted",
+        "step_count",
+        "last_evidence_sha256",
+        "required",
+        "target_operation_id"
+      ],
+      "additionalProperties": false
+    },
+    "Operation": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "phase": {
+          "$ref": "#/$defs/Phase"
+        },
+        "base_revision": {
+          "$ref": "#/$defs/Id"
+        },
+        "target_revision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pending",
+            "committed",
+            "rolled_back",
+            "degraded"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            null,
+            "RECOVERY_REQUIRED",
+            "APPLY_FAILED",
+            "SUBSCRIPTION_UPDATE_FAILED"
+          ]
+        },
+        "recovery": {
+          "$ref": "#/$defs/Recovery"
+        },
+        "source_update": {
+          "$ref": "#/$defs/SourceUpdateProgress"
+        }
+      },
+      "required": [
+        "operation_id",
+        "operation",
+        "phase",
+        "base_revision",
+        "target_revision",
+        "outcome",
+        "error_code",
+        "recovery"
+      ],
+      "additionalProperties": false
+    },
+    "Core": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "unknown",
+            "verified-running",
+            "verified-stopped"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "ownership_unverified",
+            "empty_configuration",
+            "durable_original_exit",
+            "fresh_original_proof",
+            "observed_original_exit",
+            "activation_requires_management"
+          ]
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pid": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "start_ticks": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "boot_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "state",
+        "reason",
+        "run_id",
+        "pid",
+        "start_ticks",
+        "boot_id"
+      ],
+      "additionalProperties": false
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "revision": {
+          "$ref": "#/$defs/Id"
+        },
+        "generation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "desired_runtime": {
+          "enum": [
+            "stopped",
+            "running"
+          ]
+        },
+        "committed_runtime": {
+          "enum": [
+            "stopped",
+            "running"
+          ]
+        },
+        "service": {
+          "enum": [
+            "unavailable",
+            "running",
+            "quiesced"
+          ]
+        },
+        "core": {
+          "$ref": "#/$defs/Core"
+        },
+        "collector": {
+          "const": "unavailable"
+        },
+        "collector_reason": {
+          "const": "not_implemented"
+        },
+        "pending": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/Operation"
+          }
+        },
+        "pending_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pending_truncated": {
+          "type": "boolean"
+        },
+        "degraded": {
+          "type": "boolean"
+        },
+        "degraded_reasons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "operation_degraded",
+              "core_state_unverified",
+              "runtime_exited",
+              "source_schedule_failed"
+            ]
+          }
+        },
+        "restart_policy": {
+          "enum": [
+            "unavailable",
+            "disabled",
+            "armed_for_next_start",
+            "watching_original",
+            "budget_used_watching_successor",
+            "grant_failed",
+            "inactive"
+          ]
+        },
+        "source_schedule": {
+          "$ref": "#/$defs/SourceScheduleStatus"
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "status.get",
+              "doctor.get",
+              "operation.get",
+              "subscription.update",
+              "runtime.start",
+              "runtime.stop",
+              "operation.recover",
+              "service.stop",
+              "subscription.list",
+              "config.plan",
+              "config.apply"
+            ]
+          }
+        }
+      },
+      "required": [
+        "observed_at",
+        "revision",
+        "generation",
+        "desired_runtime",
+        "committed_runtime",
+        "service",
+        "core",
+        "collector",
+        "collector_reason",
+        "pending",
+        "pending_total",
+        "pending_truncated",
+        "degraded",
+        "degraded_reasons",
+        "restart_policy",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "ControlOnly": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "const": "running"
+        },
+        "instance": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{48}$"
+        },
+        "revision": {
+          "$ref": "#/$defs/Id"
+        },
+        "control_only": {
+          "const": true
+        }
+      },
+      "required": [
+        "service",
+        "instance",
+        "revision",
+        "control_only"
+      ],
+      "additionalProperties": false
+    },
+    "SourceScheduleStatus": {
+      "type": "object",
+      "properties": {
+        "state": {"enum": ["inactive", "waiting", "degraded", "stopped"]},
+        "last_checked_at": {"type": ["string", "null"], "format": "date-time"},
+        "error_code": {"enum": ["", "update_failed", "recovery_required"]}
+      },
+      "required": ["state", "last_checked_at", "error_code"],
+      "additionalProperties": false
+    },
+    "SourceUpdateProgress": {
+      "type": "object",
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "downloaded": {
+          "type": "boolean"
+        },
+        "validated": {
+          "type": "boolean"
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_due": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "",
+            "download_failed",
+            "validation_failed",
+            "input_changed",
+            "cancelled",
+            "interrupted",
+            "storage_failed"
+          ]
+        }
+      },
+      "required": [
+        "subscription_id",
+        "sequence",
+        "downloaded",
+        "validated",
+        "snapshot_id",
+        "started_at",
+        "finished_at",
+        "next_due",
+        "reason"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$comment": "Selected data schema only: validate the api-v1 Response envelope separately. Status is a bounded observation, not a cross-process transactional snapshot. Durable mutation responses continue to use api-v1 MutationReceipt. Read-only status may report activation_requires_management. Recovery digests describe historical records, not current core authority. Source update attempts additionally expose SourceUpdateProgress, with pending live workers distinguished from interrupted recovery-required history; this is not latest/applied provider authority."
+}

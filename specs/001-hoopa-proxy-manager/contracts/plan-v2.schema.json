@@ -1,0 +1,375 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "base_revision": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "compiler_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "intent": {
+      "$ref": "intent-v1.schema.json"
+    },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "provider",
+              "core_binary",
+              "capabilities",
+              "rule_asset",
+              "app_binding"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "impact": {
+      "type": "object",
+      "properties": {
+        "requires_disruption": {
+          "const": true
+        },
+        "affected_apps": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "maxItems": 6,
+          "uniqueItems": true
+        },
+        "previous_generation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "target_generation": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "connection_effect": {
+          "enum": [
+            "interrupt",
+            "unknown"
+          ]
+        },
+        "runtime_action": {
+          "enum": [
+            "start",
+            "replace"
+          ]
+        },
+        "details": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "enum": [
+                "generation_union",
+                "known_generation_union"
+              ]
+            },
+            "affected_nodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "subscription_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                  },
+                  "node_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                  }
+                },
+                "required": [
+                  "subscription_id",
+                  "node_id"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 128,
+              "uniqueItems": true
+            },
+            "affected_groups": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "maxItems": 128,
+              "uniqueItems": true
+            },
+            "affected_rules": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "maxItems": 128,
+              "uniqueItems": true
+            },
+            "existing_connections": {
+              "enum": [
+                "no_previous_generation",
+                "interrupt",
+                "unknown"
+              ]
+            },
+            "new_connections": {
+              "enum": [
+                "target_after_activation",
+                "unknown"
+              ]
+            },
+            "rollback_target": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "stop_candidate",
+                    "restore_generation"
+                  ]
+                },
+                "generation": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "manifest_sha256": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "generation",
+                "manifest_sha256"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "scope",
+            "affected_nodes",
+            "affected_groups",
+            "affected_rules",
+            "existing_connections",
+            "new_connections",
+            "rollback_target"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "requires_disruption",
+        "affected_apps",
+        "previous_generation",
+        "target_generation",
+        "connection_effect",
+        "runtime_action",
+        "details"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "runtime_action": {
+                "const": "start"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "previous_generation": {
+                "type": "null"
+              },
+              "details": {
+                "properties": {
+                  "scope": {
+                    "const": "generation_union"
+                  },
+                  "existing_connections": {
+                    "const": "no_previous_generation"
+                  },
+                  "rollback_target": {
+                    "properties": {
+                      "kind": {
+                        "const": "stop_candidate"
+                      },
+                      "generation": {
+                        "type": "null"
+                      },
+                      "manifest_sha256": {
+                        "type": "null"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "previous_generation": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "details": {
+                "properties": {
+                  "existing_connections": {
+                    "enum": [
+                      "interrupt",
+                      "unknown"
+                    ]
+                  },
+                  "rollback_target": {
+                    "properties": {
+                      "kind": {
+                        "const": "restore_generation"
+                      },
+                      "generation": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                      },
+                      "manifest_sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "details": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "existing_connections": {
+                        "const": "unknown"
+                      }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "new_connections": {
+                        "const": "unknown"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "connection_effect": {
+                "const": "unknown"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "connection_effect": {
+                "const": "interrupt"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "plan_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "required": [
+    "schema_version",
+    "base_revision",
+    "compiler_version",
+    "capabilities_digest",
+    "intent",
+    "inputs",
+    "impact",
+    "blockers",
+    "plan_digest"
+  ],
+  "additionalProperties": false,
+  "title": "Hoopa Plan v2",
+  "$comment": "Digest is SHA256 of strict UTF8 RFC8785 JCS with only top-level plan_digest omitted. Schema validates shape/bounds and conditional variants; Go additionally enforces strict Unicode/duplicate keys, byte limits, sorted identities, unique input kind/id, rollback generation equality to previous and complete authoritative current-input binding. Schema validation grants no Apply authority."
+}

@@ -1,0 +1,25 @@
+{
+  "api_version": "v1",
+  "request_id": "fixture-request",
+  "ok": true,
+  "data": {
+    "operation_id": "fixture-operation",
+    "operation": "service.stop",
+    "phase": "committed",
+    "base_revision": "fixture-revision",
+    "target_revision": null,
+    "outcome": "committed",
+    "error_code": null,
+    "recovery": {
+      "source": "durable_operation_journal",
+      "record_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "compacted": false,
+      "step_count": 6,
+      "last_evidence_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "required": false,
+      "target_operation_id": null
+    }
+  },
+  "error": null,
+  "warnings": []
+}

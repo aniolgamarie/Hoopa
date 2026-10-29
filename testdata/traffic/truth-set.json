@@ -1,0 +1,926 @@
+{
+  "schema_version": 1,
+  "status": "unverified",
+  "synthetic": true,
+  "registration": {
+    "required_before_execution": true,
+    "real_application": {
+      "name": null,
+      "reported_version": null
+    },
+    "calibration_tool": "curl",
+    "calibration_counts_as_real_agent": false,
+    "process_fields": [
+      "pid",
+      "host_boot_identity",
+      "os_start_identity",
+      "socket_evidence"
+    ],
+    "target_fields": [
+      "listening_address"
+    ],
+    "byte_boundary": "must_be_calibrated_and_registered_before_execution",
+    "instructions": "Acquire actual OS identities and controlled endpoint addresses before execution. Symbols and pid_slot are scenario relations, never observed identities. Freeze this oracle before collecting results; record unsupported evidence as a failed/unverified gate, do not relabel identifiable flows as unknown."
+  },
+  "processes": [
+    {
+      "symbol": "parent-a",
+      "name": "same-agent",
+      "parent": null,
+      "pid_slot": "slot-a",
+      "pid": null,
+      "os_start_identity": null,
+      "host_boot_identity": null,
+      "socket_evidence": null,
+      "must_follow_exit_of": null
+    },
+    {
+      "symbol": "parent-b",
+      "name": "same-agent",
+      "parent": null,
+      "pid_slot": "slot-b",
+      "pid": null,
+      "os_start_identity": null,
+      "host_boot_identity": null,
+      "socket_evidence": null,
+      "must_follow_exit_of": null
+    },
+    {
+      "symbol": "child-a",
+      "name": "child-agent",
+      "parent": "parent-a",
+      "pid_slot": "slot-child",
+      "pid": null,
+      "os_start_identity": null,
+      "host_boot_identity": null,
+      "socket_evidence": null,
+      "must_follow_exit_of": null
+    },
+    {
+      "symbol": "grandchild-a",
+      "name": "background-agent",
+      "parent": "child-a",
+      "pid_slot": "slot-grandchild",
+      "pid": null,
+      "os_start_identity": null,
+      "host_boot_identity": null,
+      "socket_evidence": null,
+      "must_follow_exit_of": null
+    },
+    {
+      "symbol": "reused-a",
+      "name": "same-agent",
+      "parent": null,
+      "pid_slot": "slot-a",
+      "pid": null,
+      "os_start_identity": null,
+      "host_boot_identity": null,
+      "socket_evidence": null,
+      "must_follow_exit_of": "parent-a"
+    }
+  ],
+  "domains": [
+    {
+      "symbol": "domain-a",
+      "name": "one.test",
+      "listening_address": null
+    },
+    {
+      "symbol": "domain-b",
+      "name": "two.test",
+      "listening_address": null
+    }
+  ],
+  "short_flows": [
+    {
+      "id": "short-001",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-002",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-003",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-004",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-005",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-006",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-007",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-008",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-009",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-010",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-011",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-012",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-013",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-014",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-015",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-016",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-017",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-018",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-019",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-020",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-021",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-022",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-023",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-024",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-025",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-026",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-027",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-028",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-029",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-030",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-031",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-032",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-033",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-034",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-035",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-036",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-037",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-038",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-039",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-040",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-041",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-042",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-043",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-044",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-045",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-046",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-047",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-048",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-049",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-050",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-051",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-052",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-053",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-054",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-055",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-056",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-057",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-058",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-059",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-060",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-061",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-062",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-063",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-064",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-065",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-066",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-067",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-068",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-069",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-070",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-071",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-072",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-073",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-074",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-075",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-076",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-077",
+      "process": "parent-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-078",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-079",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-080",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-081",
+      "process": "reused-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-082",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-083",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-084",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-085",
+      "process": "reused-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-086",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-087",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-088",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-089",
+      "process": "reused-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-090",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-091",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-092",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-093",
+      "process": "reused-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-094",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-095",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-096",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-097",
+      "process": "reused-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-098",
+      "process": "parent-b",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-099",
+      "process": "child-a",
+      "domain": "domain-a",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "short-100",
+      "process": "grandchild-a",
+      "domain": "domain-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "terminal_bytes_required": true
+    }
+  ],
+  "edge_cases": [
+    {
+      "id": "ip-only",
+      "process": "parent-a",
+      "listening_address": null,
+      "expected_process": "identified",
+      "expected_domain": "ip-only",
+      "expected_reason": "ip_only_target",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "shared-socket",
+      "process": null,
+      "expected_process": "unknown",
+      "expected_domain": "domain",
+      "domain": "domain-a",
+      "expected_reason": "shared_socket",
+      "terminal_bytes_required": true
+    },
+    {
+      "id": "encrypted-timing",
+      "process": "parent-b",
+      "expected_process": "identified",
+      "expected_domain": "domain",
+      "domain": "domain-b",
+      "expected_reason": "observed_proxy_target",
+      "quality_reason": "encrypted_request_boundary",
+      "terminal_bytes_required": true
+    }
+  ]
+}

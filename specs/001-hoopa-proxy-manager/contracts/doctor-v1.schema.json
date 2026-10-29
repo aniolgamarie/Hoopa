@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hoopa minimal readonly doctor data v1 (T139)",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "state"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "configuration"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "service"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "core"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "collector"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/Check"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "operations"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "observed_at",
+    "checks"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Check": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "enum": [
+            "state",
+            "configuration",
+            "service",
+            "core",
+            "collector",
+            "operations"
+          ]
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "warning",
+            "unavailable"
+          ]
+        },
+        "evidence": {
+          "enum": [
+            "protected_local_files",
+            "durable_operation_journal",
+            "current_management_service",
+            "fresh_core_identity",
+            "not_observed"
+          ]
+        },
+        "reason": {
+          "enum": [
+            "state_readable",
+            "committed_snapshot",
+            "service_unavailable",
+            "ownership_unverified",
+            "not_implemented",
+            "no_pending_operations",
+            "no_committed_configuration",
+            "service_running",
+            "service_quiesced",
+            "fresh_original_proof",
+            "empty_configuration",
+            "durable_original_exit",
+            "activation_requires_management",
+            "pending_operations",
+            "state_unavailable",
+            "state_missing_or_incomplete"
+          ]
+        },
+        "recommendation": {
+          "enum": [
+            "none",
+            "start_control_service",
+            "inspect_runtime_status",
+            "not_available_in_current_phase",
+            "config_plan_apply",
+            "start_management_for_verification",
+            "inspect_operations",
+            "inspect_instance_paths"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "result",
+        "evidence",
+        "reason",
+        "recommendation"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$comment": "Completed diagnostics may contain unavailable/warning results. Missing authority is not permission to initialize. This schema validates the finite projection only; source evidence and readonly effects require runtime tests."
+}

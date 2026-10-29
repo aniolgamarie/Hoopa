@@ -1,0 +1,301 @@
+//go:build linux && amd64
+
+// Test-only fixed-source overlay. Requires the separately pinned source5
+// recovery overlay for its bounded readonly input helpers. Actual ENOSPC
+// provenance must be bound to guest syscall/export evidence before invocation.
+package hoopatrace
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
+	"github.com/metacubex/mihomo/component/identityprofile"
+)
+
+func TestHoopaImportedV5ENOSPCRecovery(t *testing.T) {
+	input, shape := os.Getenv("HOOPA_SOURCE5_ENOSPC_INPUT"), os.Getenv("HOOPA_SOURCE5_ENOSPC_SHAPE")
+	if input == "" && shape == "" {
+		t.Skip("unverified: explicit root-bound actual ENOSPC original pair and tail shape required")
+	}
+	if input == "" || (shape != "complete" && shape != "partial") {
+		t.Fatal("both explicit input and complete/partial shape required")
+	}
+	v5ENOSPCExercise(t, input, shape, "external_input_root_syscall_provenance_required")
+}
+
+// Only identifies a complete framing prefix; the fixed decoder below validates
+// every complete frame. A partial suffix is retained, never repaired/truncated.
+func v5ENOSPCPrefix(raw []byte) (int, error) {
+	pos := 0
+	for pos < len(raw) {
+		if len(raw)-pos < 4 {
+			return pos, nil
+		}
+		n := int(binary.BigEndian.Uint32(raw[pos : pos+4]))
+		if n == 0 || n > maxFrame {
+			return 0, ErrSource
+		}
+		if len(raw)-pos < n+36 {
+			return pos, nil
+		}
+		pos += n + 36
+	}
+	return pos, nil
+}
+
+func v5ENOSPCInput(input, shape string) (map[string][]byte, string, telemetrywire.Manifest, [][]byte, error) {
+	bad := func() (map[string][]byte, string, telemetrywire.Manifest, [][]byte, error) {
+		return nil, "", telemetrywire.Manifest{}, nil, ErrSource
+	}
+	info, err := os.Lstat(input)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || (shape != "complete" && shape != "partial") {
+		return bad()
+	}
+	entries, err := os.ReadDir(input)
+	if err != nil || len(entries) != 2 {
+		return bad()
+	}
+	files := map[string][]byte{}
+	name := ""
+	for _, entry := range entries {
+		limit := int64(maxFrame)
+		n := entry.Name()
+		if strings.HasPrefix(n, "epoch-") && strings.HasSuffix(n, ".frames") {
+			name, limit = n, defaultLimit
+		} else if !strings.HasPrefix(n, "epoch-") || !strings.HasSuffix(n, ".source.json") {
+			return bad()
+		}
+		raw, e := v5ReadInput(filepath.Join(input, n), limit)
+		if e != nil {
+			return bad()
+		}
+		files[n] = raw
+	}
+	metaName := strings.TrimSuffix(name, ".frames") + ".source.json"
+	m, err := telemetrywire.DecodeManifest(files[metaName])
+	if err != nil || name == "" || m.SchemaVersion != 2 || m.SourceSchemaVersion != 5 || m.IdentityProfile != identityprofile.ID || name != "epoch-"+strings.TrimPrefix(m.SourceEpoch, "epoch:")+".frames" {
+		return bad()
+	}
+	raw := files[name]
+	prefix, err := v5ENOSPCPrefix(raw)
+	if err != nil || prefix == 0 || (prefix == len(raw)) != (shape == "complete") {
+		return bad()
+	}
+	var originals [][]byte
+	life, err := boundFrames(raw[:prefix], m, func(p []byte) error {
+		e, decodeErr := telemetrywire.DecodeSourceEvent(p)
+		if decodeErr != nil || !v5Event(e) || e.Kind == "closed" || e.Kind == "gap" || e.Kind == "epoch_closed" {
+			return ErrSource
+		}
+		originals = append(originals, append([]byte(nil), p...))
+		return nil
+	})
+	if err != nil || len(life.Flows) != 1 {
+		return bad()
+	}
+	sum := sha256.Sum256(raw[:prefix])
+	report, err := telemetrywire.ProjectRecovery(m, life, hex.EncodeToString(sum[:]), nil)
+	if err != nil || len(report.Flows) != 1 || report.WriterEnd != nil {
+		return bad()
+	}
+	f := report.Flows[0]
+	if f.State != "pending" || f.Reason != "source_final_missing" || f.LastCheckpoint == nil || f.LastCheckpoint.UploadBytes != 12 || f.LastCheckpoint.DownloadBytes != 12 || f.Final != nil || f.TailBytes != nil || len(f.GapDimensions) != 0 {
+		return bad()
+	}
+	if shape == "partial" {
+		if _, err = boundFrames(raw, m, nil); err == nil {
+			return bad()
+		}
+	}
+	return files, name, m, originals, nil
+}
+
+func v5ENOSPCExercise(t *testing.T, input, shape, label string) {
+	t.Helper()
+	t.Setenv("HOOPA_TRACE_PROFILE", "5")
+	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "")
+	files, name, manifest, originals, err := v5ENOSPCInput(input, shape)
+	if err != nil {
+		t.Fatal("invalid original source5 ENOSPC pair", err)
+	}
+	t.Logf("input_class=%s shape=%s; prefix parsing is diagnostic only; no original input writer", label, shape)
+	dir := t.TempDir()
+	if err = os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for n, raw := range files {
+		if err = os.WriteFile(filepath.Join(dir, n), raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var factID, factHash string
+	for iteration := 0; iteration < 3; iteration++ {
+		s, openErr := openSource(dir, "enospc-recovery-probe", "", "", defaultLimit)
+		if shape == "partial" {
+			if s != nil {
+				s.close()
+				t.Fatal("partial tail produced a source")
+			}
+			if !errors.Is(openErr, ErrSource) {
+				t.Fatal("partial tail did not fail closed", openErr)
+			}
+			entries, e := os.ReadDir(dir)
+			if e != nil || len(entries) != 3 { // two originals plus exclusive lock file
+				t.Fatal("failed reopen created another epoch", e)
+			}
+			t.Logf("reopen=%d partial_original_rejected_without_repair=true", iteration)
+		} else {
+			if openErr != nil || s == nil {
+				t.Fatal("complete source rejected", openErr)
+			}
+			func() {
+				defer s.close()
+				other, e := openSource(dir, "enospc-recovery-probe", "", "", defaultLimit)
+				if other != nil {
+					other.close()
+				}
+				if !errors.Is(e, ErrSource) || other != nil {
+					t.Fatal("concurrent source writer accepted", e)
+				}
+				found := false
+				for _, report := range s.recoveryReports() {
+					if report.SourceEpoch != manifest.SourceEpoch {
+						continue
+					}
+					found = true
+					if report.WriterEnd == nil || report.WriterEnd.Kind != "exclusive_writer_full_scan" || len(report.Flows) != 1 {
+						t.Fatal("exclusive full-scan evidence missing")
+					}
+					f := report.Flows[0]
+					if f.State != "gap" || f.Reason != "epoch_ended_without_final" || f.LastCheckpoint == nil || f.LastCheckpoint.UploadBytes != 12 || f.LastCheckpoint.DownloadBytes != 12 || f.Final != nil || f.TailBytes != nil || f.ReconciliationID == "" || f.FactSHA256 == "" {
+						t.Fatal("recovery lost trusted checkpoint or invented final")
+					}
+					if iteration == 0 {
+						factID, factHash = f.ReconciliationID, f.FactSHA256
+					} else if f.ReconciliationID != factID || f.FactSHA256 != factHash {
+						t.Fatal("repeated reopen changed original gap fact")
+					}
+					raw, _ := json.Marshal(report)
+					t.Logf("reopen=%d report=%s", iteration, raw)
+				}
+				if !found {
+					t.Fatal("old source report missing")
+				}
+				snapshots, e := s.sendSnapshots()
+				if e != nil {
+					t.Fatal(e)
+				}
+				found = false
+				for _, snapshot := range snapshots {
+					if snapshot.name == name {
+						found = reflect.DeepEqual(snapshot.frames, originals)
+					}
+				}
+				if !found {
+					t.Fatal("original complete prefix changed on replay")
+				}
+			}()
+		}
+		for n, before := range files {
+			after, e := v5ReadInput(filepath.Join(input, n), defaultLimit)
+			copied, ce := os.ReadFile(filepath.Join(dir, n))
+			if e != nil || ce != nil || !bytes.Equal(before, after) || !bytes.Equal(before, copied) {
+				t.Fatal("recovery changed original bytes, including any partial suffix", n)
+			}
+		}
+	}
+}
+
+func v5ENOSPCSyntheticPair(t *testing.T, partial bool) string {
+	t.Helper()
+	input := v5SyntheticInput(t, "5")
+	dir := t.TempDir()
+	entries, err := os.ReadDir(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".frames") {
+			continue
+		}
+		name := entry.Name()
+		metaName := strings.TrimSuffix(name, ".frames") + ".source.json"
+		raw, _ := os.ReadFile(filepath.Join(input, name))
+		meta, _ := os.ReadFile(filepath.Join(input, metaName))
+		manifest, _ := telemetrywire.DecodeManifest(meta)
+		life, e := boundFrames(raw, manifest, nil)
+		if e != nil || len(life.Flows) != 1 || life.Flows[0].State != "pending" {
+			continue
+		}
+		if partial {
+			raw = append(raw, []byte{0, 0, 0, 50, '{', '"'}...)
+		}
+		for n, data := range map[string][]byte{name: raw, metaName: meta} {
+			if e = os.WriteFile(filepath.Join(dir, n), data, 0600); e != nil {
+				t.Fatal(e)
+			}
+		}
+		return dir
+	}
+	t.Fatal("synthetic pending source missing")
+	return ""
+}
+
+func TestHoopaImportedV5ENOSPCRecoverySyntheticOnly(t *testing.T) {
+	for _, shape := range []string{"complete", "partial"} {
+		t.Run(shape, func(t *testing.T) {
+			input := v5ENOSPCSyntheticPair(t, shape == "partial")
+			v5ENOSPCExercise(t, input, shape, "SYNTHETIC_ONLY_no_kernel_ENOSPC")
+		})
+	}
+}
+
+func TestHoopaImportedV5ENOSPCRecoveryInputRejection(t *testing.T) {
+	for _, kind := range []string{"wrong_shape", "missing_manifest", "corrupt_checksum", "extra_file", "symlink_frames"} {
+		t.Run(kind, func(t *testing.T) {
+			input := v5ENOSPCSyntheticPair(t, false)
+			matches, _ := filepath.Glob(filepath.Join(input, "*.frames"))
+			name := matches[0]
+			shape := "complete"
+			switch kind {
+			case "wrong_shape":
+				shape = "partial"
+			case "missing_manifest":
+				if err := os.Remove(strings.TrimSuffix(name, ".frames") + ".source.json"); err != nil {
+					t.Fatal(err)
+				}
+			case "corrupt_checksum":
+				raw, _ := os.ReadFile(name)
+				raw[len(raw)-1] ^= 1
+				if err := os.WriteFile(name, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "extra_file":
+				if err := os.WriteFile(filepath.Join(input, "unexpected"), nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "symlink_frames":
+				outside := filepath.Join(t.TempDir(), "original.frames")
+				if err := os.Rename(name, outside); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, name); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, _, _, _, err := v5ENOSPCInput(input, shape); err == nil {
+				t.Fatal("invalid evidence accepted", kind)
+			}
+		})
+	}
+}

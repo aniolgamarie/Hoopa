@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "scope": "T132 finite read-only capture diagnostics and conservative raw-recursion refusal; not T137",
+  "status": "fresh 001-013 build; new candidate actual VM unverified at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-capture-diagnostics/artifact/mihomo-identity-capture-diagnostics",
+    "bytes": 51254983,
+    "sha256": "476d57884b810e96d8b44367afbf91001bc63b6b516930a66b89d6e8dc05467b"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-executable-quality-candidate-manifest.json",
+    "bytes": 12449,
+    "sha256": "af93d9cfd7b85c9d88e5e7a281a2ebb002f7d2c068fc3bfad99ae2bc428c004f"
+  },
+  "source": {
+    "fresh_applied": "private/t132-capture-diagnostics/artifact/source",
+    "reviewed_target": "private/t132-capture-diagnostics/reviewed-source",
+    "tree_sha256": "fafda3d95776abda19a829eed49eaa063cf0e90b6418e2b451478375c03fa154",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF for each entry; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1179,
+    "file_count": 983,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-capture-diagnostics/build-result.json",
+      "bytes": 181521,
+      "sha256": "a36ab8aec867795bfddfaab246bc6a9da351e19f0e0f9eec46eacb287c6c6fd6"
+    },
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    }
+  },
+  "version_probe": {
+    "argv": [
+      "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-capture-diagnostics/artifact/mihomo-identity-capture-diagnostics",
+      "-v"
+    ],
+    "exit_code": 0,
+    "stdout": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time\n",
+    "stderr": ""
+  },
+  "version_interpretation": "No version ldflags: printed default 1.10.0 is not the source version; source is fixed v1.19.26 commit fc8c5a24b16991f98cd736950c17d1aa306a5041.",
+  "change": {
+    "contract": "specs/001-hoopa-proxy-manager/contracts/connector-capture-diagnostics-v1.md",
+    "production": "Read-only Owner.Diagnostics plus separately authenticated GET /hoopa/capture-health; v2 adoption and before/after admission refuse unreadable/nonzero raw tracepoint recursion_misses; existing status schema unchanged.",
+    "files": [
+      {
+        "path": "private/t132-capture-diagnostics/artifact/source/component/hoopaid/owner.go",
+        "bytes": 12065,
+        "sha256": "429e1c709571a5c43f550d61bad066736aa2ed418a1e97463551a8e45464b60a"
+      },
+      {
+        "path": "private/t132-capture-diagnostics/artifact/source/component/hoopaid/diagnostics.go",
+        "bytes": 4452,
+        "sha256": "b2f5f400aa2726cdc8d64732c14b0ebebf49a12d588f91778fccb3ca5b5c4664"
+      },
+      {
+        "path": "private/t132-capture-diagnostics/artifact/source/component/hoopaid/diagnostics_test.go",
+        "bytes": 12396,
+        "sha256": "acce4f1999b4486efe880ce2bda24391e9ce712eb1d3eb3417cb3d3aa0902b99"
+      },
+      {
+        "path": "private/t132-capture-diagnostics/artifact/source/hoopa_guard_linux.go",
+        "bytes": 12623,
+        "sha256": "105c3b93946a0eb826e3637506d28d196dd6a10e9d06c6ece4217aea3a50d926"
+      },
+      {
+        "path": "private/t132-capture-diagnostics/artifact/source/hoopa_capture_health_test.go",
+        "bytes": 2736,
+        "sha256": "83bed23beb428b08227c4bc7b1fce4e16ce00959ebc0ecd57517592c3caac286"
+      }
+    ]
+  },
+  "tests": {
+    "public_race_report": {
+      "path": "private/t132-capture-diagnostics-tests/report.json",
+      "bytes": 1867,
+      "sha256": "49549d27de0d76e53ce0783184df4f8afa663af0f1beb86b3d621985aed8be3c"
+    },
+    "integrated_command_evidence": {
+      "path": "private/t132-capture-diagnostics/integrated-checks.json",
+      "bytes": 429,
+      "sha256": "7d1ee3f9f4412a56ff6858ad8e5f26926e533b8bcd222a56313006f1b5fdea71"
+    },
+    "integrated_race": {
+      "path": "private/t132-capture-diagnostics/integrated-race.stdout",
+      "bytes": 109489,
+      "sha256": "184157b7d3c2f3ce260401ba506d6426a755c8d5a0ed236973844d4e72381193"
+    },
+    "integrated_race_stderr": {
+      "path": "private/t132-capture-diagnostics/integrated-race.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "integrated_passed_including_subtests": 100,
+    "integrated_top_level": 7,
+    "integrated_failures": 0,
+    "integrated_skips": 0,
+    "vet_stdout": {
+      "path": "private/t132-capture-diagnostics/integrated-vet.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "vet_stderr": {
+      "path": "private/t132-capture-diagnostics/integrated-vet.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "actual_kernel_recursion_skip_injection": false
+  },
+  "wire_version": 4,
+  "handoff_version": 2,
+  "resource_counts": {
+    "maps": 9,
+    "programs": 6,
+    "links": 5,
+    "total_fds": 20
+  },
+  "combined_bpf": {
+    "path": "private/t132-executable-online/executable_online.bpf.o",
+    "bytes": 905720,
+    "sha256": "1bf999df3affd167b06c923b7dde3ef27ec521e7e0afaf2accb3f447a6059500"
+  },
+  "identity_capability": "unverified",
+  "formal_identity_instance": false,
+  "formal_identity_name": false,
+  "formal_identity_path": false,
+  "formal_g01_new_samples": 0,
+  "formal_g01_previous_samples": "old GOST 0/100 retained",
+  "t132_complete": false,
+  "t137_complete": false,
+  "runtime": "not yet run; creation record immutable",
+  "limitations": [
+    "Sequential counter reads, not an atomic snapshot or proof of hook/link continuity.",
+    "Raw tracepoint misses do not diagnose ordinary LSM MAC hook omissions.",
+    "Counter failure is unavailable/null, never synthetic zero; no diagnostic mutation or automatic recovery.",
+    "Fake backend fault injection is not an actual kernel recursion-skip sample."
+  ]
+}

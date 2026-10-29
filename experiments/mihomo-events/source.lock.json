@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-10-22",
+  "repository": "https://github.com/MetaCubeX/mihomo",
+  "tag": "v1.19.26",
+  "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+  "license_observed": "GNU General Public License version 3 (LICENSE)",
+  "scope": "Inspected source files only; not a binary equivalence, dependency-distribution, runtime or capability attestation.",
+  "inspected_files_sha256": {
+    "LICENSE": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "go.mod": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7",
+    "constant/metadata.go": "4f7c0259952ace118f959d18058cd7d9169bb4e86cee6e2c53dfb368f9dce4a1",
+    "component/process/process.go": "6ce00bdc7ac5f9d5d421a6fafb4ceaf3c8b1246efe3725b5bd4041c2121f34a6",
+    "component/process/process_linux.go": "2d0162fb2dd68c4957fc1962af83c8b71ae4f1855f54567c472b29216ac10b77",
+    "rules/common/process.go": "4d0cc44f4fedce4810dc6e7d6ce91c07ca120c6ad04d247027c807c140f6cb98",
+    "adapter/inbound/socket.go": "822a094e1c7ae395879f42113360e218a129201fe19b5b990c8eef6b2cbecc6c",
+    "adapter/inbound/addition.go": "e83b136b98089f9ea5d3daf7591645bbec0603ce4e0e53b18819d86da30b1a81",
+    "listener/socks/tcp.go": "7b6bd10275d37b3bc51fc8d76a7a8b848421731ef99570d8f3f95392974f55be",
+    "listener/http/proxy.go": "789314ce46bfb11c8060e41cc179f489dad1622b53ddb2f6bc573cdd71a0b675",
+    "listener/inbound/base.go": "844276253cb96d611afa47b597e730f10cd867ff90749efe5a68cff702c92cc9",
+    "tunnel/tunnel.go": "d5575107745be89c2f15bb5d9e506e91f2b76137d347ce6a2f8fd7905df8da8e",
+    "tunnel/connection.go": "1e48fbdff3551c8d0dcbe5265088c3b56db0b66eb9c7512af5aaa31e8e65af1b",
+    "tunnel/statistic/tracker.go": "80e8cc0df115c35a62baea5aec4c3ad4a28c1cf9c47c52a78e76523520c83a6f",
+    "tunnel/statistic/manager.go": "508daa254d05b6414e899e4eb154cb3b83572d6223e5662da9463728cb588886",
+    "common/net/sing.go": "2c9131023775ef83ca810fcab76f7a743f7e84d0b13ddd00b90ae07e677b438b"
+  },
+  "baseline_binary": {
+    "sha256": "78f3d225a53f8345db5b1f3f147d155ef5a1d56843931f6d61f908045cefb789",
+    "reported_version": "v1.19.26",
+    "vcs_revision": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "vcs_modified": true,
+    "module_version": "v0.0.0-20260530011440-fc8c5a24b169+dirty",
+    "equivalence_to_clean_tag": "unverified"
+  },
+  "enhanced_candidate": {
+    "manifest": "candidate-manifest.json",
+    "patch_sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3",
+    "binary_sha256": "76e0e114ac9a669ec0eb131f35ead972d3e24b2dceeb270e72a3e879f5b9c32e",
+    "version": "hoopa-p0-fc8c5a2",
+    "status": "built; full telemetry gates not passed"
+  }
+}

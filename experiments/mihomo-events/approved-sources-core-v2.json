@@ -1,0 +1,66 @@
+{
+  "schema": "hoopa-approved-sources-core-v2",
+  "approved_on": "2026-10-28",
+  "status": "accepted_bounded_sources_profile",
+  "binary": {
+    "version": "1.10.0",
+    "sha256": "c90d82e73e22bc94fdc5fcecc1162b5e23ef3962b966c5c37a2ef963e12f91c6",
+    "bytes": 51634958,
+    "upstream_commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041"
+  },
+  "goos": "linux",
+  "goarch": "amd64",
+  "protocol": 2,
+  "mode": "basic-sources",
+  "capabilities": [
+    "authenticated-activate-v1",
+    "closed-start-v1",
+    "immutable-source-snapshot-v2",
+    "probe-qualified-groups-v1"
+  ],
+  "installation_path": "supplied locally; exact binary and original process remain independently checked",
+  "scope": [
+    "Finite canonical source profile with seven remote protocol types; 41 protected closed-start constructor/native projection variants",
+    "Immutable configured URLTest membership/probe policy, single-member manual/follow selectors, explicit REJECT when no qualified successful probe",
+    "Atomic per-URL/status probe observations; actual controlled HTTP CONNECT/HEAD/GET automatic route switching and follow groups",
+    "Authenticated closed/start/activate/drain/historical receipt and new-core re-open checks; v1 compatibility retained",
+    "Fixed normal binary only; full source patch reproduction yields identical binary",
+    "Static ELF without PT_INTERP; actual pinned-FD preflight accepted; diagnostic dynamic/race builds not approved"
+  ],
+  "not_granted": [
+    "Remote provider handshake or availability for all seven protocols",
+    "Original-process identity, process rules, durable accounting, business ready-latency or full quality telemetry",
+    "T041 completion or P1/P0 release; product compiler/launcher integration still in progress",
+    "Manager death/adoption/fault matrix on this new binary or arbitrary hot reload",
+    "Actual suspend/clock-skew/0ms measurements; those selection boundaries are synthetic unit tests",
+    "BPF deployment, TUN, system proxy, platform support beyond linux/amd64, resource budgets"
+  ],
+  "references": [
+    {
+      "path": "experiments/mihomo-events/core-sources-control-v2-manifest.json",
+      "bytes": 7955,
+      "sha256": "1cb4057f9bcf52980996c91289ac0ff7488f726c9c2d8dff540b6aa52c684fcb"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0020-sources-control-v2.patch",
+      "bytes": 99852,
+      "sha256": "2a758377519d408c58d148fb6c2332d763be7446634da234b6daea5f52f100cd"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/static-reproduction-result.json",
+      "bytes": 305,
+      "sha256": "57b5da979d2a43a87a03937741ff154f10f88160800267ed6e0ae5be2febfe2a"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/elf-preflight-host.json",
+      "bytes": 598,
+      "sha256": "e558fab9ab6fd9d01da605a18f2dbfb19dcbf0d08baa0f493de8e0040bd2b7e8"
+    }
+  ],
+  "build_environment": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux",
+    "GOARCH": "amd64",
+    "GOAMD64": "v1"
+  }
+}

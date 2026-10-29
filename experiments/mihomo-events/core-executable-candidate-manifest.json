@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "scope": "T132 executable call evidence integration; not T137",
+  "status": "fresh build; combined verifier and core VM unverified at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-executable-online/artifact/mihomo-identity-executable",
+    "bytes": 51243666,
+    "sha256": "4fab2b7f44513d57c2629a7b68c3c4ee4634130a10135e59930b0f57925788bb"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-tfo-candidate-manifest.json",
+    "bytes": 6944,
+    "sha256": "2760e461870a38a02cd303c38d6ea4ab8bb673b0b4be11daf8f8f5523eac4ae8"
+  },
+  "source": {
+    "fresh_applied": "private/t132-executable-online/artifact/source",
+    "reviewed_target": "private/t132-executable-online/reviewed-source",
+    "tree_sha256": "a1233844b77aa1c7a510ad7e1a76a25d26a4cf093b01f9a0e72848ce4200f65f",
+    "tree_sha256_algorithm": "SHA256 of sorted relative entries as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1176,
+    "file_count": 980,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-executable-online/build-result.json",
+      "bytes": 178438,
+      "sha256": "074018183251e554c4d223ac28c3bb8f568a7333990a4f7b4146a6ce9105f742"
+    }
+  },
+  "version_probe": {
+    "exit_code": 0,
+    "stdout": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time\n",
+    "stderr": ""
+  },
+  "version_interpretation": "No version ldflags: printed default1.10.0 is not source version; fixed source v1.19.26.",
+  "tests": [
+    {
+      "name": "run-v1",
+      "evidence": {
+        "path": "private/t132-executable-online/core-tests/run-v1.jsonl",
+        "bytes": 130924,
+        "sha256": "661215e4aade9163bd33392067499a0d02ffbeaa3223d5c2c85a8b42902f30e3"
+      },
+      "passed_including_subtests": 144,
+      "top_level_pass": 28,
+      "failed": 0,
+      "skipped": [],
+      "packages": [
+        {
+          "Package": "hoopa/experiments/sourceidentity/coreadmission",
+          "Action": "pass"
+        }
+      ]
+    },
+    {
+      "name": "upstream-v1",
+      "evidence": {
+        "path": "private/t132-executable-online/core-tests/upstream-v1.jsonl",
+        "bytes": 467220,
+        "sha256": "9b545e09435b456fca42e60f535e47ec344a932877a5fb8cd141dc4e63974fad"
+      },
+      "passed_including_subtests": 365,
+      "top_level_pass": 83,
+      "failed": 78,
+      "skipped": [
+        "TestSourceLostACKAndReopenReplayOriginalBytes",
+        "TestSourceSenderRetriesSamePersistedEvent"
+      ],
+      "packages": [
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopaid",
+          "Action": "pass"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace/telemetrywire",
+          "Action": "fail"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace",
+          "Action": "pass"
+        }
+      ]
+    },
+    {
+      "name": "upstream-v2",
+      "evidence": {
+        "path": "private/t132-executable-online/core-tests/upstream-v2.jsonl",
+        "bytes": 471076,
+        "sha256": "a160b145f9c13b91b92f54e9eb9486d96f4de0ff51912179114826888b971f8d"
+      },
+      "passed_including_subtests": 369,
+      "top_level_pass": 85,
+      "failed": 78,
+      "skipped": [
+        "TestSourceLostACKAndReopenReplayOriginalBytes",
+        "TestSourceSenderRetriesSamePersistedEvent"
+      ],
+      "packages": [
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopaid",
+          "Action": "pass"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace/telemetrywire",
+          "Action": "fail"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace",
+          "Action": "pass"
+        }
+      ]
+    },
+    {
+      "name": "upstream-v3",
+      "evidence": {
+        "path": "private/t132-executable-online/core-tests/upstream-v3.jsonl",
+        "bytes": 392242,
+        "sha256": "614bd5e280bfa500845c8a04b93adf7ec80e38bde36f3f70b4f841cf1ad0030a"
+      },
+      "passed_including_subtests": 375,
+      "top_level_pass": 80,
+      "failed": 0,
+      "skipped": [
+        "TestSourceLostACKAndReopenReplayOriginalBytes",
+        "TestSourceSenderRetriesSamePersistedEvent"
+      ],
+      "packages": [
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace/telemetrywire",
+          "Action": "pass"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo/component/hoopatrace",
+          "Action": "pass"
+        },
+        {
+          "Package": "github.com/metacubex/mihomo",
+          "Action": "pass"
+        }
+      ]
+    },
+    {
+      "name": "guard-v4",
+      "evidence": {
+        "path": "private/t132-executable-online/core-tests/guard-v4.jsonl",
+        "bytes": 5330,
+        "sha256": "30f138aaea53da999dcb3125f57e01ccc39021a321c585a60e16a6379650dc92"
+      },
+      "passed_including_subtests": 5,
+      "top_level_pass": 1,
+      "failed": 0,
+      "skipped": [],
+      "packages": [
+        {
+          "Package": "github.com/metacubex/mihomo",
+          "Action": "pass"
+        }
+      ]
+    }
+  ],
+  "original_failures": "First preparation command used the wrong cwd; first two mirrored wire runs lacked relative JSON fixtures. Logs retained. Added actual fixtures with corrected test paths; no decoder checks relaxed.",
+  "wire_version": 4,
+  "handoff_version": 2,
+  "resource_counts": {
+    "maps": 9,
+    "programs": 6,
+    "links": 5,
+    "total_fds": 20
+  },
+  "identity_capability": "unverified",
+  "formal_g01_new_samples": 0,
+  "runtime": "unverified",
+  "old_001_to_009_binary_unchanged": true,
+  "combined_bpf": {
+    "object": {
+      "path": "private/t132-executable-online/executable_online.bpf.o",
+      "bytes": 905720,
+      "sha256": "1bf999df3affd167b06c923b7dde3ef27ec521e7e0afaf2accb3f447a6059500"
+    },
+    "sources": [
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/connect_snapshot.bpf.c",
+        "bytes": 6573,
+        "sha256": "719eb1ce3c979c0f8bc8d8af3ac7d57d693b0f92ceee77564feba070443b10d1"
+      },
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/executable_online.bpf.c",
+        "bytes": 6708,
+        "sha256": "10190df39526e3b9eaccacc3297a9d7e47350f7588bd63a25a441bf2eddc3788"
+      },
+      {
+        "path": "experiments/sourceidentity/bpf/executable_online/online_snapshot.bpf.c",
+        "bytes": 6931,
+        "sha256": "369f08cffe3768b86a72eec1b3ae7c0febfeae2d41449ba192f5a5f73113aa5e"
+      }
+    ],
+    "inspection": {
+      "path": "private/t132-executable-online/object-inspection.json",
+      "bytes": 2738,
+      "sha256": "c4eef1a73a8479c4a0714ffbb509d329286014033779f27d8489843f056cb770"
+    },
+    "verifier": "unverified"
+  },
+  "python_tests": {
+    "path": "private/t132-executable-online/python-tests/report.json",
+    "bytes": 3573,
+    "sha256": "50f06c9d693fcde6171fe83ac511a82e0e58ab04396a2d2352ce77dc104db251"
+  }
+}

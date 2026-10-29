@@ -1,0 +1,234 @@
+{
+  "schema": "hoopa-sources-core-candidate-v2",
+  "date": "2026-10-28",
+  "status": "accepted_finite_static_core_component_product_compilation_in_progress",
+  "production_capability_issued": true,
+  "T041_complete": false,
+  "binary": {
+    "exit_code": 0,
+    "elapsed_seconds": 11.082,
+    "stable": true,
+    "approved": false,
+    "sha256": "c90d82e73e22bc94fdc5fcecc1162b5e23ef3962b966c5c37a2ef963e12f91c6",
+    "bytes": 51634958,
+    "has_dynamic_interpreter": false
+  },
+  "race_binary": {
+    "exit_code": 0,
+    "elapsed_seconds": 62.347,
+    "stable": true,
+    "approved": false,
+    "sha256": "bf27fdf3f55942c462f24413a9f1c54a6bb3e10c4c7990582f11fd180590e802",
+    "bytes": 67810831
+  },
+  "normal": {
+    "events": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "top_level": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "race": {
+    "events": {
+      "pass": 13,
+      "fail": 0,
+      "skip": 0
+    },
+    "top_level": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "v1_regression": {
+    "events": {
+      "pass": 61,
+      "fail": 0,
+      "skip": 0
+    },
+    "top_level": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "actual_per_final_run": {
+    "core_processes": 13,
+    "accepted_starts": 4,
+    "rejected_starts": 9,
+    "finite_protocol_variants_in_one_closed_start": 41,
+    "dynamic_source_runs": 2
+  },
+  "limitations": [
+    "HTTP upstream CONNECT and target HEAD/GET are controlled local fixtures; no remote protocol handshake claim",
+    "41 variants prove protected startup/native projection only",
+    "0ms/stale/future qualification are separate synthetic unit checks",
+    "No product manager death/recovery matrix on this binary; no identity/accounting/ready-quality grant",
+    "T041 compiler and product admission are incomplete",
+    "The initial driver failed on Go TempDir0755; retained normal-01 log;0700 correction observed normal-02",
+    "Prior dynamic build01 capability withdrawn before product run; static build02 uses explicit CGO0 and platform ELF preflight; race binary is diagnostic only"
+  ],
+  "references": [
+    {
+      "path": "experiments/mihomo-events/patches/0020-sources-control-v2.patch",
+      "bytes": 99852,
+      "sha256": "2a758377519d408c58d148fb6c2332d763be7446634da234b6daea5f52f100cd"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/base-copy.json",
+      "bytes": 356,
+      "sha256": "119500ee391c771b052103ae5eb2048b6c5e4ceb1692791cc6976ff4b5fd7a93"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-01/result.json",
+      "bytes": 190,
+      "sha256": "41500c9af520a1b510e07199d03ab118004d5055e796ed98a08bfbe00ce5c414"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-01/inputs-after.json",
+      "bytes": 106049,
+      "sha256": "cfd0a55055818046d60abe143aae65d5cfd59209af733963187817f3fd9e4554"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-race-01/result.json",
+      "bytes": 190,
+      "sha256": "ea6f5aa29ec887ec63dde66aee1092001f396c4d18c5a4671ab126307d976140"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/normal-03.log",
+      "bytes": 15728,
+      "sha256": "f3a73248fca9becf8c321a9d85100ac332d0e00a325912ca849cfbad75b64171"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/race-01.log",
+      "bytes": 15732,
+      "sha256": "1388fe6d36d6e3cc167ccf2605bb475bb5ec3790758305c10ad823031c8e4547"
+    },
+    {
+      "path": "private/us3-preparation/t041-probe/receipt.json",
+      "bytes": 6595,
+      "sha256": "11a1458c97db4002a917e794104b3c3107890031bfbfb96e66d83af9a38f1fee"
+    },
+    {
+      "path": "private/us3-preparation/t041-profile/receipt.json",
+      "bytes": 4326,
+      "sha256": "21283fe299ada0e4fe6dad3c8034e532d1ad51223848c8fdb40a7e4bcb63009e"
+    },
+    {
+      "path": "private/us3-preparation/t041-controller/receipt.json",
+      "bytes": 8539,
+      "sha256": "a8dab5662c6286098c15693fa200e53216ad19c2099644a1c4b6bc775ecdcd9b"
+    },
+    {
+      "path": "private/us3-preparation/t041-wire/core-v1-regression.log",
+      "bytes": 65456,
+      "sha256": "3c758af080529ca71968d94bb6200349397c822587b83cc4ed5fbbb7caaa621c"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/driver/legacy_test.go",
+      "bytes": 2328,
+      "sha256": "c8f1b28fe4defd191300d262871d7a9c6b921ca24e4517584652682611f588fa"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/driver/profile_test.go",
+      "bytes": 7134,
+      "sha256": "51691e8a7fb5a40ef05b47b6b0a30ca12bffdff6d034845c69d8e4fd327a85b6"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/driver/runtime_test.go",
+      "bytes": 13771,
+      "sha256": "ac5912f660e2fa903ad4dbad6f06acfb994ae7b374e0fb794a330272c90bcd88"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/final-core-review.md",
+      "bytes": 7962,
+      "sha256": "de89fcaefee4eb7be607793534155c271b38191c7ee4ddcb236647f6977c02e2"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/reproduction-result.json",
+      "bytes": 356,
+      "sha256": "383cd6a0c7a4bb465c699f0b122b31fed2a330054b9e84ffb06994f59917044c"
+    },
+    {
+      "path": "private/us3-preparation/t041-wire/root-final-race.log",
+      "bytes": 179250,
+      "sha256": "de873056afe35c6075ab62d7605a8b7bf073df69066c15ad9843a3a2504a7eb5"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-02-static/command.json",
+      "bytes": 656,
+      "sha256": "b28e7295841a153610b423090b34fbe6ecccf72c74195571d109d3d55ad2cb25"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-02-static/result.json",
+      "bytes": 226,
+      "sha256": "75b26187da4a06d7194e6062be24011d1f0c65aa2ab69e760a63ce5fcc58fad5"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-02-static/inputs-after.json",
+      "bytes": 106049,
+      "sha256": "cfd0a55055818046d60abe143aae65d5cfd59209af733963187817f3fd9e4554"
+    },
+    {
+      "path": "private/p1-us3-core-candidate/build-02-static/elf-headers.txt",
+      "bytes": 1406,
+      "sha256": "b8a20d5da173e8d66ce8722f5497f0d16d3b5377a3a6133d9142caf1ae4c5138"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/static-normal-01.log",
+      "bytes": 15723,
+      "sha256": "2188bb7385127c41e38bd05a224ff6f29182a7e2b48ec1b53c49f7bc4eded3e0"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/static-reproduction-result.json",
+      "bytes": 305,
+      "sha256": "57b5da979d2a43a87a03937741ff154f10f88160800267ed6e0ae5be2febfe2a"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/elf-preflight-host.json",
+      "bytes": 598,
+      "sha256": "e558fab9ab6fd9d01da605a18f2dbfb19dcbf0d08baa0f493de8e0040bd2b7e8"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/product-normal-01.log",
+      "bytes": 1590,
+      "sha256": "ef0816ec6747f9c218d3837bfad32573fd12bafc97046b9a060be9baa6c12723"
+    },
+    {
+      "path": "private/us3-preparation/t041-core/withdrawn-dynamic-approval-original.json",
+      "bytes": 2540,
+      "sha256": "2caab66b96582bc41e64c3e320ca0ad2270847ee704f99c66e33605b8aa1d6d6"
+    }
+  ],
+  "source_reproduction": {
+    "base_manifest_files": 1011,
+    "additional_test_only_baseline_file": "hoopa_control_v1_test.go",
+    "patch_added_files": 13,
+    "final_files": 1025,
+    "bytes_and_modes_match": true,
+    "fresh_binary_matches_tested": true
+  },
+  "admission_failure": "product-normal-01: Apply=false READ_UNAVAILABLE; readelf shows PT_INTERP in build-01; no product run created",
+  "static_normal": {
+    "pass": 13,
+    "fail": 0,
+    "skip": 0
+  },
+  "build_environment": {
+    "CGO_ENABLED": "0",
+    "GOOS": "linux",
+    "GOARCH": "amd64",
+    "GOAMD64": "v1"
+  },
+  "elf_admission": {
+    "static_accepted_by_platform_OpenExecutable": true,
+    "dynamic_build01_rejected": true,
+    "host_execution_required_for_real_procfs": true
+  },
+  "withdrawn_binary_sha256": "1edcbb3646ec89c99d45fac5dfe47d053695b51b71c6af8b76f381ef1704ff77"
+}

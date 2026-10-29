@@ -1,0 +1,49 @@
+// Test-only Go overlay. Not included in a production candidate or source wire.
+package hoopaid
+
+import (
+	"encoding/json"
+	"net"
+	"os"
+	"strconv"
+	"time"
+)
+
+type admitMeasurementConnector struct {
+	CoreGeneration        string `json:"core_generation"`
+	Generation            string `json:"generation"`
+	AcceptedCookie        string `json:"accepted_cookie"`
+	ClientCookie          string `json:"client_cookie"`
+	TGID                  uint32 `json:"tgid_initial"`
+	CallerTID             uint32 `json:"caller_tid_initial"`
+	LeaderStartBoottimeNS string `json:"leader_start_boottime_ns"`
+}
+
+// Admit retains the original method's result and all of its ownership semantics.
+// elapsed includes original mutex wait and synchronous reads, excludes log I/O.
+func (o *Owner) Admit(conn *net.TCPConn) (Identity, error) {
+	start := time.Now()
+	id, err := o.admitUnmeasured(conn)
+	elapsed := time.Since(start)
+	row := struct {
+		Schema    string                     `json:"schema"`
+		Clock     string                     `json:"clock"`
+		Scope     string                     `json:"scope"`
+		ElapsedNS string                     `json:"elapsed_ns"`
+		Admitted  bool                       `json:"admitted"`
+		Connector *admitMeasurementConnector `json:"connector"`
+	}{Schema: "hoopa-admit-measurement-v1", Clock: "go_time_monotonic", Scope: "owner_admit_call_including_mutex_wait", ElapsedNS: strconv.FormatInt(elapsed.Nanoseconds(), 10), Admitted: err == nil}
+	if err == nil {
+		row.Connector = &admitMeasurementConnector{
+			CoreGeneration: id.CoreGeneration, Generation: id.Generation,
+			AcceptedCookie: id.AcceptedCookie, ClientCookie: id.ClientCookie,
+			TGID: id.TGID, CallerTID: id.CallerTID, LeaderStartBoottimeNS: id.LeaderStartBoottimeNS,
+		}
+	}
+	if raw, marshalErr := json.Marshal(row); marshalErr == nil {
+		// The finite harness validates complete, unique rows. A failed write never
+		// changes a grant into a refusal, or supplies an identity on error.
+		_, _ = os.Stderr.Write(append(append([]byte("HOOPA_ADMIT_MEASUREMENT "), raw...), '\n'))
+	}
+	return id, err
+}

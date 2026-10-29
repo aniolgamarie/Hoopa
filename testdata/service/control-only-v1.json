@@ -1,0 +1,13 @@
+{
+  "api_version": "v1",
+  "request_id": "fixture-request",
+  "ok": true,
+  "data": {
+    "service": "running",
+    "instance": "222222222222222222222222222222222222222222222222",
+    "revision": "fixture-revision",
+    "control_only": true
+  },
+  "error": null,
+  "warnings": []
+}

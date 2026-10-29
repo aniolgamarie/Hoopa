@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "scope": "authorized_isolated_linux_amd64_tcp_candidate; not product or platform support",
+  "authorization": "User reinvoked speckit-implement after reviewing the isolated candidate proposal and authorization question.",
+  "upstream_commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+  "upstream_tag": "v1.19.26",
+  "patch": "patches/0001-native-observer.patch",
+  "patch_sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3",
+  "changed_source_files": [
+    {
+      "file": "adapter/inbound/http.go",
+      "sha256": "051b4ebf680cc58df76684a682ab5ec683ff6637a5c8ed0f9e00b93ee6d3937c"
+    },
+    {
+      "file": "adapter/inbound/https.go",
+      "sha256": "18c7035f8a1ccbfb06bff7cbc217d0b6adac393754cd6536b5107bb83ba059b2"
+    },
+    {
+      "file": "adapter/inbound/socket.go",
+      "sha256": "544fd28b5afab2fc75aa8aee03efc95cf63448e23fd3a865b7e35e425a30f20e"
+    },
+    {
+      "file": "component/hoopatrace/identity_linux.go",
+      "sha256": "0a5e7197dc58332c800ed5cc7f7624aca0c53b2c062da250d532f76a026ee751"
+    },
+    {
+      "file": "component/hoopatrace/trace_linux.go",
+      "sha256": "1c6db779a5584023f9c7e230f74dcc49e979f046568333eb8beee8fd5c6586c4"
+    },
+    {
+      "file": "component/hoopatrace/trace_linux_test.go",
+      "sha256": "ce5633d5b78dcec914382711ca7f7530eda6527102dd4c086d947208eea48f23"
+    },
+    {
+      "file": "constant/metadata.go",
+      "sha256": "1fde662b27ed8ce56fa0cddcc97af6a3f8fa22d561524b9bd23da5c2da66155e"
+    },
+    {
+      "file": "rules/common/hoopa_process_test.go",
+      "sha256": "3829ce68b99bbade5c0ea3284194dec76d57c15e96c879d25ed32b4bcdaf40d7"
+    },
+    {
+      "file": "rules/common/process.go",
+      "sha256": "4e5fefb38479b4edd228d6be7fe4036bc1ec377255b581ed4a5128b226a9b6bd"
+    },
+    {
+      "file": "rules/logic/hoopa_logic_test.go",
+      "sha256": "383276c7e4704f0e8f13d61d41dc4517f6b63a2c43c53bc0cb91a26954878afd"
+    },
+    {
+      "file": "rules/logic/logic.go",
+      "sha256": "d78afe7ed4d0cd97edb807c3c66d2e899929391bbf98efe53e40c688e5836459"
+    },
+    {
+      "file": "tunnel/hoopa_trace_test.go",
+      "sha256": "0769b72feba3b40d9c3e36f3df5e65234cdda45f8050bd74199637118452bd59"
+    },
+    {
+      "file": "tunnel/statistic/hoopa_tcp.go",
+      "sha256": "34982496cc08d2ac133b11be3bbad92e4d9ad1ad71eb5b849f1514a5b86cddbe"
+    },
+    {
+      "file": "tunnel/statistic/hoopa_tcp_test.go",
+      "sha256": "a1ca9f50b4efedf953ab9cc6628a068dffdbe2cd43c6f74d9439a0f43d537d59"
+    },
+    {
+      "file": "tunnel/statistic/tracker.go",
+      "sha256": "07b305a9d5a1dd79f6df76a5ea4973ccbd5ab8f2cb686638fae3b9e621a5fe87"
+    },
+    {
+      "file": "tunnel/tunnel.go",
+      "sha256": "21471e55b5f9c1f17f779c3e81be92e9f81b4b16f99076a2a32eccf747a325bd"
+    }
+  ],
+  "binary": {
+    "candidate": "/tmp/hoopa-mihomo-events-ildaobd2/mihomo-hoopa-candidate",
+    "sha256": "76e0e114ac9a669ec0eb131f35ead972d3e24b2dceeb270e72a3e879f5b9c32e",
+    "bytes": 50429542,
+    "version": "Mihomo Meta hoopa-p0-fc8c5a2 linux amd64 with go1.27.3 2026-10-22"
+  },
+  "go_toolchain": "1.27.3",
+  "build_options": [
+    "-p=2",
+    "-buildvcs=false",
+    "-trimpath",
+    "-ldflags: fixed Hoopa P0 Version/BuildTime"
+  ],
+  "third_party_module_checksums": "fixed upstream go.mod/go.sum; GOSUMDB=sum.golang.org; no new module dependencies",
+  "capabilities": {
+    "source_process_evidence": {
+      "implementation": "strict held original socket resolver; same uid/netns/IPv4 loopback",
+      "observed": "unknown: owner_visibility on this host",
+      "gate": "not_passed"
+    },
+    "durable_lifecycle": {
+      "implementation": "bounded source frames with opened census, final/gap reservations and stable source_seq",
+      "validation": "targeted source tests and one real single-attempt flow; full G02 unverified"
+    },
+    "setup_timing": {
+      "implementation": "per-attempt candidate monotonic records, unproven ready stays null",
+      "validation": "protocol readiness unverified"
+    },
+    "actual_route_events": {
+      "implementation": "flow/attempt actual Conn chain/provider and tracker binding",
+      "validation": "single direct route observed; two-node/retry attribution unverified"
+    },
+    "process_rule_tristate": {
+      "implementation": "exact name/path + AND and whitelisted atoms; explicit unsupported for other combinations",
+      "validation": "pure tests; config-load rejection not wired; G05 unverified"
+    }
+  },
+  "source_limits": {
+    "max_bytes": 8388608,
+    "max_active": 32,
+    "max_epochs": 32,
+    "max_frame": 8192,
+    "reclamation": "not implemented; replay-only on epoch/capacity limit; reject new complete metering"
+  },
+  "validation": {
+    "race_top_level_passed": 23,
+    "race_subtests_passed": 0,
+    "race_failures": 0,
+    "race_skips": 0,
+    "vet_exit": 0,
+    "build_exit": 0,
+    "patch_apply_check_exit": 0,
+    "smoke_private_directory": "/tmp/hoopa-native-probe-132p3xm6",
+    "smoke_result_sha256": "861b1038f9522ecb3a7a28104cc52f9529674c05ab35f974a90a3834c8f91f94"
+  },
+  "full_telemetry_gates_passed": false
+}

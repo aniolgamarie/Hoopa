@@ -1,0 +1,112 @@
+# Go executables and generated build/test artifacts
+/hoopa
+/hoopa.exe
+/bin/
+/build/
+/dist/
+/release/
+/releases/
+/coverage/
+/coverage.out
+*.exe
+vendor/
+*.out
+!/testdata/**/*.out
+*.test
+*.test.exe
+*.prof
+
+# Native/BPF compilation intermediates
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+
+# Python experiment bytecode
+__pycache__/
+*.py[cod]
+/go.work
+/go.work.sum
+
+# Externally supplied proxy cores and downloaded release archives
+/cores/
+/external-cores/
+/mihomo
+/mihomo.exe
+/mihomo-*
+/gost
+/gost.exe
+/gost-*
+/gost_*
+/hoopa-*.tar.gz
+/hoopa-*.zip
+
+# Private local configuration, credentials, state and raw experiment evidence
+/.aws/
+/.codex/
+/.ssh/
+/.direnv/
+/.cache/
+/.tmp/
+/tmp/
+/.hoopa/
+/private/
+/local/
+/config/
+/state/
+/runtime/
+/cache/
+/logs/
+/evidence/
+/experiments/gost-mihomo/evidence/
+/experiments/gost-mihomo/.private/
+/hoopa.yaml
+/hoopa.yml
+/hoopa.json
+/config.yaml
+/config.yml
+/config.json
+/ledger.sqlite
+/ledger.sqlite-wal
+/ledger.sqlite-shm
+/.env
+/.env.*
+!/.env.example
+!/.env.template
+/secrets.yaml
+/secrets.yml
+/secrets.json
+/credentials.json
+/controller.secret
+/identity.key
+/auth.json
+
+# Disposable editor and local test caches (shared Spec Kit sources stay visible)
+.DS_Store
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+*.orig
+*.rej
+.pytest_cache/
+.ruff_cache/
+
+# Experiment run outputs stay local. Keep source, fixtures, approved core
+# identities, build manifests and final acceptance/decision records in Git.
+/experiments/*/*-validation.json
+/experiments/mihomo-events/control-bind-diagnostic.json
+/experiments/mihomo-events/source5-persistence-checkpoint-preparation.json
+/experiments/gost-mihomo/us2-launch-test-definition.json
+/experiments/gost-mihomo/us2-environment-test-definition.json
+/docs/validation/*.summary.json
+
+# Spec Kit installation receipts, not the shared workflow configuration.
+/.specify/integrations/*.manifest.json
+/.specify/memory/.constitution-template.json
+
+# Synthetic output fixtures override the Go output pattern above.
+# YAML/JSON/source fixtures, go.mod and future go.sum remain visible.

@@ -1,0 +1,54 @@
+# Public template only. No WebAPI is enabled; metrics has separate authentication.
+services:
+  - name: {{.ServicePrefix}}-http
+    addr: 127.0.0.1:{{.HTTPPort}}
+{{if .RecorderURL}}    recorders:
+      - name: flow-recorder
+        record: recorder.service.handler
+{{end}}    handler:
+      type: http
+      chain: mihomo
+      auth:
+        username: "{{.HTTPAuth.Username}}"
+        password: "{{.HTTPAuth.Password}}"
+    listener:
+      type: tcp
+  - name: {{.ServicePrefix}}-socks
+    addr: 127.0.0.1:{{.SOCKSPort}}
+{{if .RecorderURL}}    recorders:
+      - name: flow-recorder
+        record: recorder.service.handler
+{{end}}    handler:
+      type: socks5
+      chain: mihomo
+      auth:
+        username: "{{.SOCKSAuth.Username}}"
+        password: "{{.SOCKSAuth.Password}}"
+    listener:
+      type: tcp
+chains:
+  - name: mihomo
+    hops:
+      - name: local
+        nodes:
+          - name: profile-inbound
+            addr: 127.0.0.1:{{.MihomoPort}}
+            connector:
+              type: socks5
+              auth:
+                username: "{{.MihomoAuth.Username}}"
+                password: "{{.MihomoAuth.Password}}"
+            dialer:
+              type: tcp
+metrics:
+  addr: 127.0.0.1:{{.MetricsPort}}
+  path: /metrics
+  auth:
+    username: "{{.MetricsAuth.Username}}"
+    password: "{{.MetricsAuth.Password}}"
+{{if .RecorderURL}}recorders:
+  - name: flow-recorder
+    plugin:
+      type: http
+      addr: "{{.RecorderURL}}"
+{{end}}

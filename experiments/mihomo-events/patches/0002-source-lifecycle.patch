@@ -1,0 +1,800 @@
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -53,9 +53,18 @@
+ 	mu                    sync.Mutex
+ 	root                  *os.Root
+ 	lock, file            *os.File
++	syncFrame             func() error // nil uses the real file Sync; test fault seam only.
+ 	epoch, generation     string
+ 	seq                   uint64
+ 	used, reserved, limit int64
++	epochReserved         int64
++	stopping, rawClosed   bool
++	epochClosed           bool
++	shutdownOnce          sync.Once
++	shutdownErr           error
++	checkpointStop        chan struct{}
++	checkpointDone        chan struct{}
++	checkpointOnce        sync.Once
+ 	poisoned              bool
+ 	readOnly              bool
+ 	flows                 map[string]*Flow
+@@ -76,6 +85,8 @@
+ 	up, down       uint64
+ 	invalid        bool
+ 	counterInvalid bool
++	terminal       bool
++	windowGap      bool
+ 	reserved       int64
+ }
+ type Attempt struct {
+@@ -258,7 +269,7 @@
+ 	}
+ 	// Capacity prevents new source epochs/flows, but never prevents replay of
+ 	// already durable records. This prototype deliberately performs no reclamation.
+-	if epochs == 32 || s.used+flowBudget+maxFrame > limit {
++	if epochs == 32 || s.used+flowBudget+maxFrame+epochBudget > limit {
+ 		s.readOnly = true
+ 		ok = true
+ 		return s, nil
+@@ -292,7 +303,7 @@
+ 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%x|%s|%d|%s|%s", exe, h.Sum(nil), strings.TrimSpace(string(boot)), self.PID, self.StartTicks, nonce)))
+ 	s.epoch = "epoch:" + hex.EncodeToString(digest[:])
+ 	manifest, err := json.Marshal(map[string]any{"schema_version": 1, "source_epoch": s.epoch, "binary_path": exe, "binary_sha256": hex.EncodeToString(h.Sum(nil)), "boot_id": strings.TrimSpace(string(boot)), "pid": self.PID, "start_ticks": self.StartTicks, "nonce": nonce, "config_generation": generation, "max_source_bytes": limit, "max_frame_bytes": maxFrame, "max_active_flows": maxActive, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"})
+-	if err != nil || len(manifest) > maxFrame || s.used+int64(len(manifest))+flowBudget > limit {
++	if err != nil || len(manifest) > maxFrame || s.used+int64(len(manifest))+flowBudget+epochBudget > limit {
+ 		return nil, ErrSource
+ 	}
+ 	meta, err := privateFile(root, "epoch-"+hex.EncodeToString(digest[:])+".source.json", os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+@@ -313,12 +324,21 @@
+ 	if s.file.Sync() != nil || syncDir(root) != nil {
+ 		return nil, ErrSource
+ 	}
++	s.epochReserved = epochBudget
++	s.startCheckpoints()
+ 	ok = true
+ 	return s, nil
+ }
+ func (s *source) close() {
+ 	s.closeOnce.Do(func() {
++		s.mu.Lock()
++		s.stopping = true
++		s.rawClosed = true
++		s.mu.Unlock()
++		s.stopCheckpoints()
+ 		close(s.done)
++		s.mu.Lock()
++		defer s.mu.Unlock()
+ 		if s.file != nil {
+ 			s.file.Close()
+ 		}
+@@ -407,8 +427,10 @@
+ 	}
+ 	ident := evidence(peer, local)
+ 	f := &Flow{s: s, id: id, identity: ident, started: started, reserved: flowBudget}
++	f.mu.Lock()
++	defer f.mu.Unlock()
+ 	s.mu.Lock()
+-	if s.poisoned || s.readOnly || len(s.flows) >= maxActive || s.used+s.reserved+flowBudget > s.limit {
++	if s.poisoned || s.readOnly || s.stopping || s.rawClosed || len(s.flows) >= maxActive || s.used+s.reserved+flowBudget+s.epochReserved > s.limit {
+ 		s.mu.Unlock()
+ 		return nil, ErrSource
+ 	}
+@@ -421,7 +443,6 @@
+ 	} else if dstIP != "" {
+ 		targetKind, target = "ip_only", dstIP
+ 	}
+-	f.mu.Lock()
+ 	peerText, localText := "", ""
+ 	if peer != nil {
+ 		peerText = peer.String()
+@@ -430,7 +451,6 @@
+ 		localText = local.String()
+ 	}
+ 	err = s.append(f, "opened", f.attemptID(), map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"})
+-	f.mu.Unlock()
+ 	if err != nil {
+ 		s.mu.Lock()
+ 		if !s.poisoned {
+@@ -446,7 +466,7 @@
+ func (s *source) append(f *Flow, kind, attempt string, extra map[string]any) error {
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+-	if s.poisoned {
++	if s.poisoned || s.rawClosed || s.epochClosed || s.file == nil || (f != nil && f.terminal && kind != "closed" && kind != "gap") {
+ 		return ErrSource
+ 	}
+ 	if s.seq == ^uint64(0) {
+@@ -454,7 +474,11 @@
+ 		return ErrSource
+ 	}
+ 	seq := s.seq + 1
+-	obj := map[string]any{"schema_version": 1, "source_instance_id": "source:" + strings.TrimPrefix(s.epoch, "epoch:"), "source_epoch": s.epoch, "event_id": "event:" + strings.TrimPrefix(s.epoch, "epoch:") + ":" + strconv.FormatUint(seq, 10), "source_seq": strconv.FormatUint(seq, 10), "flow_id": f.id, "attempt_id": attempt, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "config_generation": s.generation, "boundary_ref": "mihomo_proxy_stream_v1", "kind": kind}
++	var flowID, attemptID any
++	if f != nil {
++		flowID, attemptID = f.id, attempt
++	}
++	obj := map[string]any{"schema_version": 1, "source_instance_id": "source:" + strings.TrimPrefix(s.epoch, "epoch:"), "source_epoch": s.epoch, "event_id": "event:" + strings.TrimPrefix(s.epoch, "epoch:") + ":" + strconv.FormatUint(seq, 10), "source_seq": strconv.FormatUint(seq, 10), "flow_id": flowID, "attempt_id": attemptID, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "config_generation": s.generation, "boundary_ref": "mihomo_proxy_stream_v1", "kind": kind}
+ 	for k, v := range extra {
+ 		obj[k] = v
+ 	}
+@@ -467,24 +491,43 @@
+ 	copy(frame[4:], raw)
+ 	sum := sha256.Sum256(raw)
+ 	copy(frame[4+len(raw):], sum[:])
+-	if int64(len(frame)) > f.reserved || s.used+int64(len(frame)) > s.limit {
++	available := s.epochReserved
++	if f != nil {
++		available = f.reserved
++	}
++	if int64(len(frame)) > available || s.used+int64(len(frame)) > s.limit {
+ 		return ErrSource
+ 	}
+ 	// The final cumulative frame and an explicit dimension gap have independent
+ 	// headroom. Intermediate events cannot borrow either terminal reservation.
+ 	terminalReserve := int64(2 * (maxFrame + 36))
+-	if kind != "closed" && kind != "gap" && f.reserved-int64(len(frame)) < terminalReserve {
++	if f != nil && kind != "closed" && kind != "gap" && f.reserved-int64(len(frame)) < terminalReserve {
+ 		return ErrSource
+ 	}
+ 	n, err := s.file.Write(frame)
+-	if err != nil || n != len(frame) || s.file.Sync() != nil {
++	if err != nil || n != len(frame) {
+ 		s.poisoned = true
++		s.readOnly = true
++		return ErrSource
++	}
++	syncFrame := s.file.Sync
++	if s.syncFrame != nil {
++		syncFrame = s.syncFrame
++	}
++	if syncFrame() != nil {
++		s.poisoned = true
++		s.readOnly = true
+ 		return ErrSource
+ 	}
+ 	s.seq = seq
+ 	s.used += int64(len(frame))
+-	f.reserved -= int64(len(frame))
+-	s.reserved -= int64(len(frame))
++	if f != nil {
++		f.reserved -= int64(len(frame))
++		s.reserved -= int64(len(frame))
++	} else {
++		s.epochReserved = 0
++		s.epochClosed = true
++	}
+ 	select {
+ 	case s.wake <- struct{}{}:
+ 	default:
+@@ -688,7 +731,7 @@
+ 	defer f.mu.Unlock()
+ 	f.s.mu.Lock()
+ 	defer f.s.mu.Unlock()
+-	if f.invalid || f.s.poisoned {
++	if f.invalid || f.terminal || f.s.poisoned || f.s.stopping || f.s.rawClosed {
+ 		return ErrSource
+ 	}
+ 	return nil
+@@ -699,6 +742,9 @@
+ 	}
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
++	if f.terminal {
++		return
++	}
+ 	if ^uint64(0)-f.up < uint64(n) {
+ 		f.invalid = true
+ 		f.counterInvalid = true
+@@ -712,6 +758,9 @@
+ 	}
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
++	if f.terminal {
++		return
++	}
+ 	if ^uint64(0)-f.down < uint64(n) {
+ 		f.invalid = true
+ 		f.counterInvalid = true
+@@ -726,16 +775,26 @@
+ 	f.once.Do(func() {
+ 		f.mu.Lock()
+ 		defer f.mu.Unlock()
++		if f.terminal {
++			return
++		}
++		f.terminal = true
+ 		if !f.counterInvalid {
+ 			// Counter frames deliberately have exactly the 13 frozen profile fields.
+ 			if f.s.append(f, "closed", f.attemptID(), map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}) != nil {
+ 				f.invalid = true
+ 			}
+ 		}
+-		if f.invalid {
++		if f.invalid || f.windowGap {
+ 			dimensions := []string{"route_or_setup"}
++			if !f.invalid {
++				dimensions = nil
++			}
+ 			if f.counterInvalid {
+ 				dimensions = []string{"bytes", "route_or_setup"}
++			}
++			if f.windowGap {
++				dimensions = append(dimensions, "window_checkpoints")
+ 			}
+ 			_ = f.s.append(f, "gap", f.attemptID(), map[string]any{"reason": "source_event_uncertain", "dimensions": dimensions, "upload_bytes": nil, "download_bytes": nil, "connection_id": f.connection})
+ 		}
+--- a/component/hoopatrace/trace_linux_test.go
++++ b/component/hoopatrace/trace_linux_test.go
+@@ -158,7 +158,8 @@
+ 	}
+ }
+ func TestSourceBoundedAdmissionReservesFinal(t *testing.T) {
+-	s := testSource(t, 2*flowBudget+maxFrame)
++	// Independent epoch marker headroom must not be borrowed by either flow.
++	s := testSource(t, 2*flowBudget+2*epochBudget)
+ 	a, err := s.begin(nil, nil, "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -252,6 +253,9 @@
+ 		t.Fatal("old source replay disabled at epoch capacity", err)
+ 	}
+ 	defer s.close()
++	if err := s.shutdown(); err != nil || s.epochClosed {
++		t.Fatal("replay-only source invented a current epoch", err)
++	}
+ 	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
+ 		t.Fatal("new flow admitted at epoch capacity")
+ 	}
+--- /dev/null
++++ b/component/hoopatrace/lifecycle_linux.go
+@@ -0,0 +1,141 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"strconv"
++	"time"
++)
++
++const epochBudget int64 = maxFrame + 36
++
++// Shutdown is only the normal core shutdown hook. If no opt-in source has
++// initialized, consuming once prevents a concurrent Begin from opening one.
++// A missing durable epoch_closed remains missing; failure never fabricates it.
++func Shutdown() {
++	global.once.Do(func() { global.err = ErrSource })
++	if global.s != nil {
++		_ = global.s.shutdown()
++	}
++}
++
++func (s *source) startCheckpoints() {
++	s.checkpointStop = make(chan struct{})
++	s.checkpointDone = make(chan struct{})
++	go func() {
++		defer close(s.checkpointDone)
++		ticker := time.NewTicker(time.Second)
++		defer ticker.Stop()
++		for {
++			select {
++			case <-s.checkpointStop:
++				return
++			case <-ticker.C:
++				s.mu.Lock()
++				flows := make([]*Flow, 0, len(s.flows))
++				for _, f := range s.flows {
++					flows = append(flows, f)
++				}
++				s.mu.Unlock()
++				for _, f := range flows {
++					select {
++					case <-s.checkpointStop:
++						return
++					default:
++					}
++					_ = f.Checkpoint()
++				}
++			}
++		}
++	}()
++}
++
++// Joining never holds a flow/source mutex: the worker follows f -> s order.
++func (s *source) stopCheckpoints() {
++	if s.checkpointStop == nil {
++		return
++	}
++	s.checkpointOnce.Do(func() { close(s.checkpointStop) })
++	<-s.checkpointDone
++}
++
++// Checkpoint saves cumulative bytes, never an additive delta. Terminal/gap
++// headroom remains independent; exhausted window quota does not invalidate an
++// otherwise known final counter or change forwarding.
++func (f *Flow) Checkpoint() error {
++	if f == nil {
++		return nil
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.s.mu.Lock()
++	stopped := f.s.stopping || f.s.rawClosed || f.s.epochClosed
++	f.s.mu.Unlock()
++	if f.terminal || stopped {
++		return ErrSource
++	}
++	if f.counterInvalid {
++		f.windowGap = true
++		return ErrSource
++	}
++	if err := f.s.append(f, "bytes_checkpoint", f.attemptID(), map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}); err != nil {
++		f.windowGap = true
++		return err
++	}
++	return nil
++}
++
++func (s *source) shutdown() error {
++	s.shutdownOnce.Do(func() {
++		s.mu.Lock()
++		s.stopping = true
++		// Replay-only capacity mode has no current epoch to terminate.
++		if s.readOnly && s.file == nil {
++			s.mu.Unlock()
++			s.stopCheckpoints()
++			return
++		}
++		flows := make([]*Flow, 0, len(s.flows))
++		for _, f := range s.flows {
++			flows = append(flows, f)
++		}
++		s.mu.Unlock()
++		s.stopCheckpoints()
++		unfinished := uint64(0)
++		for _, f := range flows {
++			f.mu.Lock()
++			s.mu.Lock()
++			registered := s.flows[f.id] == f
++			s.mu.Unlock()
++			// A concurrent Begin may have released a prewrite-failed reservation
++			// after the snapshot; it was never admitted and needs no gap.
++			if f.terminal || !registered {
++				f.mu.Unlock()
++				continue
++			}
++			// Normal core shutdown does not quiesce the network. No cumulative
++			// final is inferred from this snapshot; all future event writes stop.
++			f.terminal = true
++			unfinished++
++			err := s.append(f, "gap", f.attemptID(), map[string]any{"reason": "source_shutdown_before_final", "dimensions": []string{"bytes", "route_or_setup", "window_checkpoints"}, "upload_bytes": nil, "download_bytes": nil, "connection_id": f.connection})
++			if err == nil {
++				s.mu.Lock()
++				s.reserved -= f.reserved
++				f.reserved = 0
++				delete(s.flows, f.id)
++				s.mu.Unlock()
++			}
++			f.mu.Unlock()
++			if err != nil {
++				s.shutdownErr = err
++				return
++			}
++		}
++		finality := "complete"
++		if unfinished != 0 {
++			finality = "incomplete"
++		}
++		s.shutdownErr = s.append(nil, "epoch_closed", "", map[string]any{"reason": "core_shutdown", "unfinished_flows": strconv.FormatUint(unfinished, 10), "finality": finality})
++	})
++	return s.shutdownErr
++}
+--- /dev/null
++++ b/component/hoopatrace/lifecycle_linux_test.go
+@@ -0,0 +1,252 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"encoding/json"
++	"io"
++	"sync"
++	"testing"
++	"time"
++)
++
++func lifecycleRows(t *testing.T, s *source) []map[string]json.RawMessage {
++	t.Helper()
++	var out []map[string]json.RawMessage
++	for _, raw := range frames(t, s) {
++		var m map[string]json.RawMessage
++		if json.Unmarshal(raw, &m) != nil {
++			t.Fatal("bad frame")
++		}
++		out = append(out, m)
++	}
++	return out
++}
++func TestSourceCheckpointExactCumulativeAndFinal(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	f.AddUpload(9007199254740993)
++	f.AddDownload(17)
++	if e = f.Checkpoint(); e != nil {
++		t.Fatal(e)
++	}
++	f.AddUpload(5)
++	f.Close()
++	if e = f.Checkpoint(); e == nil {
++		t.Fatal("checkpoint after final")
++	}
++	r := lifecycleRows(t, s)
++	if len(r) != 3 {
++		t.Fatalf("got %d frames", len(r))
++	}
++	if len(r[1]) != 13 || string(r[1]["kind"]) != `"bytes_checkpoint"` || string(r[1]["upload_bytes"]) != `"9007199254740993"` || string(r[2]["upload_bytes"]) != `"9007199254740998"` {
++		t.Fatal("cumulative profile lost precision or counted twice")
++	}
++}
++func TestSourceCheckpointQuotaPreservesFinalAndEpoch(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	for i := 0; i < 1000; i++ {
++		if f.Checkpoint() != nil {
++			break
++		}
++		if i == 999 {
++			t.Fatal("unbounded checkpoint quota")
++		}
++	}
++	f.AddUpload(42)
++	f.Close()
++	if e = s.shutdown(); e != nil {
++		t.Fatal(e)
++	}
++	r := lifecycleRows(t, s)
++	var closed, gaps int
++	for _, m := range r {
++		switch string(m["kind"]) {
++		case `"closed"`:
++			closed++
++			if string(m["upload_bytes"]) != `"42"` {
++				t.Fatal("lost known final")
++			}
++		case `"gap"`:
++			gaps++
++			if string(m["dimensions"]) != `["window_checkpoints"]` {
++				t.Fatal("window gap changed byte scope")
++			}
++		}
++	}
++	if closed != 1 || gaps != 1 || string(r[len(r)-1]["kind"]) != `"epoch_closed"` || s.reserved != 0 || s.epochReserved != 0 {
++		t.Fatal("terminal reserves lost")
++	}
++}
++func TestSourceNormalShutdownIncompleteAndNoLateEvents(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	f.AddUpload(12)
++	if e = s.shutdown(); e != nil {
++		t.Fatal(e)
++	}
++	r := lifecycleRows(t, s)
++	if len(r) != 3 {
++		t.Fatalf("unexpected lifecycle %d", len(r))
++	}
++	if string(r[1]["reason"]) != `"source_shutdown_before_final"` || string(r[1]["upload_bytes"]) != "null" {
++		t.Fatal("shutdown fabricated final")
++	}
++	last := r[2]
++	if string(last["flow_id"]) != "null" || string(last["attempt_id"]) != "null" || string(last["unfinished_flows"]) != `"1"` || string(last["finality"]) != `"incomplete"` {
++		t.Fatal("invalid epoch marker")
++	}
++	f.Close()
++	f.AddUpload(10)
++	f.NewAttempt().Finish(nil, nil, nil, true)
++	_ = f.Decide("MATCH", "", "DIRECT")
++	if e = f.Checkpoint(); e == nil {
++		t.Fatal("late checkpoint")
++	}
++	if len(lifecycleRows(t, s)) != 3 {
++		t.Fatal("events after epoch marker")
++	}
++	if _, e = s.begin(nil, nil, "example.test", "", time.Now()); e == nil {
++		t.Fatal("begin after shutdown")
++	}
++}
++func TestSourceConcurrentCloseShutdownOrdering(t *testing.T) {
++	for i := 0; i < 12; i++ {
++		s := testSource(t, defaultLimit)
++		f, e := s.begin(nil, nil, "example.test", "", time.Now())
++		if e != nil {
++			t.Fatal(e)
++		}
++		var w sync.WaitGroup
++		w.Add(3)
++		go func() { defer w.Done(); f.Close() }()
++		go func() { defer w.Done(); _ = f.Checkpoint() }()
++		go func() { defer w.Done(); _ = s.shutdown() }()
++		w.Wait()
++		r := lifecycleRows(t, s)
++		if string(r[len(r)-1]["kind"]) != `"epoch_closed"` {
++			t.Fatal("epoch not last")
++		}
++		terminal := 0
++		for _, m := range r {
++			if string(m["kind"]) == `"closed"` || string(m["reason"]) == `"source_shutdown_before_final"` {
++				terminal++
++			}
++		}
++		if terminal != 1 {
++			t.Fatal("duplicated finalization")
++		}
++	}
++}
++func TestSourceCheckpointWriteUncertainPoisons(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	seq := s.seq
++	s.file.Close()
++	if f.Checkpoint() == nil || !s.poisoned || s.seq != seq {
++		t.Fatal("uncertain checkpoint confirmed")
++	}
++	if s.shutdown() == nil || s.epochClosed {
++		t.Fatal("uncertain shutdown claimed complete")
++	}
++}
++func TestSourcePeriodicCheckpointWorkerStops(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	deadline := time.After(3 * time.Second)
++	for {
++		s.mu.Lock()
++		seq := s.seq
++		s.mu.Unlock()
++		if seq >= 2 {
++			break
++		}
++		select {
++		case <-deadline:
++			t.Fatal("periodic checkpoint missing")
++		case <-time.After(10 * time.Millisecond):
++		}
++	}
++	if e = s.shutdown(); e != nil {
++		t.Fatal(e)
++	}
++	select {
++	case <-s.checkpointDone:
++	default:
++		t.Fatal("worker still active")
++	}
++	if f.Checkpoint() == nil {
++		t.Fatal("checkpoint after stopped worker")
++	}
++}
++
++func TestSourceRawCloseStopsWorkerWithoutEpochMarker(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	if e != nil {
++		t.Fatal(e)
++	}
++	s.close()
++	select {
++	case <-s.checkpointDone:
++	default:
++		t.Fatal("raw close leaked worker")
++	}
++	if s.epochClosed || f.Checkpoint() == nil {
++		t.Fatal("raw close claimed epoch finality")
++	}
++	if _, e = s.begin(nil, nil, "example.test", "", time.Now()); e == nil {
++		t.Fatal("raw close allowed Begin")
++	}
++	if f.Decide("MATCH", "", "DIRECT") == nil {
++		t.Fatal("raw close allowed append")
++	}
++}
++
++func TestSourceEpochMarkerSyncUncertainNeverConfirmed(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	s.mu.Lock()
++	s.syncFrame = func() error {
++		if err := s.file.Sync(); err != nil {
++			return err
++		}
++		return io.ErrUnexpectedEOF
++	}
++	s.mu.Unlock()
++	if s.shutdown() == nil || !s.poisoned || !s.readOnly || s.epochClosed || s.seq != 0 {
++		t.Fatal("uncertain marker confirmed")
++	}
++	if len(frames(t, s)) != 1 {
++		t.Fatal("uncertain written marker silently removed")
++	}
++}
++
++func TestSourceNormalShutdownCompleteWithoutActiveFlow(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	if err := s.shutdown(); err != nil {
++		t.Fatal(err)
++	}
++	r := lifecycleRows(t, s)
++	if len(r) != 1 || string(r[0]["finality"]) != `"complete"` || string(r[0]["unfinished_flows"]) != `"0"` || string(r[0]["flow_id"]) != "null" {
++		t.Fatal("invalid complete epoch")
++	}
++	if err := s.shutdown(); err != nil || len(frames(t, s)) != 1 {
++		t.Fatal("duplicate epoch marker")
++	}
++}
+--- /dev/null
++++ b/component/hoopatrace/replay_linux_test.go
+@@ -0,0 +1,132 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++)
++
++func TestSourceLostACKAndReopenReplayOriginalBytes(t *testing.T) {
++	if os.Getenv("HOOPA_TRACE_NETWORK_TEST") != "1" {
++		t.Skip("explicit loopback test only")
++	}
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	sink := filepath.Join(t.TempDir(), "received-event")
++	var mu sync.Mutex
++	var first []byte
++	var calls int
++	var restarted bool
++	var handlerErr error
++	retried, replayed := make(chan struct{}), make(chan struct{})
++	var retryOnce, replayOnce sync.Once
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Header.Get("Authorization") != "Bearer test-secret" {
++			w.WriteHeader(403)
++			return
++		}
++		raw, err := io.ReadAll(io.LimitReader(r.Body, maxFrame+1))
++		mu.Lock()
++		defer mu.Unlock()
++		if err != nil {
++			handlerErr = err
++			w.WriteHeader(500)
++			return
++		}
++		calls++
++		if calls == 1 {
++			first = append([]byte(nil), raw...)
++			file, e := os.OpenFile(sink, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
++			if e == nil {
++				_, e = file.Write(raw)
++				if e == nil {
++					e = file.Sync()
++				}
++				_ = file.Close()
++			}
++			if e != nil {
++				handlerErr = e
++				w.WriteHeader(500)
++				return
++			}
++			// The receiver has a synced copy, but the sender gets no response.
++			conn, _, e := w.(http.Hijacker).Hijack()
++			if e != nil {
++				handlerErr = e
++				return
++			}
++			_ = conn.Close()
++			return
++		}
++		if !bytes.Equal(first, raw) {
++			handlerErr = ErrSource
++			w.WriteHeader(409)
++			return
++		}
++		w.WriteHeader(204)
++		if restarted {
++			replayOnce.Do(func() { close(replayed) })
++		} else {
++			retryOnce.Do(func() { close(retried) })
++		}
++	}))
++	defer server.Close()
++	s, err := openSource(dir, "test-generation", server.URL, "test-secret", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(s.close)
++	if _, err := s.begin(nil, nil, "example.test", "", time.Now()); err != nil {
++		t.Fatal(err)
++	}
++	finished := make(chan struct{})
++	go func() { defer close(finished); s.send() }()
++	select {
++	case <-retried:
++	case <-time.After(5 * time.Second):
++		t.Fatal("lost ACK did not replay")
++	}
++	s.close()
++	select {
++	case <-finished:
++	case <-time.After(3 * time.Second):
++		t.Fatal("sender did not stop")
++	}
++	mu.Lock()
++	restarted = true
++	mu.Unlock()
++	reopened, err := openSource(dir, "test-generation", server.URL, "test-secret", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer reopened.close()
++	finishedAgain := make(chan struct{})
++	go func() { defer close(finishedAgain); reopened.send() }()
++	select {
++	case <-replayed:
++	case <-time.After(5 * time.Second):
++		t.Fatal("old epoch did not replay after reopen")
++	}
++	reopened.close()
++	select {
++	case <-finishedAgain:
++	case <-time.After(3 * time.Second):
++		t.Fatal("reopened sender did not stop")
++	}
++	saved, err := os.ReadFile(sink)
++	mu.Lock()
++	defer mu.Unlock()
++	if err != nil || handlerErr != nil || !bytes.Equal(saved, first) || calls < 3 {
++		t.Fatal("durable receiver bytes or stable replay changed", err, handlerErr)
++	}
++}
+--- a/hub/executor/executor.go
++++ b/hub/executor/executor.go
+@@ -18,6 +18,7 @@
+ 	"github.com/metacubex/mihomo/component/ca"
+ 	"github.com/metacubex/mihomo/component/dialer"
+ 	"github.com/metacubex/mihomo/component/geodata"
++	"github.com/metacubex/mihomo/component/hoopatrace"
+ 	mihomoHttp "github.com/metacubex/mihomo/component/http"
+ 	"github.com/metacubex/mihomo/component/iface"
+ 	"github.com/metacubex/mihomo/component/keepalive"
+@@ -534,6 +535,7 @@
+ }
+ 
+ func Shutdown() {
++	hoopatrace.Shutdown()
+ 	listener.Cleanup()
+ 	tproxy.CleanupTProxyIPTables()
+ 	resolver.StoreFakePoolState()

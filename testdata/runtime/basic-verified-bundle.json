@@ -1,0 +1,116 @@
+{
+  "schema": "hoopa-p1-basic-verified-bundle-reference-v1",
+  "status": "test_definition_reference_only",
+  "mode": "basic",
+  "control_protocol": 1,
+  "core_sha256": "2921c2468cf1e62099ac40a1872fbb58cc0048696a91c9dd920dc9790f27fabb",
+  "baseline_bundle": "app-first",
+  "apply_target_bundle": "domain-first",
+  "bundles": {
+    "app-first": {
+      "source_config": {
+        "path": "private/p1-basic-fixture-validation/app-first/config.json",
+        "bytes": 1248,
+        "sha256": "749b10ecfa886acd847745d702b85aa5bf14a29304bf63ab8151ee6562a37af3"
+      },
+      "independent_expected_snapshot": {
+        "path": "private/p1-basic-fixture-validation/app-first/expected-snapshot.json",
+        "bytes": 2243,
+        "sha256": "bbab9089ad92e02173b32d38f79e70ad79960a4a684f8a455a23b9558c6e0a7d"
+      },
+      "observed_snapshot": {
+        "path": "private/p1-basic-fixture-validation/app-first/observed-snapshot.json",
+        "bytes": 2243,
+        "sha256": "bbab9089ad92e02173b32d38f79e70ad79960a4a684f8a455a23b9558c6e0a7d"
+      },
+      "run_result": {
+        "path": "private/p1-basic-fixture-validation/app-first/result.json",
+        "bytes": 1589,
+        "sha256": "a538fd9f4859cc2b051b597fa39ab26ade92cfcaaa9d224c88e1a9a473794ff1"
+      },
+      "config_encoding": "raw",
+      "decoded_config_bytes": 1248,
+      "decoded_config_sha256": "749b10ecfa886acd847745d702b85aa5bf14a29304bf63ab8151ee6562a37af3",
+      "snapshot_sha256": "bbab9089ad92e02173b32d38f79e70ad79960a4a684f8a455a23b9558c6e0a7d",
+      "application_entries": [
+        "entry-a",
+        "entry-b"
+      ],
+      "expected_node_by_entry": {
+        "entry-a": "node:dee775b86614224f1b7da82180edf80bc75670126e57a0dcae4ae4f951232fe0",
+        "entry-b": "node:dee775b86614224f1b7da82180edf80bc75670126e57a0dcae4ae4f951232fe0"
+      },
+      "traffic_target_domain": "alpha.test",
+      "origin_port": 23515,
+      "upstream_ports": [
+        28261,
+        25401
+      ],
+      "contains_program_rules": false,
+      "complete_bundle_required": true,
+      "rules_may_be_removed": false,
+      "production_format_conversion_executed": false,
+      "product_runtime_executed": false
+    },
+    "domain-first": {
+      "source_config": {
+        "path": "private/p1-basic-fixture-validation/domain-first/config.json",
+        "bytes": 1248,
+        "sha256": "b58171f01bd53d33a840031cf3f869ba30179a6f75b15227954450d2ed814b2f"
+      },
+      "independent_expected_snapshot": {
+        "path": "private/p1-basic-fixture-validation/domain-first/expected-snapshot.json",
+        "bytes": 2243,
+        "sha256": "c583f4e84a5d1ec014c797bc233ccbced886179268563e16f6a023cb22ebf365"
+      },
+      "observed_snapshot": {
+        "path": "private/p1-basic-fixture-validation/domain-first/observed-snapshot.json",
+        "bytes": 2243,
+        "sha256": "c583f4e84a5d1ec014c797bc233ccbced886179268563e16f6a023cb22ebf365"
+      },
+      "run_result": {
+        "path": "private/p1-basic-fixture-validation/domain-first/result.json",
+        "bytes": 1592,
+        "sha256": "942f78abfdc8032b26c902ac7c11ff954329cd3441f6af4caff37f14d98a6815"
+      },
+      "config_encoding": "raw",
+      "decoded_config_bytes": 1248,
+      "decoded_config_sha256": "b58171f01bd53d33a840031cf3f869ba30179a6f75b15227954450d2ed814b2f",
+      "snapshot_sha256": "c583f4e84a5d1ec014c797bc233ccbced886179268563e16f6a023cb22ebf365",
+      "application_entries": [
+        "entry-a",
+        "entry-b"
+      ],
+      "expected_node_by_entry": {
+        "entry-a": "node:5ba26d4d8cd6ce5f59843769e4e3d5d69e1cfcf115b9c77b2df94d39e2f15f06",
+        "entry-b": "node:5ba26d4d8cd6ce5f59843769e4e3d5d69e1cfcf115b9c77b2df94d39e2f15f06"
+      },
+      "traffic_target_domain": "alpha.test",
+      "origin_port": 15683,
+      "upstream_ports": [
+        26583,
+        26563
+      ],
+      "contains_program_rules": false,
+      "complete_bundle_required": true,
+      "rules_may_be_removed": false,
+      "production_format_conversion_executed": false,
+      "product_runtime_executed": false
+    }
+  },
+  "finite_input_acceptance": {
+    "path": "private/p1-basic-fixture-validation/acceptance.json",
+    "bytes": 3960,
+    "sha256": "b71a1e75f812a6d8a4666ab1a0a00a230f6848fd09d9d85d79dc2c1cc13bad2f"
+  },
+  "historical_full_identity_fixture": {
+    "path": "testdata/runtime/verified-bundle.json",
+    "bytes": 7561,
+    "sha256": "840fb81c825c956e0c3a140b6b3aa82fc4afcf93728d7273eae54a085d138a9f"
+  },
+  "controlled_environment": "Linux/amd64 loopback with the exact recorded ports available; full identity/BPF is not enabled by these independent basic inputs",
+  "credentials_copied": false,
+  "binaries_copied": false,
+  "production_format_conversion_executed": false,
+  "product_runtime_executed": false
+}

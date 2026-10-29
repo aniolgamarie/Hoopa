@@ -1,0 +1,2001 @@
+--- /dev/null
++++ b/component/hoopaguard/profile/identity.go
+@@ -0,0 +1,66 @@
++package profile
++
++import (
++	"bytes"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"io"
++)
++
++// ValidateDeclaredIdentity parses the complete protected configuration and the
++// explicit field requirements. It grants nothing; startup must subsequently
++// match the adopted Owner with ValidateWithIdentity before preparing listeners.
++func ValidateDeclaredIdentity(raw []byte, generation string) (Config, identityprofile.Requirements, error) {
++	bad := func() (Config, identityprofile.Requirements, error) {
++		return Config{}, identityprofile.Requirements{}, ErrProfile
++	}
++	if len(raw) == 0 || len(raw) > 64*1024 {
++		return bad()
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	d.UseNumber()
++	v, err := readValue(d, 0)
++	if err != nil {
++		return bad()
++	}
++	if _, err = d.Token(); err != io.EOF {
++		return bad()
++	}
++	root, ok := v.(map[string]any)
++	if !ok {
++		return bad()
++	}
++	_, ok = root["hoopa-identity"]
++	if !ok {
++		return bad()
++	}
++	var original map[string]json.RawMessage
++	if json.Unmarshal(raw, &original) != nil {
++		return bad()
++	}
++	b := original["hoopa-identity"]
++	requirements, err := identityprofile.DecodeRequirements(b)
++	if err != nil {
++		return bad()
++	}
++	delete(root, "hoopa-identity")
++	b, err = json.Marshal(root)
++	if err != nil {
++		return bad()
++	}
++	c, err := Validate(b, generation)
++	if err != nil {
++		return bad()
++	}
++	return c, requirements, nil
++}
++
++// ValidateWithIdentity checks the same raw complete config against values from a
++// successfully adopted Owner. Legacy profiles continue to use Validate.
++func ValidateWithIdentity(raw []byte, generation string, actual identityprofile.Profile) (Config, error) {
++	c, r, err := ValidateDeclaredIdentity(raw, generation)
++	if err != nil || r.Match(actual) != nil {
++		return Config{}, ErrProfile
++	}
++	return c, nil
++}
+--- /dev/null
++++ b/component/hoopaguard/profile/identity_test.go
+@@ -0,0 +1,68 @@
++package profile
++
++import (
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"strings"
++	"testing"
++)
++
++func actualFields(t *testing.T) identityprofile.Profile {
++	b := make([]byte, 24)
++	binary.LittleEndian.PutUint64(b, 1)
++	binary.LittleEndian.PutUint32(b[8:], 2)
++	binary.LittleEndian.PutUint32(b[12:], 3)
++	binary.LittleEndian.PutUint32(b[16:], 1)
++	p, e := identityprofile.New(hex.EncodeToString(b), "1")
++	if e != nil {
++		t.Fatal(e)
++	}
++	return p
++}
++func fieldConfig(t *testing.T, fields []string) []byte {
++	v := profileMap(t)
++	v["hoopa-identity"] = identityprofile.Requirements{ProfileID: identityprofile.ID, SourceSchemaVersion: 5, RequiredFields: fields}
++	return encode(t, v)
++}
++func TestIdentityRequirementsPreflight(t *testing.T) {
++	p := actualFields(t)
++	for _, fields := range [][]string{{"instance"}, {"program_name", "program_path"}, {"instance", "program_name", "program_path"}} {
++		raw := fieldConfig(t, fields)
++		if _, e := Validate(raw, "gen"); e == nil {
++			t.Fatal("legacy accepted new config")
++		}
++		if _, _, e := ValidateDeclaredIdentity(raw, "gen"); e != nil {
++			t.Fatal(e)
++		}
++		if _, e := ValidateWithIdentity(raw, "gen", p); e != nil {
++			t.Fatal(e)
++		}
++		if _, e := ValidateWithIdentity(raw, "gen", identityprofile.Profile{}); e == nil {
++			t.Fatal("missing actual fields")
++		}
++	}
++	if _, e := ValidateWithIdentity([]byte(validProfile), "gen", p); e == nil {
++		t.Fatal("new profile missing config")
++	}
++	for _, fields := range [][]string{nil, {"comm"}, {"instance", "instance"}, {"unknown"}} {
++		if _, _, e := ValidateDeclaredIdentity(fieldConfig(t, fields), "gen"); e == nil {
++			t.Fatal("bad requirements", fields)
++		}
++	}
++	for _, rule := range []string{"PROCESS-NAME,python3,node:direct", "PROCESS-PATH,/bin/python3,node:direct", "UID,65534,node:direct", "AND,((PROCESS-NAME,python3),(DOMAIN,alpha.test)),node:direct"} {
++		var v map[string]any
++		json.Unmarshal(fieldConfig(t, []string{"program_name"}), &v)
++		v["rules"] = []string{rule}
++		if _, e := ValidateWithIdentity(encode(t, v), "gen", p); e == nil {
++			t.Fatal("legacy process/UID enabled", rule)
++		}
++	}
++	for _, fromto := range [][2]string{{`"source_schema_version":5`, `"source_schema_version":5.0`}, {`"profile_id":"` + identityprofile.ID + `"`, `"profile_id":"other"`}, {`"required_fields":["instance"]`, `"required_fields":null`}, {`"required_fields":["instance"]`, `"required_fields":["instance"],"extra":true`}} {
++		raw := strings.Replace(string(fieldConfig(t, []string{"instance"})), fromto[0], fromto[1], 1)
++		if _, _, e := ValidateDeclaredIdentity([]byte(raw), "gen"); e == nil {
++			t.Fatal("shape accepted", raw)
++		}
++	}
++}
+--- a/component/hoopaguard/profile/profile.go
++++ b/component/hoopaguard/profile/profile.go
+@@ -1,6 +1,6 @@
+ // Package capabilityprofile validates the bounded, protected experiment profile.
+ // It does not perform I/O or claim support for connection process attribution.
+-package capabilityprofile
++package profile
+ 
+ import (
+ 	"bytes"
+--- /dev/null
++++ b/component/hoopaguard/profile/profile_test.go
+@@ -0,0 +1,313 @@
++package profile
++
++import (
++	"encoding/json"
++	"errors"
++	"fmt"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++const validProfile = `{"mode":"rule","log-level":"silent","ipv6":false,"find-process-mode":"off","external-controller":"127.0.0.1:19090","secret":"ssssssssssssssssssssssssssssssss","listeners":[{"name":"entry-a","type":"mixed","listen":"127.0.0.1","port":18080,"udp":false,"users":[{"username":"user-a","password":"pppppppppppppppppppppppppppppppp"}]}],"hosts":{"alpha.test":"127.0.0.1"},"proxies":[{"name":"node:direct","type":"direct"},{"name":"node:http","type":"http","server":"127.0.0.1","port":18081}],"proxy-groups":[{"name":"group:main","type":"select","proxies":["node:direct","node:http"]}],"rules":["DOMAIN,alpha.test,group:main","MATCH,node:direct"],"profile":{"store-selected":false,"store-fake-ip":false}}`
++
++func profileMap(t *testing.T) map[string]any {
++	t.Helper()
++	var v map[string]any
++	if err := json.Unmarshal([]byte(validProfile), &v); err != nil {
++		t.Fatal(err)
++	}
++	return v
++}
++func encode(t *testing.T, v any) []byte {
++	t.Helper()
++	b, e := json.Marshal(v)
++	if e != nil {
++		t.Fatal(e)
++	}
++	return b
++}
++func TestRejectProfiles(t *testing.T) {
++	tests := []struct {
++		name string
++		edit func(map[string]any)
++	}{
++		{"unknown root", func(v map[string]any) { v["tun"] = map[string]any{"enable": true} }},
++		{"case variant", func(v map[string]any) { v["Mode"] = v["mode"]; delete(v, "mode") }},
++		{"missing required", func(v map[string]any) { delete(v, "ipv6") }},
++		{"null optional", func(v map[string]any) { v["hosts"] = nil }},
++		{"null profile", func(v map[string]any) { v["profile"] = nil }},
++		{"wrong bool", func(v map[string]any) { v["ipv6"] = "false" }},
++		{"ipv6", func(v map[string]any) { v["ipv6"] = true }},
++		{"mode", func(v map[string]any) { v["mode"] = "global" }},
++		{"logs", func(v map[string]any) { v["log-level"] = "debug" }},
++		{"process", func(v map[string]any) { v["find-process-mode"] = "always" }},
++		{"wildcard controller", func(v map[string]any) { v["external-controller"] = "0.0.0.0:19090" }},
++		{"other loopback", func(v map[string]any) { v["external-controller"] = "127.0.0.2:19090" }},
++		{"controller zero", func(v map[string]any) { v["external-controller"] = "127.0.0.1:0" }},
++		{"short secret", func(v map[string]any) { v["secret"] = "sensitive-short" }},
++		{"colon secret", func(v map[string]any) { v["secret"] = strings.Repeat("x", 32) + ":" }},
++		{"unicode secret", func(v map[string]any) { v["secret"] = strings.Repeat("x", 32) + "界" }},
++		{"empty listeners", func(v map[string]any) { v["listeners"] = []any{} }},
++		{"unknown listener", func(v map[string]any) { listener(v)["proxy"] = "DIRECT" }},
++		{"duplicate endpoint", func(v map[string]any) { listener(v)["port"] = 19090 }},
++		{"negative port", func(v map[string]any) { listener(v)["port"] = -1 }},
++		{"large port", func(v map[string]any) { listener(v)["port"] = 65536 }},
++		{"fractional port", func(v map[string]any) { listener(v)["port"] = 80.5 }},
++		{"udp", func(v map[string]any) { listener(v)["udp"] = true }},
++		{"no auth", func(v map[string]any) { delete(listener(v), "users") }},
++		{"empty auth", func(v map[string]any) { listener(v)["users"] = []any{} }},
++		{"unsafe user", func(v map[string]any) { listener(v)["users"].([]any)[0].(map[string]any)["username"] = "u:bad" }},
++		{"controller password reuse", func(v map[string]any) { listener(v)["users"].([]any)[0].(map[string]any)["password"] = v["secret"] }},
++		{"short password", func(v map[string]any) { listener(v)["users"].([]any)[0].(map[string]any)["password"] = "sensitive" }},
++		{"host escape", func(v map[string]any) { v["hosts"] = map[string]string{"alpha.test": "192.0.2.1"} }},
++		{"invalid host", func(v map[string]any) { v["hosts"] = map[string]string{"bad host": "127.0.0.1"} }},
++		{"direct endpoint", func(v map[string]any) { v["proxies"].([]any)[0].(map[string]any)["port"] = 0 }},
++		{"long node ID", func(v map[string]any) {
++			v["proxies"].([]any)[0].(map[string]any)["name"] = "node:" + strings.Repeat("x", 128)
++		}},
++		{"unsupported proxy", func(v map[string]any) { v["proxies"].([]any)[1].(map[string]any)["type"] = "ss" }},
++		{"proxy hostname", func(v map[string]any) { v["proxies"].([]any)[1].(map[string]any)["server"] = "localhost" }},
++		{"unknown proxy", func(v map[string]any) { v["proxies"].([]any)[1].(map[string]any)["udp"] = true }},
++		{"duplicate node", func(v map[string]any) { v["proxies"].([]any)[1].(map[string]any)["name"] = "node:direct" }},
++		{"missing ref", func(v map[string]any) {
++			v["proxy-groups"].([]any)[0].(map[string]any)["proxies"] = []string{"node:absent"}
++		}},
++		{"duplicate member", func(v map[string]any) {
++			v["proxy-groups"].([]any)[0].(map[string]any)["proxies"] = []string{"node:direct", "node:direct"}
++		}},
++		{"cycle", func(v map[string]any) { v["proxies"].([]any)[1].(map[string]any)["dialer-proxy"] = "group:main" }},
++		{"profile cache", func(v map[string]any) { v["profile"].(map[string]any)["store-selected"] = true }},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) { v := profileMap(t); tt.edit(v); assertRejected(t, encode(t, v), "generation-1") })
++	}
++	for _, raw := range []string{strings.Replace(validProfile, `"mode":"rule"`, `"mode":"rule","mode":"rule"`, 1), strings.Replace(validProfile, `"username":"user-a"`, `"username":"user-a","username":"user-a"`, 1), validProfile + ` {}`, `[]`, `null`, strings.Repeat(" ", 65537) + validProfile} {
++		assertRejected(t, []byte(raw), "generation-1")
++	}
++	for _, generation := range []string{"", "a b", strings.Repeat("x", 129)} {
++		assertRejected(t, []byte(validProfile), generation)
++	}
++}
++func listener(v map[string]any) map[string]any { return v["listeners"].([]any)[0].(map[string]any) }
++func assertRejected(t *testing.T, raw []byte, generation string) {
++	t.Helper()
++	got, err := Validate(raw, generation)
++	if !errors.Is(err, ErrProfile) || err != ErrProfile {
++		t.Fatalf("want fixed ErrProfile, got %v", err)
++	}
++	if got.Mode != "" {
++		t.Fatal("returned partial config")
++	}
++}
++
++func TestRules(t *testing.T) {
++	rejected := []string{"PROCESS-NAME,app,node:direct", "UID,1000,node:direct", "OR,((DOMAIN,a.test),(DOMAIN,b.test)),node:direct", "NOT,((DOMAIN,a.test)),node:direct", "RULE-SET,remote,node:direct", "SUB-RULE,x,node:direct", "DOMAIN,a.test,DIRECT", "DOMAIN,a.test,node:missing", "DOMAIN,bad host,node:direct", "IP-CIDR,::1/128,node:direct", "IP-CIDR,127.0.0.1/8,node:direct,bad", "IN-NAME,absent,node:direct", "AND,((DOMAIN,a.test)),node:direct", "AND,((DOMAIN,a.test),(PROCESS-NAME,x)),node:direct", "AND,((DOMAIN,a.test),(AND,((DOMAIN,a.test),(DOMAIN,b.test))))),node:direct", "MATCH,node:direct", "DOMAIN,a.test,node:direct,extra"}
++	for _, rule := range rejected {
++		t.Run(rule, func(t *testing.T) {
++			v := profileMap(t)
++			v["rules"] = []string{rule, "MATCH,node:direct"}
++			assertRejected(t, encode(t, v), "gen")
++		})
++	}
++	for _, rules := range [][]string{{}, {"DOMAIN,a.test,node:direct"}, {"MATCH,DIRECT"}, {"MATCH,node:missing"}} {
++		v := profileMap(t)
++		v["rules"] = rules
++		assertRejected(t, encode(t, v), "gen")
++	}
++	accepted := []string{"DOMAIN,a.test,node:direct", "DOMAIN-SUFFIX,test,group:main", "IP-CIDR,127.0.0.0/8,node:http,no-resolve", "IN-NAME,entry-a,node:direct", "AND,((DOMAIN,a.test),(IN-NAME,entry-a),(IP-CIDR,127.0.0.0/8,no-resolve)),group:main"}
++	v := profileMap(t)
++	v["rules"] = append(accepted, "MATCH,REJECT")
++	cfg, err := Validate(encode(t, v), "gen")
++	if err != nil {
++		t.Fatal(err)
++	}
++	for i, rule := range accepted {
++		if cfg.Rules[i] != rule {
++			t.Fatal("rule order/content changed")
++		}
++	}
++}
++func TestValidAndOptional(t *testing.T) {
++	v := profileMap(t)
++	delete(v, "hosts")
++	delete(v, "proxy-groups")
++	v["rules"] = []string{"MATCH,node:direct"}
++	if _, err := Validate(encode(t, v), "generation-1"); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestBoundsAndGraph(t *testing.T) {
++	for _, n := range []int{8, 9} {
++		t.Run(fmt.Sprintf("chain-%d", n), func(t *testing.T) {
++			v := profileMap(t)
++			v["proxies"] = []any{map[string]any{"name": "node:direct", "type": "direct"}}
++			groups := []any{}
++			prev := "node:direct"
++			for i := 1; i < n; i++ {
++				name := fmt.Sprintf("group:g%d", i)
++				groups = append(groups, map[string]any{"name": name, "type": "select", "proxies": []string{prev}})
++				prev = name
++			}
++			v["proxy-groups"] = groups
++			v["rules"] = []string{"MATCH," + prev}
++			_, err := Validate(encode(t, v), "gen")
++			if n == 8 && err != nil {
++				t.Fatal(err)
++			}
++			if n == 9 {
++				assertRejected(t, encode(t, v), "gen")
++			}
++		})
++	}
++	for _, count := range []int{4, 5} {
++		t.Run(fmt.Sprintf("listeners-%d", count), func(t *testing.T) {
++			v := profileMap(t)
++			listeners := []any{}
++			for i := 0; i < count; i++ {
++				listeners = append(listeners, map[string]any{"name": fmt.Sprintf("entry-%d", i), "type": "mixed", "listen": "127.0.0.1", "port": 18100 + i, "udp": false, "users": []User{{Username: fmt.Sprintf("user-%d", i), Password: strings.Repeat("p", 32)}}})
++			}
++			v["listeners"] = listeners
++			_, err := Validate(encode(t, v), "gen")
++			if count == 4 && err != nil {
++				t.Fatal(err)
++			}
++			if count == 5 {
++				assertRejected(t, encode(t, v), "gen")
++			}
++		})
++	}
++	for _, count := range []int{64, 65} {
++		t.Run(fmt.Sprintf("nodes-%d", count), func(t *testing.T) {
++			v := profileMap(t)
++			nodes := []Node{}
++			for i := 0; i < count; i++ {
++				nodes = append(nodes, Node{Name: fmt.Sprintf("node:n%d", i), Type: "direct"})
++			}
++			v["proxies"] = nodes
++			v["proxy-groups"] = []Group{}
++			v["rules"] = []string{"MATCH,node:n0"}
++			_, err := Validate(encode(t, v), "gen")
++			if count == 64 && err != nil {
++				t.Fatal(err)
++			}
++			if count == 65 {
++				assertRejected(t, encode(t, v), "gen")
++			}
++		})
++	}
++	for _, count := range []int{64, 65} {
++		t.Run(fmt.Sprintf("rules-%d", count), func(t *testing.T) {
++			v := profileMap(t)
++			rules := []string{}
++			for i := 1; i < count; i++ {
++				rules = append(rules, "DOMAIN,a.test,node:direct")
++			}
++			rules = append(rules, "MATCH,node:direct")
++			v["rules"] = rules
++			_, err := Validate(encode(t, v), "gen")
++			if count == 64 && err != nil {
++				t.Fatal(err)
++			}
++			if count == 65 {
++				assertRejected(t, encode(t, v), "gen")
++			}
++		})
++	}
++	for _, count := range []int{2, 8, 9} {
++		t.Run(fmt.Sprintf("and-%d", count), func(t *testing.T) {
++			v := profileMap(t)
++			atoms := []string{}
++			for i := 0; i < count; i++ {
++				atoms = append(atoms, "(DOMAIN,a.test)")
++			}
++			v["rules"] = []string{"AND,(" + strings.Join(atoms, ",") + "),node:direct", "MATCH,node:direct"}
++			_, err := Validate(encode(t, v), "gen")
++			if count <= 8 && err != nil {
++				t.Fatal(err)
++			}
++			if count > 8 {
++				assertRejected(t, encode(t, v), "gen")
++			}
++		})
++	}
++}
++func TestFullPreservationAndCredentialIsolation(t *testing.T) {
++	cfg, err := Validate([]byte(validProfile), "gen")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var expected Config
++	if err = json.Unmarshal([]byte(validProfile), &expected); err != nil {
++		t.Fatal(err)
++	}
++	if !reflect.DeepEqual(cfg, expected) {
++		t.Fatal("config changed")
++	}
++	v := profileMap(t)
++	first := listener(v)
++	second := map[string]any{}
++	for k, value := range first {
++		second[k] = value
++	}
++	second["name"] = "entry-b"
++	second["port"] = 18082
++	v["listeners"] = []any{first, second}
++	assertRejected(t, encode(t, v), "gen")
++	second["users"] = []User{{Username: "user-b", Password: strings.Repeat("q", 32)}}
++	if _, err = Validate(encode(t, v), "gen"); err != nil {
++		t.Fatal(err)
++	}
++}
++func FuzzValidate(f *testing.F) {
++	f.Add([]byte(validProfile))
++	f.Add([]byte(`{"rules":["AND,()),REJECT"]}`))
++	f.Add([]byte(`null`))
++	f.Fuzz(func(t *testing.T, raw []byte) {
++		cfg, err := Validate(raw, "gen")
++		if err != nil && (err != ErrProfile || !reflect.DeepEqual(cfg, Config{})) {
++			t.Fatal("non-fixed error or partial configuration")
++		}
++	})
++}
++
++func TestStrictNestedObjects(t *testing.T) {
++	for _, path := range []string{"listener", "user", "node", "group", "profile", "host"} {
++		t.Run(path, func(t *testing.T) {
++			var old string
++			switch path {
++			case "listener":
++				old = `"name":"entry-a"`
++			case "user":
++				old = `"username":"user-a"`
++			case "node":
++				old = `"name":"node:direct"`
++			case "group":
++				old = `"name":"group:main"`
++			case "profile":
++				old = `"store-selected":false`
++			case "host":
++				old = `"alpha.test":"127.0.0.1"`
++			}
++			assertRejected(t, []byte(strings.Replace(validProfile, old, old+","+old, 1)), "gen")
++		})
++	}
++	for _, fragment := range []string{`"port":18080`, `"type":"mixed"`, `"udp":false`, `"username":"user-a"`, `"password":"pppppppppppppppppppppppppppppppp"`, `"store-selected":false`} {
++		t.Run("null-"+fragment, func(t *testing.T) {
++			key := fragment[:strings.Index(fragment, ":")+1]
++			assertRejected(t, []byte(strings.Replace(validProfile, fragment, key+"null", 1)), "gen")
++		})
++	}
++	for _, extra := range []string{`"allow-lan":true`, `"proxy-providers":{}`, `"rule-providers":{}`, `"authentication":[]`, `"external-controller-unix":"/tmp/socket"`} {
++		assertRejected(t, []byte(strings.Replace(validProfile, `{"mode":`, `{`+extra+`,"mode":`, 1)), "gen")
++	}
++}
++
++func TestMalformedANDCannotPanic(t *testing.T) {
++	for _, rule := range []string{"AND,()),node:direct", "AND,()),REJECT", "AND,(()),node:direct"} {
++		v := profileMap(t)
++		v["rules"] = []string{rule, "MATCH,node:direct"}
++		assertRejected(t, encode(t, v), "gen:bad-and")
++	}
++}
+--- a/component/hoopaid/abi.go
++++ b/component/hoopaid/abi.go
+@@ -5,6 +5,7 @@
+ 	"encoding/hex"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"strconv"
+ 	"unicode/utf8"
+ )
+@@ -31,6 +32,8 @@
+ 
+ // Identity contains values only: subsequent rejection cannot mutate a previous grant.
+ type Identity struct {
++	FieldProfile    identityprofile.Profile `json:"-"`
++	HasFieldProfile bool                    `json:"-"`
+ 	// Experimental v4 payload is emitted explicitly by its writer, never by
+ 	// legacy JSON marshaling. Both fields contain values only.
+ 	Executable            Executable  `json:"-"`
+--- a/component/hoopaid/handoff.go
++++ b/component/hoopaid/handoff.go
+@@ -6,6 +6,7 @@
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"io"
+ 	"regexp"
+ 	"strconv"
+@@ -19,21 +20,22 @@
+ var sourcePath = regexp.MustCompile(`^/sys/fs/cgroup/hoopa-online-[A-Za-z0-9_-]+$`)
+ 
+ type handoff struct {
+-	Schema         string         `json:"schema"`
+-	CoreGeneration string         `json:"core_generation"`
+-	Generation     string         `json:"generation"`
+-	SourceCgroupID string         `json:"source_cgroup_id"`
+-	RootCgroupID   string         `json:"root_cgroup_id"`
+-	NetnsCookie    string         `json:"netns_cookie"`
+-	PIDNSInode     uint32         `json:"pidns_inode"`
+-	UserNSInode    uint32         `json:"userns_inode,omitempty"`
+-	MountNSInode   uint32         `json:"mountns_inode,omitempty"`
+-	BootID         string         `json:"boot_id"`
+-	SourcePath     string         `json:"source_path"`
+-	Port           uint16         `json:"port"`
+-	Maps           map[string]int `json:"maps"`
+-	Programs       map[string]int `json:"programs"`
+-	Links          map[string]int `json:"links"`
++	IdentityProfile string         `json:"identity_profile,omitempty"`
++	Schema          string         `json:"schema"`
++	CoreGeneration  string         `json:"core_generation"`
++	Generation      string         `json:"generation"`
++	SourceCgroupID  string         `json:"source_cgroup_id"`
++	RootCgroupID    string         `json:"root_cgroup_id"`
++	NetnsCookie     string         `json:"netns_cookie"`
++	PIDNSInode      uint32         `json:"pidns_inode"`
++	UserNSInode     uint32         `json:"userns_inode,omitempty"`
++	MountNSInode    uint32         `json:"mountns_inode,omitempty"`
++	BootID          string         `json:"boot_id"`
++	SourcePath      string         `json:"source_path"`
++	Port            uint16         `json:"port"`
++	Maps            map[string]int `json:"maps"`
++	Programs        map[string]int `json:"programs"`
++	Links           map[string]int `json:"links"`
+ }
+ 
+ func u64(s string) (uint64, error) {
+@@ -108,8 +110,11 @@
+ 	if err := json.Unmarshal(keys["schema"], &schema); err != nil {
+ 		return h, err
+ 	}
+-	if schema == "hoopa-core-identity-handoff-v3" {
++	if schema == "hoopa-core-identity-handoff-v3" || schema == identityprofile.HandoffSchema {
+ 		names = append(names, "userns_inode", "mountns_inode")
++	}
++	if schema == identityprofile.HandoffSchema {
++		names = append(names, "identity_profile")
+ 	}
+ 	if len(keys) != len(names) {
+ 		return h, errors.New("unexpected handoff field set")
+@@ -124,8 +129,11 @@
+ 	if err := d.Decode(&h); err != nil {
+ 		return h, err
+ 	}
+-	if (h.Schema != "hoopa-core-identity-handoff-v1" && h.Schema != "hoopa-core-identity-handoff-v2" && h.Schema != "hoopa-core-identity-handoff-v3") || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
++	if (h.Schema != "hoopa-core-identity-handoff-v1" && h.Schema != "hoopa-core-identity-handoff-v2" && h.Schema != "hoopa-core-identity-handoff-v3" && h.Schema != identityprofile.HandoffSchema) || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
+ 		return h, errors.New("invalid handoff declaration")
++	}
++	if h.Schema == identityprofile.HandoffSchema && h.IdentityProfile != identityprofile.ID {
++		return h, errors.New("invalid identity profile")
+ 	}
+ 	if h.scoped() && (h.UserNSInode == 0 || h.MountNSInode == 0) {
+ 		return h, errors.New("nonzero scoped namespaces required")
+--- a/component/hoopaid/owner.go
++++ b/component/hoopaid/owner.go
+@@ -4,6 +4,7 @@
+ 	"bytes"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"net"
+ 	"strings"
+ 	"sync"
+@@ -31,6 +32,7 @@
+ 	Revoked  bool   `json:"revoked"`
+ }
+ type Owner struct {
++	scopeRawHex string
+ 	mu          sync.Mutex
+ 	h           handoff
+ 	b           backend
+@@ -380,6 +382,18 @@
+ 		id.HasExecutable = true
+ 		id.Schema = "sourceidentity-core-admission-v2"
+ 	}
++	if o.h.Schema == identityprofile.HandoffSchema {
++		id.FieldProfile, err = identityprofile.New(o.scopeRawHex, o.h.Generation)
++		if err != nil {
++			return reject(err)
++		}
++		id.HasFieldProfile = true
++		id.Schema = "sourceidentity-core-admission-v3"
++		id.IdentityCapability = ""
++		id.ProcessPath = ""
++		id.Executable.Schema = "sourceidentity-executable-call-v2"
++		id.Executable.Status = "available"
++	}
+ 	o.status.Admitted++
+ 	return id, nil
+ }
+--- a/component/hoopaid/profile_v2.go
++++ b/component/hoopaid/profile_v2.go
+@@ -1,6 +1,9 @@
+ package hoopaid
+ 
+-import "errors"
++import (
++	"errors"
++	"github.com/metacubex/mihomo/component/identityprofile"
++)
+ 
+ // These constants describe the pinned 6.18.54.1 guest, not portable kernel ABI.
+ const executableLSMFunctionID = 39733
+@@ -91,6 +94,9 @@
+ // EventSchemaVersion lets the protected entry bind the adopted resources to
+ // its writer profile before opening a listener. The handoff is immutable.
+ func (o *Owner) EventSchemaVersion() int {
++	if o.h.Schema == identityprofile.HandoffSchema {
++		return 5
++	}
+ 	if o.h.executable() {
+ 		return 4
+ 	}
+--- a/component/hoopaid/profile_v3.go
++++ b/component/hoopaid/profile_v3.go
+@@ -2,14 +2,18 @@
+ 
+ import (
+ 	"bytes"
++	"encoding/hex"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"syscall"
+ )
+ 
+ var scopedMapNames = append(append([]string{}, executableMapNames...), "identity_scope")
+ 
+-func (h handoff) scoped() bool { return h.Schema == "hoopa-core-identity-handoff-v3" }
++func (h handoff) scoped() bool {
++	return h.Schema == "hoopa-core-identity-handoff-v3" || h.Schema == identityprofile.HandoffSchema
++}
+ 
+ func identityScopeConfig(h handoff) []byte {
+ 	raw := make([]byte, 24)
+@@ -34,6 +38,7 @@
+ 	if !bytes.Equal(raw, identityScopeConfig(o.h)) {
+ 		return errors.New("identity scope readback mismatch")
+ 	}
++	o.scopeRawHex = hex.EncodeToString(raw)
+ 	return nil
+ }
+ func (o *Owner) freezeIdentityScope() error {
+@@ -62,3 +67,14 @@
+ 	}
+ 	return true
+ }
++
++// FieldProfile returns values only after successful Adopt/readback. It does not
++// read descriptors or turn a legacy handoff into a field grant.
++func (o *Owner) FieldProfile() (identityprofile.Profile, error) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	if o.closed || o.status.Revoked || o.h.Schema != identityprofile.HandoffSchema {
++		return identityprofile.Profile{}, identityprofile.ErrProfile
++	}
++	return identityprofile.New(o.scopeRawHex, o.h.Generation)
++}
+--- /dev/null
++++ b/component/hoopaid/profile_v4_test.go
+@@ -0,0 +1,90 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"testing"
++)
++
++func exampleV4() handoff {
++	h := exampleV3()
++	h.Schema = identityprofile.HandoffSchema
++	h.IdentityProfile = identityprofile.ID
++	return h
++}
++func TestFieldProfileAdoptReadbackAndImmutableGrant(t *testing.T) {
++	h := exampleV4()
++	f := newScopedFake(h)
++	o, e := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer o.Close()
++	p, e := o.FieldProfile()
++	if e != nil || p.Validate(h.Generation) != nil || o.EventSchemaVersion() != 5 {
++		t.Fatal(p, e)
++	}
++	f.publishExecutable()
++	id, e := o.Admit(nil)
++	if e != nil || !id.HasFieldProfile || id.FieldProfile != p || id.Schema != "sourceidentity-core-admission-v3" || id.Executable.Status != "available" || id.Executable.Schema != "sourceidentity-executable-call-v2" || id.IdentityCapability != "" || id.ProcessPath != "" {
++		t.Fatal(id, e)
++	}
++	saved := id
++	f.values[h.Maps["identity_scope"]][8] ^= 1
++	if _, e = o.Admit(nil); e == nil {
++		t.Fatal("changed scope grants")
++	}
++	if id != saved {
++		t.Fatal("historical grant changed")
++	}
++	if _, e = o.FieldProfile(); e == nil {
++		t.Fatal("revoked owner grants capability")
++	}
++	if o.scopeRawHex != p.ScopeRawHex {
++		t.Fatal("failed readback replaced success")
++	}
++	for _, old := range []handoff{example(), exampleV2(), exampleV3()} {
++		b := newScopedFake(exampleV3())
++		_ = b
++		raw := encoded(old)
++		if bytes.Contains(raw, []byte("identity_profile")) {
++			t.Fatal("legacy serialization changed")
++		}
++	}
++}
++func TestFieldProfileHandoffExactVersionIsolation(t *testing.T) {
++	h := exampleV4()
++	if _, e := parse(encoded(h)); e != nil {
++		t.Fatal(e)
++	}
++	for _, change := range []func(*handoff){func(h *handoff) { h.IdentityProfile = "" }, func(h *handoff) { h.IdentityProfile = "other" }, func(h *handoff) { h.Schema = "hoopa-core-identity-handoff-v3" }, func(h *handoff) { delete(h.Maps, "identity_scope") }} {
++		v := exampleV4()
++		change(&v)
++		if _, e := parse(encoded(v)); e == nil {
++			t.Fatal("bad handoff")
++		}
++	}
++	var fields map[string]any
++	json.Unmarshal(encoded(h), &fields)
++	delete(fields, "identity_profile")
++	raw, _ := json.Marshal(fields)
++	if _, e := parse(raw); e == nil {
++		t.Fatal("missing identity id")
++	}
++	old := exampleV3()
++	f := newScopedFake(old)
++	o, e := adopt(encoded(old), old.CoreGeneration, old.Port, f)
++	if e != nil {
++		t.Fatal(e)
++	}
++	defer o.Close()
++	if _, e = o.FieldProfile(); e == nil {
++		t.Fatal("legacy grants fields")
++	}
++	f.publishExecutable()
++	id, e := o.Admit(nil)
++	if e != nil || id.HasFieldProfile || id.IdentityCapability != "unverified" || id.Executable.Status != "unverified" {
++		t.Fatal(id, e)
++	}
++}
+--- /dev/null
++++ b/component/hoopatrace/field_profile_linux_test.go
+@@ -0,0 +1,162 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"github.com/metacubex/mihomo/component/hoopaid"
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++	"time"
++)
++
++func fieldIdentity(t *testing.T) hoopaid.Identity {
++	p := executableIdentityFixture()
++	p.Schema = "sourceidentity-core-admission-v3"
++	p.IdentityCapability = ""
++	p.ProcessPath = ""
++	p.HasFieldProfile = true
++	p.Executable.Schema = "sourceidentity-executable-call-v2"
++	p.Executable.Status = "available"
++	raw := make([]byte, 24)
++	binary.LittleEndian.PutUint64(raw, 9007199254740993)
++	binary.LittleEndian.PutUint32(raw[8:], 1)
++	binary.LittleEndian.PutUint32(raw[12:], 2)
++	binary.LittleEndian.PutUint32(raw[16:], 1)
++	var e error
++	p.FieldProfile, e = identityprofile.New(hex.EncodeToString(raw), p.Generation)
++	if e != nil {
++		t.Fatal(e)
++	}
++	return p
++}
++func TestFieldProfileWriterQualityManifestReopen(t *testing.T) {
++	for _, pending := range []bool{false, true} {
++		t.Run(map[bool]string{false: "complete", true: "pending"}[pending], func(t *testing.T) {
++			t.Setenv("HOOPA_TRACE_PROFILE", "5")
++			s := testSource(t, defaultLimit)
++			proof := fieldIdentity(t)
++			if s.manifest.SchemaVersion != 2 || s.manifest.IdentityProfile != identityprofile.ID {
++				t.Fatal("manifest2 not bound")
++			}
++			f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
++			if e != nil {
++				t.Fatal(e)
++			}
++			proof.FieldProfile.ID = "mutated"
++			proof.Executable.PathText = "mutated"
++			if e = f.Decide("MATCH", "", "DIRECT"); e != nil {
++				t.Fatal(e)
++			}
++			a := f.NewAttempt()
++			c := qualityAttach(t, a, "fields:actual", true)
++			a.FinishConnection(nil, "", c, false)
++			a.Bind("fields:tracker")
++			a.AddUpload(9007199254740993)
++			a.AddDownload(33)
++			if e = f.Checkpoint(); e != nil {
++				t.Fatal(e)
++			}
++			if !pending {
++				f.Close()
++				if e = s.shutdown(); e != nil {
++					t.Fatal(e)
++				}
++			}
++			before := frames(t, s)
++			var quality, closed bool
++			for _, b := range before {
++				event, e := telemetrywire.DecodeSourceEvent(b)
++				if e != nil || event.SchemaVersion != 5 || telemetrywire.ValidateManifestEvent(s.manifest, event) != nil {
++					t.Fatal(e)
++				}
++				if event.Kind == "opened" && (event.FieldProfile.ID != identityprofile.ID || event.Connector.IdentityCapability != "" || event.Executable.PathText != "/bin/python3") {
++					t.Fatal("historical field grant mutated")
++				}
++				quality = quality || event.Quality != nil
++				closed = closed || event.Kind == "closed"
++			}
++			if !quality || closed == pending {
++				t.Fatal("quality/closed")
++			}
++			dir, name := s.root.Name(), filepath.Base(s.file.Name())
++			oldRaw, e := os.ReadFile(filepath.Join(dir, name))
++			if e != nil {
++				t.Fatal(e)
++			}
++			s.close()
++			next, e := openSource(dir, "test-generation", "", "", defaultLimit)
++			if e != nil {
++				t.Fatal(e)
++			}
++			defer next.close()
++			snapshots, e := next.sendSnapshots()
++			if e != nil {
++				t.Fatal(e)
++			}
++			found := false
++			for _, snap := range snapshots {
++				if snap.name == name {
++					found = true
++					if !reflect.DeepEqual(before, snap.frames) {
++						t.Fatal("raw changed")
++					}
++				}
++			}
++			if !found {
++				t.Fatal("missing epoch")
++			}
++			again, _ := os.ReadFile(filepath.Join(dir, name))
++			if !bytes.Equal(oldRaw, again) {
++				t.Fatal("original source rewritten")
++			}
++			reports := next.recoveryReports()
++			if len(reports) != 1 {
++				t.Fatal(reports)
++			}
++			if pending && (reports[0].Flows[0].State != "gap" || reports[0].Flows[0].Reason != "epoch_ended_without_final" || reports[0].Flows[0].TailBytes != nil || reports[0].Flows[0].Final != nil) {
++				t.Fatal("exclusive old-writer report changed existing gap/null semantics")
++			}
++			previous := reports[0]
++			next.close()
++			againSource, err := openSource(dir, "test-generation", "", "", defaultLimit)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer againSource.close()
++			stable := false
++			for _, report := range againSource.recoveryReports() {
++				if report.SourceEpoch == previous.SourceEpoch {
++					stable = true
++					if !reflect.DeepEqual(report.Flows, previous.Flows) {
++						t.Fatal("repeated reopen changed derived old flows")
++					}
++				}
++			}
++			if !stable {
++				t.Fatal("old report missing after repeated reopen")
++			}
++		})
++	}
++}
++func TestFieldProfileInvalidProofNeverReserves(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "5")
++	s := testSource(t, defaultLimit)
++	defer s.close()
++	for _, edit := range []func(*hoopaid.Identity){func(p *hoopaid.Identity) { p.HasFieldProfile = false }, func(p *hoopaid.Identity) { p.FieldProfile.ID = "other" }, func(p *hoopaid.Identity) { p.FieldProfile.Fields.Comm.Status = "available" }, func(p *hoopaid.Identity) { p.Executable.Status = "unverified" }} {
++		p := fieldIdentity(t)
++		edit(&p)
++		if f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &p); e == nil || f != nil {
++			t.Fatal("invalid proof accepted")
++		}
++		if len(s.flows) != 0 || s.reserved != 0 || s.seq != 0 || s.poisoned {
++			t.Fatal("rejection changed source")
++		}
++	}
++}
+--- a/component/hoopatrace/guard_linux.go
++++ b/component/hoopatrace/guard_linux.go
+@@ -7,7 +7,7 @@
+ // PrepareGuard runs source/mapping admission before a protected entry accepts.
+ // expected maps immutable inline node/group names to the compiled adapter type.
+ func PrepareGuard(generation string, expected map[string]string) error {
+-	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3" && os.Getenv("HOOPA_TRACE_PROFILE") != "4") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
++	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3" && os.Getenv("HOOPA_TRACE_PROFILE") != "4" && os.Getenv("HOOPA_TRACE_PROFILE") != "5") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
+ 		return ErrSource
+ 	}
+ 	global.once.Do(func() {
+--- a/component/hoopatrace/quality_linux.go
++++ b/component/hoopatrace/quality_linux.go
+@@ -124,7 +124,7 @@
+ }
+ 
+ func (a *Attempt) Attach(c C.Conn) error {
+-	if a == nil || (a.f.s.profile != 2 && a.f.s.profile != 3 && a.f.s.profile != 4) || c == nil {
++	if a == nil || (a.f.s.profile != 2 && a.f.s.profile != 3 && a.f.s.profile != 4 && a.f.s.profile != 5) || c == nil {
+ 		return nil
+ 	}
+ 	f := a.f
+@@ -235,7 +235,7 @@
+ }
+ func (f *Flow) counterExtra() map[string]any {
+ 	m := map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}
+-	if f.s.profile == 2 || f.s.profile == 3 || f.s.profile == 4 {
++	if f.s.profile == 2 || f.s.profile == 3 || f.s.profile == 4 || f.s.profile == 5 {
+ 		values := make([]segmentCounter, 0, len(f.segments))
+ 		for _, s := range f.segments {
+ 			values = append(values, *s)
+@@ -247,7 +247,7 @@
+ 	return m
+ }
+ func (f *Flow) bindSegment(id string, a *Attempt) {
+-	if f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4 {
++	if f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4 && f.s.profile != 5 {
+ 		f.Bind(id)
+ 		return
+ 	}
+@@ -308,7 +308,7 @@
+ 	if a == nil {
+ 		return
+ 	}
+-	if a.f.s.profile == 2 || a.f.s.profile == 3 || a.f.s.profile == 4 {
++	if a.f.s.profile == 2 || a.f.s.profile == 3 || a.f.s.profile == 4 || a.f.s.profile == 5 {
+ 		a.once.Do(func() { a.finishQuality(err, stage) })
+ 		return
+ 	}
+@@ -323,7 +323,7 @@
+ // Attempt zero is the pre-dial setup interval, starting at target_known. It only
+ // emits a failure when metadata/routing actually aborts before a Dial attempt.
+ func (f *Flow) FailBeforeDial(err error) {
+-	if f == nil || (f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4) || err == nil {
++	if f == nil || (f.s.profile != 2 && f.s.profile != 3 && f.s.profile != 4 && f.s.profile != 5) || err == nil {
+ 		return
+ 	}
+ 	a := &Attempt{f: f, id: f.id + ":attempt:0", started: f.started}
+--- a/component/hoopatrace/recovery_linux.go
++++ b/component/hoopatrace/recovery_linux.go
+@@ -64,7 +64,7 @@
+ 	return raw, nil
+ }
+ func boundFrames(raw []byte, m telemetrywire.Manifest, visit func([]byte) error) (telemetrywire.Lifecycle, error) {
+-	life, err := scanFrames(bytes.NewReader(raw), visit)
++	life, err := scanFrames(bytes.NewReader(raw), visit, m)
+ 	if err != nil {
+ 		return life, ErrSource
+ 	}
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v5.go
+@@ -0,0 +1,72 @@
++package telemetrywire
++
++import (
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++)
++
++func decodeV5(f wireFields, e *SourceEvent) bool {
++	if e.Kind != "opened" {
++		if !decodeV4(f, e) {
++			return false
++		}
++		if e.Counter != nil {
++			e.Counter.SchemaVersion = 5
++		}
++		return true
++	}
++	if !exactFields(f, commonFields+" process source_addr entry_addr target_kind target identity_scope flow_start_ns connector") {
++		return false
++	}
++	process, ok := object(f["process"])
++	if !ok || !exactFields(process, "status reason") || !literal(process, "status", "unknown") || !literal(process, "reason", "legacy_process_fields_unused") {
++		return false
++	}
++	c, ok := object(f["connector"])
++	if !ok || !exactFields(c, "schema boot_id core_generation generation source_cgroup_id root_cgroup_id accepted_cookie client_cookie socket_netns_cookie tgid_initial leader_pid_initial caller_tid_initial leader_start_boottime_ns observed_boot_ns active_pidns_inum leader_comm caller_comm local_endpoint remote_endpoint raw executable field_profile") || !literal(c, "schema", "sourceidentity-core-admission-v3") {
++		return false
++	}
++	generation, ok := scalarText(c["generation"])
++	if !ok {
++		return false
++	}
++	profile, err := identityprofile.Decode(c["field_profile"], generation)
++	if err != nil {
++		return false
++	}
++	exe, ok := object(c["executable"])
++	if !ok || !literal(exe, "schema", "sourceidentity-executable-call-v2") || !literal(exe, "status", "available") {
++		return false
++	}
++	exe["schema"] = json.RawMessage(`"sourceidentity-executable-call-v1"`)
++	exe["status"] = json.RawMessage(`"unverified"`)
++	b, err := json.Marshal(exe)
++	if err != nil {
++		return false
++	}
++	c["executable"] = b
++	delete(c, "field_profile")
++	c["schema"] = json.RawMessage(`"sourceidentity-core-admission-v2"`)
++	c["identity_capability"] = json.RawMessage(`"unverified"`)
++	c["process_path"] = json.RawMessage(`"unknown"`)
++	b, err = json.Marshal(c)
++	if err != nil {
++		return false
++	}
++	normalized := make(wireFields, len(f))
++	for k, v := range f {
++		normalized[k] = v
++	}
++	normalized["connector"] = b
++	normalized["process"] = json.RawMessage(`{"status":"unknown","reason":"connector_experiment_unverified"}`)
++	if !decodeV4(normalized, e) {
++		return false
++	}
++	e.Connector.Schema = "sourceidentity-core-admission-v3"
++	e.Connector.IdentityCapability = ""
++	e.Connector.ProcessPath = ""
++	e.Executable.Schema = "sourceidentity-executable-call-v2"
++	e.Executable.Status = "available"
++	e.FieldProfile = &profile
++	return true
++}
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/connector_v5_test.go
+@@ -0,0 +1,208 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"reflect"
++	"strings"
++	"testing"
++)
++
++func fieldProfileFixture(t *testing.T) identityprofile.Profile {
++	b := make([]byte, 24)
++	binary.LittleEndian.PutUint64(b, 9007199254740993)
++	binary.LittleEndian.PutUint32(b[8:], 1)
++	binary.LittleEndian.PutUint32(b[12:], 2)
++	binary.LittleEndian.PutUint32(b[16:], 1)
++	p, e := identityprofile.New(hex.EncodeToString(b), "9007199254740993")
++	if e != nil {
++		t.Fatal(e)
++	}
++	return p
++}
++func v5Fields(t *testing.T, path []byte) map[string]json.RawMessage {
++	f := executableFields(t, executableFixture(path), connectorFixture())
++	putFields(f, map[string]any{"schema_version": 5, "process": map[string]string{"status": "unknown", "reason": "legacy_process_fields_unused"}})
++	c, _ := object(f["connector"])
++	delete(c, "identity_capability")
++	delete(c, "process_path")
++	putFields(c, map[string]any{"schema": "sourceidentity-core-admission-v3", "field_profile": fieldProfileFixture(t)})
++	exe, _ := object(c["executable"])
++	putFields(exe, map[string]any{"schema": "sourceidentity-executable-call-v2", "status": "available"})
++	c["executable"], _ = json.Marshal(exe)
++	f["connector"], _ = json.Marshal(c)
++	return f
++}
++func manifest2Fixture(t *testing.T) Manifest {
++	m := manifestFixture(t)
++	f, _ := object(m.Raw)
++	putFields(f, map[string]any{"schema_version": 2, "source_schema_version": 5, "identity_profile": identityprofile.ID, "scope": "linux_amd64_tcp_scoped_connect_initiator_ipv4_loopback"})
++	b, _ := json.Marshal(f)
++	m, e := DecodeManifest(b)
++	if e != nil {
++		t.Fatal(e)
++	}
++	return m
++}
++func TestV5CompletePendingReplayManifestBinding(t *testing.T) {
++	m := manifest2Fixture(t)
++	f := executableLifecycle(t)
++	f[0] = v5Fields(t, []byte{'/', 'b', 'i', 'n', '/', 0xff})
++	var state, replay State
++	for i, v := range f {
++		putFields(v, map[string]any{"schema_version": 5})
++		if i == 0 {
++			c, _ := object(v["connector"])
++			putFields(c, map[string]any{"core_generation": m.ConfigGeneration})
++			v["connector"], _ = json.Marshal(c)
++		}
++		e := stateEvent(t, v, i+1, map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration})
++		if ValidateManifestEvent(m, e) != nil {
++			t.Fatal("binding")
++		}
++		if i == 0 && (e.FieldProfile == nil || e.Connector.IdentityCapability != "" || e.Connector.ProcessPath != "" || e.Executable.Status != "available" || e.Executable.ProgramNameTextValid) {
++			t.Fatal(e)
++		}
++		if e.Counter != nil && e.Counter.SchemaVersion != 5 {
++			t.Fatal("counter version")
++		}
++		commitState(t, &state, e)
++		again, err := DecodeSourceEvent(e.Raw)
++		if err != nil || !bytes.Equal(e.Raw, again.Raw) {
++			t.Fatal(err)
++		}
++		commitState(t, &replay, again)
++		if i == 0 {
++			a, err := ProjectRecovery(m, state.Snapshot(), strings.Repeat("c", 64), nil)
++			b, err2 := ProjectRecovery(m, replay.Snapshot(), strings.Repeat("c", 64), nil)
++			if err != nil || err2 != nil || !reflect.DeepEqual(a, b) || a.Flows[0].State != "pending" || a.Flows[0].TailBytes != nil {
++				t.Fatal("pending recovery", err, err2)
++			}
++		}
++	}
++	if !reflect.DeepEqual(state.Snapshot(), replay.Snapshot()) {
++		t.Fatal("replay")
++	}
++	r, err := ProjectRecovery(m, replay.Snapshot(), strings.Repeat("c", 64), nil)
++	if err != nil || r.Flows[0].Final.UploadBytes != 9007199254740994 {
++		t.Fatal(err)
++	}
++	b, _ := json.Marshal(r)
++	if bytes.Contains(b, []byte("field_profile")) {
++		t.Fatal("report invented identity")
++	}
++}
++func TestV5StrictShapesAndRawMutations(t *testing.T) {
++	for _, tc := range []string{"legacycap", "legacypath", "oldschema", "oldexe", "oldreason", "missingprofile", "badprofile", "extraexe"} {
++		t.Run(tc, func(t *testing.T) {
++			f := v5Fields(t, []byte("/bin/python3"))
++			c, _ := object(f["connector"])
++			switch tc {
++			case "legacycap":
++				putFields(c, map[string]any{"identity_capability": "unverified"})
++			case "legacypath":
++				putFields(c, map[string]any{"process_path": "unknown"})
++			case "oldschema":
++				putFields(c, map[string]any{"schema": "sourceidentity-core-admission-v2"})
++			case "missingprofile":
++				delete(c, "field_profile")
++			case "badprofile":
++				c["field_profile"] = json.RawMessage(`null`)
++			case "oldreason":
++				putFields(f, map[string]any{"process": map[string]string{"status": "unknown", "reason": "connector_experiment_unverified"}})
++			case "oldexe", "extraexe":
++				e, _ := object(c["executable"])
++				if tc == "oldexe" {
++					putFields(e, map[string]any{"status": "unverified"})
++				} else {
++					putFields(e, map[string]any{"extra": 0})
++				}
++				c["executable"], _ = json.Marshal(e)
++			}
++			f["connector"], _ = json.Marshal(c)
++			b, _ := json.Marshal(f)
++			if _, err := DecodeSourceEvent(b); err == nil {
++				t.Fatal("accepted")
++			}
++		})
++	}
++	for _, part := range []string{"binding", "connect", "gate", "executable"} {
++		for _, offset := range []int{0, 8, 16, 20, 24, 32} {
++			f := v5Fields(t, []byte("/bin/python3"))
++			c, _ := object(f["connector"])
++			var target wireFields
++			if part == "executable" {
++				target, _ = object(c[part])
++			} else {
++				target, _ = object(c["raw"])
++			}
++			key := part
++			if part == "executable" {
++				key = "raw_record"
++			}
++			text, _ := scalarText(target[key])
++			b, _ := hex.DecodeString(text)
++			if offset >= len(b) {
++				continue
++			}
++			b[offset] ^= 1
++			putFields(target, map[string]any{key: hex.EncodeToString(b)})
++			if part == "executable" {
++				c[part], _ = json.Marshal(target)
++			} else {
++				c["raw"], _ = json.Marshal(target)
++			}
++			f["connector"], _ = json.Marshal(c)
++			raw, _ := json.Marshal(f)
++			if _, err := DecodeSourceEvent(raw); err == nil {
++				t.Fatalf("raw accepted %s/%d", part, offset)
++			}
++		}
++	}
++	f := v5Fields(t, []byte("/bin/python3"))
++	putFields(f, map[string]any{"schema_version": 4})
++	b, _ := json.Marshal(f)
++	if _, err := DecodeSourceEvent(b); err == nil {
++		t.Fatal("old v4 accepted v5")
++	}
++}
++func TestV5ManifestMismatchAndMixedEpoch(t *testing.T) {
++	m := manifest2Fixture(t)
++	f := v5Fields(t, []byte("/bin/python3"))
++	c, _ := object(f["connector"])
++	putFields(c, map[string]any{"core_generation": m.ConfigGeneration})
++	f["connector"], _ = json.Marshal(c)
++	e := stateEvent(t, f, 1, map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration})
++	old := manifestFixture(t)
++	if ValidateManifestEvent(old, e) == nil {
++		t.Fatal("v1 carried5")
++	}
++	bad := e
++	bad.ConfigGeneration = "different"
++	if ValidateManifestEvent(m, bad) == nil {
++		t.Fatal("generation")
++	}
++	bad = e
++	bad.SchemaVersion = 4
++	if ValidateManifestEvent(m, bad) == nil {
++		t.Fatal("v2 carried4")
++	}
++	var s State
++	commitState(t, &s, e)
++	next := executableLifecycle(t)[1]
++	bad = stateEvent(t, next, 2, map[string]any{"source_epoch": m.SourceEpoch, "source_instance_id": m.SourceInstanceID, "config_generation": m.ConfigGeneration})
++	if s.Commit(bad) == nil {
++		t.Fatal("mixed version")
++	}
++	for _, key := range []string{"identity_profile", "source_schema_version", "scope"} {
++		f, _ := object(m.Raw)
++		delete(f, key)
++		b, _ := json.Marshal(f)
++		if _, err := DecodeManifest(b); err == nil {
++			t.Fatal("missing manifest key", key)
++		}
++	}
++}
+--- a/component/hoopatrace/telemetrywire/manifest.go
++++ b/component/hoopatrace/telemetrywire/manifest.go
+@@ -6,6 +6,7 @@
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"path/filepath"
+ 	"strings"
+ 	"unicode/utf8"
+@@ -16,6 +17,9 @@
+ // Manifest is the existing bounded P0 profile. Decode checks the identity
+ // digest, not whether the historical binary or process still exists.
+ type Manifest struct {
++	SchemaVersion                                   uint8
++	SourceSchemaVersion                             uint8
++	IdentityProfile                                 string
+ 	SourceEpoch, SourceInstanceID, ConfigGeneration string
+ 	SHA256                                          string
+ 	MaxSourceBytes                                  uint64
+@@ -30,7 +34,17 @@
+ func DecodeManifest(raw []byte) (Manifest, error) {
+ 	bad := func() (Manifest, error) { return Manifest{}, ErrInvalidManifest }
+ 	f, ok := object(raw)
+-	if !ok || len(raw) > 8192 || !utf8.Valid(raw) || !exactFields(f, "schema_version source_epoch binary_path binary_sha256 boot_id pid start_ticks nonce config_generation max_source_bytes max_frame_bytes max_active_flows reclamation scope") || strings.TrimSpace(string(f["schema_version"])) != "1" {
++	fields := "schema_version source_epoch binary_path binary_sha256 boot_id pid start_ticks nonce config_generation max_source_bytes max_frame_bytes max_active_flows reclamation scope"
++	version := uint8(1)
++	scope := "linux_amd64_tcp_same_uid_netns_ipv4_loopback"
++	if strings.TrimSpace(string(f["schema_version"])) == "2" {
++		version = 2
++		fields += " source_schema_version identity_profile"
++		scope = "linux_amd64_tcp_scoped_connect_initiator_ipv4_loopback"
++	} else if strings.TrimSpace(string(f["schema_version"])) != "1" {
++		return bad()
++	}
++	if !ok || len(raw) > 8192 || !utf8.Valid(raw) || !exactFields(f, fields) || version == 2 && (!literal(f, "identity_profile", identityprofile.ID) || strings.TrimSpace(string(f["source_schema_version"])) != "5") {
+ 		return bad()
+ 	}
+ 	epoch, ok := id(f["source_epoch"])
+@@ -56,7 +70,7 @@
+ 	limit, ok := decimal(f["max_source_bytes"], false, true)
+ 	frame, frameOK := decimal(f["max_frame_bytes"], false, true)
+ 	active, activeOK := decimal(f["max_active_flows"], false, true)
+-	if !ok || limit < 20*(8192+36) || limit > 8*1024*1024 || !frameOK || frame != 8192 || !activeOK || active != MaxActiveFlows || !literal(f, "reclamation", "not_implemented_bounded_stop") || !literal(f, "scope", "linux_amd64_tcp_same_uid_netns_ipv4_loopback") {
++	if !ok || limit < 20*(8192+36) || limit > 8*1024*1024 || !frameOK || frame != 8192 || !activeOK || active != MaxActiveFlows || !literal(f, "reclamation", "not_implemented_bounded_stop") || !literal(f, "scope", scope) {
+ 		return bad()
+ 	}
+ 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d|%s|%s", exe, binaryHash, boot, pid, start, nonce)))
+@@ -64,5 +78,34 @@
+ 		return bad()
+ 	}
+ 	sum := sha256.Sum256(raw)
+-	return Manifest{SourceEpoch: epoch, SourceInstanceID: "source:" + strings.TrimPrefix(epoch, "epoch:"), ConfigGeneration: generation, SHA256: hex.EncodeToString(sum[:]), MaxSourceBytes: limit, Raw: append(json.RawMessage(nil), raw...)}, nil
++	return Manifest{SchemaVersion: version, SourceSchemaVersion: func() uint8 {
++		if version == 2 {
++			return 5
++		}
++		return 0
++	}(), IdentityProfile: func() string {
++		if version == 2 {
++			return identityprofile.ID
++		}
++		return ""
++	}(), SourceEpoch: epoch, SourceInstanceID: "source:" + strings.TrimPrefix(epoch, "epoch:"), ConfigGeneration: generation, SHA256: hex.EncodeToString(sum[:]), MaxSourceBytes: limit, Raw: append(json.RawMessage(nil), raw...)}, nil
+ }
++
++// ValidateManifestEvent binds an already strictly decoded original frame to its
++// immutable manifest. Invoke before committing that frame to lifecycle state.
++func ValidateManifestEvent(m Manifest, e SourceEvent) error {
++	if e.SourceEpoch != m.SourceEpoch || e.SourceInstanceID != m.SourceInstanceID || e.ConfigGeneration != m.ConfigGeneration {
++		return ErrInvalidManifest
++	}
++	if m.SchemaVersion == 2 {
++		if e.SchemaVersion != 5 || m.SourceSchemaVersion != 5 || m.IdentityProfile != identityprofile.ID {
++			return ErrInvalidManifest
++		}
++		if e.Kind == "opened" && (e.FieldProfile == nil || e.FieldProfile.ID != m.IdentityProfile) {
++			return ErrInvalidManifest
++		}
++	} else if m.SchemaVersion != 1 || e.SchemaVersion == 5 {
++		return ErrInvalidManifest
++	}
++	return nil
++}
+--- a/component/hoopatrace/telemetrywire/recovery.go
++++ b/component/hoopatrace/telemetrywire/recovery.go
+@@ -73,6 +73,9 @@
+ 		return bad()
+ 	}
+ 	m = validated
++	if life.LastSourceSeq != 0 && (m.SchemaVersion == 2 && life.SchemaVersion != 5 || m.SchemaVersion == 1 && life.SchemaVersion == 5) {
++		return bad()
++	}
+ 	if life.LastSourceSeq != 0 && (life.SourceEpoch != m.SourceEpoch || life.SourceInstanceID != m.SourceInstanceID || life.ConfigGeneration != m.ConfigGeneration) {
+ 		return bad()
+ 	}
+--- a/component/hoopatrace/telemetrywire/source_event.go
++++ b/component/hoopatrace/telemetrywire/source_event.go
+@@ -4,6 +4,7 @@
+ 	"bytes"
+ 	"encoding/json"
+ 	"errors"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	"io"
+ 	"net/netip"
+ 	"strings"
+@@ -18,6 +19,7 @@
+ // ready timing or a capability gate. Raw retains the original bytes for replay.
+ // Null flow/attempt are allowed only on the source-scoped epoch_closed marker.
+ type SourceEvent struct {
++	FieldProfile                           *identityprofile.Profile
+ 	Connector                              *ConnectorEvidence
+ 	Executable                             *ConnectorExecutableEvidence
+ 	SchemaVersion                          uint8
+@@ -328,6 +330,8 @@
+ 		version = 4
+ 	} else if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("3")) {
+ 		version = 3
++	} else if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("5")) {
++		version = 5
+ 	} else if !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) {
+ 		return invalid()
+ 	}
+@@ -369,7 +373,11 @@
+ 			return invalid()
+ 		}
+ 	}
+-	if version == 4 {
++	if version == 5 {
++		if !decodeV5(f, &e) {
++			return invalid()
++		}
++	} else if version == 4 {
+ 		if !decodeV4(f, &e) {
+ 			return invalid()
+ 		}
+--- a/component/hoopatrace/telemetrywire/state.go
++++ b/component/hoopatrace/telemetrywire/state.go
+@@ -22,6 +22,7 @@
+ }
+ 
+ type Lifecycle struct {
++	SchemaVersion    uint8
+ 	SourceEpoch      string
+ 	SourceInstanceID string
+ 	ConfigGeneration string
+@@ -90,7 +91,7 @@
+ 	if !exists || f.terminal && e.Kind != "gap" {
+ 		return bad()
+ 	}
+-	if e.SchemaVersion == 2 || e.SchemaVersion == 3 || e.SchemaVersion == 4 {
++	if e.SchemaVersion == 2 || e.SchemaVersion == 3 || e.SchemaVersion == 4 || e.SchemaVersion == 5 {
+ 		var ok bool
+ 		f.quality, ok = s.nextV2(e, f.quality)
+ 		if !ok {
+@@ -184,7 +185,7 @@
+ 	if finality == "" {
+ 		finality = "unverified"
+ 	}
+-	out := Lifecycle{SourceEpoch: s.epoch, SourceInstanceID: s.instance, ConfigGeneration: s.generation, LastSourceSeq: s.last, EpochFinality: finality, Flows: []Flow{}}
++	out := Lifecycle{SchemaVersion: s.version, SourceEpoch: s.epoch, SourceInstanceID: s.instance, ConfigGeneration: s.generation, LastSourceSeq: s.last, EpochFinality: finality, Flows: []Flow{}}
+ 	for _, id := range s.order {
+ 		f := s.flows[id].Flow
+ 		f.GapDimensions = append([]string{}, f.GapDimensions...)
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -16,6 +16,7 @@
+ 	"fmt"
+ 	hoopaid "github.com/metacubex/mihomo/component/hoopaid"
+ 	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	"github.com/metacubex/mihomo/component/identityprofile"
+ 	C "github.com/metacubex/mihomo/constant"
+ 	"hash"
+ 	"io"
+@@ -220,13 +221,13 @@
+ 	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret, replay: map[string]replayEpoch{}, confirmedHasher: sha256.New()}
+ 	s.profile = 1
+ 	if v := os.Getenv("HOOPA_TRACE_PROFILE"); v != "" && v != "1" {
+-		if v != "2" && v != "3" && v != "4" {
++		if v != "2" && v != "3" && v != "4" && v != "5" {
+ 			s.close()
+ 			return nil, ErrSource
+ 		}
+ 		s.profile, _ = strconv.Atoi(v)
+ 	}
+-	if s.profile == 2 || s.profile == 3 || s.profile == 4 {
++	if s.profile == 2 || s.profile == 3 || s.profile == 4 || s.profile == 5 {
+ 		s.routes, err = loadRouteMapping(os.Getenv("HOOPA_TRACE_ROUTE_MAP"), generation)
+ 		if err != nil {
+ 			s.close()
+@@ -293,7 +294,14 @@
+ 	}
+ 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%x|%s|%d|%s|%s", exe, h.Sum(nil), strings.TrimSpace(string(boot)), self.PID, self.StartTicks, nonce)))
+ 	s.epoch = "epoch:" + hex.EncodeToString(digest[:])
+-	manifest, err := json.Marshal(map[string]any{"schema_version": 1, "source_epoch": s.epoch, "binary_path": exe, "binary_sha256": hex.EncodeToString(h.Sum(nil)), "boot_id": strings.TrimSpace(string(boot)), "pid": self.PID, "start_ticks": self.StartTicks, "nonce": nonce, "config_generation": generation, "max_source_bytes": limit, "max_frame_bytes": maxFrame, "max_active_flows": maxActive, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"})
++	manifestFields := map[string]any{"schema_version": 1, "source_epoch": s.epoch, "binary_path": exe, "binary_sha256": hex.EncodeToString(h.Sum(nil)), "boot_id": strings.TrimSpace(string(boot)), "pid": self.PID, "start_ticks": self.StartTicks, "nonce": nonce, "config_generation": generation, "max_source_bytes": limit, "max_frame_bytes": maxFrame, "max_active_flows": maxActive, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"}
++	if s.profile == 5 {
++		manifestFields["schema_version"] = 2
++		manifestFields["source_schema_version"] = 5
++		manifestFields["identity_profile"] = identityprofile.ID
++		manifestFields["scope"] = "linux_amd64_tcp_scoped_connect_initiator_ipv4_loopback"
++	}
++	manifest, err := json.Marshal(manifestFields)
+ 	if err != nil || len(manifest) > maxFrame || s.used+int64(len(manifest))+flowBudget+epochBudget > limit {
+ 		return nil, ErrSource
+ 	}
+@@ -429,11 +437,14 @@
+ 		proof = connector[0]
+ 	}
+ 	var ident ProcessEvidence
+-	if s.profile == 3 || s.profile == 4 {
+-		if proof == nil || (s.profile == 3 && proof.HasExecutable) || (s.profile == 4 && !proof.HasExecutable) {
++	if s.profile == 3 || s.profile == 4 || s.profile == 5 {
++		if proof == nil || (s.profile == 3 && proof.HasExecutable) || (s.profile == 4 && !proof.HasExecutable) || (s.profile != 5 && proof.HasFieldProfile) || (s.profile == 5 && (!proof.HasExecutable || !proof.HasFieldProfile || proof.FieldProfile.Validate(proof.Generation) != nil)) {
+ 			return nil, ErrSource
+ 		}
+ 		ident = ProcessEvidence{Status: "unknown", Reason: "connector_experiment_unverified"}
++		if s.profile == 5 {
++			ident.Reason = "legacy_process_fields_unused"
++		}
+ 	} else {
+ 		if proof != nil {
+ 			return nil, ErrSource
+@@ -465,12 +476,26 @@
+ 		localText = local.String()
+ 	}
+ 	extra := map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"}
+-	if s.profile == 2 || s.profile == 3 || s.profile == 4 {
++	if s.profile == 2 || s.profile == 3 || s.profile == 4 || s.profile == 5 {
+ 		extra["flow_start_ns"] = numberNS(started)
+ 	}
+-	if s.profile == 3 || s.profile == 4 {
++	if s.profile == 3 || s.profile == 4 || s.profile == 5 {
+ 		extra["identity_scope"] = "connect_initiator_v1_initial_ns_ipv4_loopback_experimental"
+-		if s.profile == 4 {
++		if s.profile == 5 {
++			b, err := json.Marshal(proof)
++			if err != nil {
++				return nil, ErrSource
++			}
++			var c map[string]any
++			if json.Unmarshal(b, &c) != nil {
++				return nil, ErrSource
++			}
++			delete(c, "identity_capability")
++			delete(c, "process_path")
++			c["executable"] = proof.Executable
++			c["field_profile"] = proof.FieldProfile
++			extra["connector"] = c
++		} else if s.profile == 4 {
+ 			extra["connector"] = struct {
+ 				hoopaid.Identity
+ 				Executable hoopaid.Executable `json:"executable"`
+@@ -516,7 +541,7 @@
+ 		return ErrSource
+ 	}
+ 	event, err := telemetrywire.DecodeSourceEvent(raw)
+-	if err != nil || s.state.Validate(event) != nil {
++	if err != nil || (s.profile == 5 || s.manifest.SchemaVersion != 0) && telemetrywire.ValidateManifestEvent(s.manifest, event) != nil || s.state.Validate(event) != nil {
+ 		return ErrSource
+ 	}
+ 	frame := make([]byte, 4+len(raw)+sha256.Size)
+@@ -582,7 +607,7 @@
+ 	life, err := scanFrames(r, visit)
+ 	return life.LastSourceSeq, err
+ }
+-func scanFrames(r io.Reader, visit func([]byte) error) (telemetrywire.Lifecycle, error) {
++func scanFrames(r io.Reader, visit func([]byte) error, manifests ...telemetrywire.Manifest) (telemetrywire.Lifecycle, error) {
+ 	var state telemetrywire.State
+ 	bad := func() (telemetrywire.Lifecycle, error) { return state.Snapshot(), ErrSource }
+ 	for {
+@@ -607,7 +632,7 @@
+ 			return bad()
+ 		}
+ 		event, err := telemetrywire.DecodeSourceEvent(frame[:size])
+-		if err != nil || state.Commit(event) != nil {
++		if err != nil || len(manifests) > 0 && telemetrywire.ValidateManifestEvent(manifests[0], event) != nil || state.Commit(event) != nil {
+ 			return bad()
+ 		}
+ 		if visit != nil {
+--- /dev/null
++++ b/component/identityprofile/profile.go
+@@ -0,0 +1,185 @@
++// Package identityprofile defines one finite, trusted-candidate field profile.
++// Parsing validates declarations and bindings; it does not authenticate a source.
++package identityprofile
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"io"
++	"strconv"
++	"strings"
++	"unicode/utf8"
++)
++
++const ID = "linux_amd64_loopback_connect_v1"
++const Definition = "connect_initiator_v1"
++const HandoffSchema = "hoopa-core-identity-handoff-v4"
++const SourceSchemaVersion = 5
++const Schema = "sourceidentity-field-profile-v1"
++
++var ErrProfile = errors.New("invalid finite identity field profile")
++
++type Field struct {
++	Status string `json:"status"`
++	Source string `json:"source"`
++}
++type Fields struct {
++	Instance    Field `json:"instance"`
++	ProgramName Field `json:"program_name"`
++	ProgramPath Field `json:"program_path"`
++	Comm        Field `json:"comm"`
++}
++type Profile struct {
++	Schema              string `json:"schema"`
++	ID                  string `json:"id"`
++	Definition          string `json:"definition"`
++	HandoffSchema       string `json:"handoff_schema"`
++	SourceSchemaVersion int    `json:"source_schema_version"`
++	ScopeRawHex         string `json:"scope_raw_hex"`
++	Fields              Fields `json:"fields"`
++}
++type Requirements struct {
++	ProfileID           string   `json:"profile_id"`
++	SourceSchemaVersion int      `json:"source_schema_version"`
++	RequiredFields      []string `json:"required_fields"`
++}
++
++func fixed(raw string) Profile {
++	return Profile{Schema, ID, Definition, HandoffSchema, 5, raw, Fields{
++		Field{"available", "linux_bpf_connect_task_v1"}, Field{"available", "executable_path_basename_v1"}, Field{"available", "task_exe_file_d_path_v1"}, Field{"unverified", "linux_bpf_task_comm_v1"}}}
++}
++func Scope(rawHex, generation string) error {
++	raw, err := hex.DecodeString(rawHex)
++	if err != nil || len(raw) != 24 || hex.EncodeToString(raw) != rawHex {
++		return ErrProfile
++	}
++	g, err := strconv.ParseUint(generation, 10, 64)
++	if err != nil || g == 0 || strconv.FormatUint(g, 10) != generation {
++		return ErrProfile
++	}
++	le := binary.LittleEndian
++	if le.Uint64(raw) != g || le.Uint32(raw[8:]) == 0 || le.Uint32(raw[12:]) == 0 || le.Uint32(raw[16:]) != 1 || le.Uint32(raw[20:]) != 0 {
++		return ErrProfile
++	}
++	return nil
++}
++func New(rawHex, generation string) (Profile, error) {
++	if Scope(rawHex, generation) != nil {
++		return Profile{}, ErrProfile
++	}
++	return fixed(rawHex), nil
++}
++func (p Profile) Validate(generation string) error {
++	if p != fixed(p.ScopeRawHex) || Scope(p.ScopeRawHex, generation) != nil {
++		return ErrProfile
++	}
++	return nil
++}
++
++// object rejects null, unknown, duplicate and escaped member names recursively.
++func object(raw []byte, names string) (map[string]json.RawMessage, error) {
++	if len(raw) == 0 || len(raw) > 8192 || !utf8.Valid(raw) {
++		return nil, ErrProfile
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	t, e := d.Token()
++	if e != nil || t != json.Delim('{') {
++		return nil, ErrProfile
++	}
++	out := map[string]json.RawMessage{}
++	for d.More() {
++		before := d.InputOffset()
++		t, e = d.Token()
++		name, ok := t.(string)
++		if e != nil || !ok {
++			return nil, ErrProfile
++		}
++		keyRaw := raw[before:d.InputOffset()]
++		if bytes.ContainsRune(keyRaw, '\\') {
++			return nil, ErrProfile
++		}
++		if _, ok = out[name]; ok {
++			return nil, ErrProfile
++		}
++		var v json.RawMessage
++		if d.Decode(&v) != nil || bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
++			return nil, ErrProfile
++		}
++		out[name] = v
++	}
++	if _, e = d.Token(); e != nil {
++		return nil, ErrProfile
++	}
++	if _, e = d.Token(); e != io.EOF {
++		return nil, ErrProfile
++	}
++	want := strings.Fields(names)
++	if len(out) != len(want) {
++		return nil, ErrProfile
++	}
++	for _, n := range want {
++		if _, ok := out[n]; !ok {
++			return nil, ErrProfile
++		}
++	}
++	return out, nil
++}
++func Decode(raw []byte, generation string) (Profile, error) {
++	f, e := object(raw, "schema id definition handoff_schema source_schema_version scope_raw_hex fields")
++	if e != nil {
++		return Profile{}, e
++	}
++	fields, e := object(f["fields"], "instance program_name program_path comm")
++	if e != nil {
++		return Profile{}, e
++	}
++	for _, v := range fields {
++		if _, e = object(v, "status source"); e != nil {
++			return Profile{}, e
++		}
++	}
++	var p Profile
++	if json.Unmarshal(raw, &p) != nil || !bytes.Equal(bytes.TrimSpace(f["source_schema_version"]), []byte("5")) || p.Validate(generation) != nil {
++		return Profile{}, ErrProfile
++	}
++	return p, nil
++}
++func DecodeRequirements(raw []byte) (Requirements, error) {
++	f, e := object(raw, "profile_id source_schema_version required_fields")
++	if e != nil {
++		return Requirements{}, e
++	}
++	var r Requirements
++	if json.Unmarshal(raw, &r) != nil || r.ProfileID != ID || !bytes.Equal(bytes.TrimSpace(f["source_schema_version"]), []byte("5")) || r.SourceSchemaVersion != 5 || len(r.RequiredFields) < 1 || len(r.RequiredFields) > 4 {
++		return Requirements{}, ErrProfile
++	}
++	seen := map[string]bool{}
++	for _, n := range r.RequiredFields {
++		if seen[n] || (n != "instance" && n != "program_name" && n != "program_path") {
++			return Requirements{}, ErrProfile
++		}
++		seen[n] = true
++	}
++	return r, nil
++}
++func (r Requirements) Match(p Profile) error {
++	if p.ID != r.ProfileID || p.SourceSchemaVersion != r.SourceSchemaVersion || p.Validate(scopeGeneration(p.ScopeRawHex)) != nil {
++		return ErrProfile
++	}
++	raw, e := json.Marshal(r)
++	if e != nil {
++		return ErrProfile
++	}
++	_, e = DecodeRequirements(raw)
++	return e
++}
++func scopeGeneration(raw string) string {
++	b, e := hex.DecodeString(raw)
++	if e != nil || len(b) != 24 {
++		return ""
++	}
++	return strconv.FormatUint(binary.LittleEndian.Uint64(b), 10)
++}
+--- /dev/null
++++ b/component/identityprofile/profile_test.go
+@@ -0,0 +1,76 @@
++package identityprofile
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++func profileFixture(t *testing.T) Profile {
++	t.Helper()
++	b := make([]byte, 24)
++	binary.LittleEndian.PutUint64(b, 9007199254740993)
++	binary.LittleEndian.PutUint32(b[8:], 1)
++	binary.LittleEndian.PutUint32(b[12:], 2)
++	binary.LittleEndian.PutUint32(b[16:], 1)
++	p, e := New(hex.EncodeToString(b), "9007199254740993")
++	if e != nil {
++		t.Fatal(e)
++	}
++	return p
++}
++func TestStrictFieldProfile(t *testing.T) {
++	p := profileFixture(t)
++	raw, _ := json.Marshal(p)
++	q, e := Decode(raw, "9007199254740993")
++	if e != nil || q != p {
++		t.Fatal(e)
++	}
++	for i := 0; i < 24; i++ {
++		b, _ := hex.DecodeString(p.ScopeRawHex)
++		b[i] ^= 1
++		r := p
++		r.ScopeRawHex = hex.EncodeToString(b)
++		if i >= 8 && i < 16 {
++			b[i] ^= 1
++			copy(b[(i/4)*4:(i/4)*4+4], []byte{0, 0, 0, 0})
++			r.ScopeRawHex = hex.EncodeToString(b)
++		}
++		if r.Validate("9007199254740993") == nil {
++			t.Fatal("bad scope", i)
++		}
++	}
++	for _, b := range [][]byte{bytes.Replace(raw, []byte(`"source_schema_version":5`), []byte(`"source_schema_version":5.0`), 1), bytes.Replace(raw, []byte(`"id":`), []byte(`"id":null,"id":`), 1), bytes.Replace(raw, []byte(`"instance":`), []byte(`"\\u0069nstance":`), 1), bytes.Replace(raw, []byte(`"available"`), []byte(`"unverified"`), 1), bytes.Replace(raw, []byte(`"linux_bpf_connect_task_v1"`), []byte(`"proc"`), 1), append(raw, []byte(`{}`)...)} {
++		if _, e := Decode(b, "9007199254740993"); e == nil {
++			t.Fatal("malformed accepted", string(b))
++		}
++	}
++}
++func TestRequirementsNeverPromoteComm(t *testing.T) {
++	p := profileFixture(t)
++	for _, fields := range [][]string{{"instance"}, {"program_name", "program_path"}, {"instance", "program_name", "program_path"}} {
++		r := Requirements{ID, 5, fields}
++		b, _ := json.Marshal(r)
++		got, e := DecodeRequirements(b)
++		if e != nil || got.Match(p) != nil {
++			t.Fatal(e)
++		}
++	}
++	for _, f := range [][]string{nil, {}, {"comm"}, {"instance", "instance"}, {"PROCESS-NAME"}} {
++		b, _ := json.Marshal(Requirements{ID, 5, f})
++		if _, e := DecodeRequirements(b); e == nil {
++			t.Fatal(f)
++		}
++	}
++	for _, raw := range []string{`null`, `{"profile_id":"` + ID + `","source_schema_version":5,"required_fields":null}`, `{"profile_id":"` + ID + `","source_schema_version":5,"required_fields":["instance"],"x":0}`, strings.Replace(`{"profile_id":"`+ID+`","source_schema_version":5,"required_fields":["instance"]}`, `"source_schema_version":5`, `"source_schema_version":5e0`, 1)} {
++		if _, e := DecodeRequirements([]byte(raw)); e == nil {
++			t.Fatal(raw)
++		}
++	}
++	if (Requirements{ID, 5, []string{"instance"}}).Match(Profile{}) == nil {
++		t.Fatal("zero grants fields")
++	}
++}
+--- a/constant/hoopa_quality.go
++++ b/constant/hoopa_quality.go
+@@ -7,7 +7,7 @@
+ 
+ // This opt-in experimental evidence is local to a concrete returned connection.
+ // It is not a promise for arbitrary protocol wrappers or business requests.
+-var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2" || os.Getenv("HOOPA_TRACE_PROFILE") == "3" || os.Getenv("HOOPA_TRACE_PROFILE") == "4"
++var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2" || os.Getenv("HOOPA_TRACE_PROFILE") == "3" || os.Getenv("HOOPA_TRACE_PROFILE") == "4" || os.Getenv("HOOPA_TRACE_PROFILE") == "5"
+ var hoopaMonotonicOrigin = time.Now()
+ 
+ func HoopaMonotonicNS(t time.Time) int64 { return t.Sub(hoopaMonotonicOrigin).Nanoseconds() }
+--- a/constant/hoopa_quality_profile_test.go
++++ b/constant/hoopa_quality_profile_test.go
+@@ -30,7 +30,7 @@
+ 		profile string
+ 		enabled bool
+ 	}{
+-		{"", false}, {"1", false}, {"2", true}, {"3", true}, {"4", true}, {"03", false}, {"04", false}, {"invalid", false},
++		{"", false}, {"1", false}, {"2", true}, {"3", true}, {"4", true}, {"5", true}, {"05", false}, {"03", false}, {"04", false}, {"invalid", false},
+ 	} {
+ 		t.Run("profile="+tc.profile, func(t *testing.T) {
+ 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+--- /dev/null
++++ b/hoopa_field_profile_test.go
+@@ -0,0 +1,96 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"go/ast"
++	"go/parser"
++	"go/token"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestFieldProfileProtectedEntryRejectsBeforeSourceOrListeners(t *testing.T) {
++	for _, tc := range []string{"missing", "comm", "wrong-id", "valid-without-handoff", "legacy-with-new-config"} {
++		t.Run(tc, func(t *testing.T) {
++			identityCleanEnv(t)
++			dir := t.TempDir()
++			os.Chmod(dir, 0700)
++			raw := map[string]any{"mode": "rule", "log-level": "silent", "ipv6": false, "find-process-mode": "off", "external-controller": "127.0.0.1:32003", "secret": strings.Repeat("s", 32), "listeners": []any{map[string]any{"name": "entry", "type": "mixed", "listen": "127.0.0.1", "port": 32002, "udp": false, "users": []any{map[string]string{"username": "user", "password": strings.Repeat("p", 32)}}}}, "proxies": []any{map[string]string{"name": "node:test", "type": "direct"}}, "rules": []string{"MATCH,node:test"}, "profile": map[string]bool{"store-selected": false, "store-fake-ip": false}}
++			if tc != "missing" {
++				r := identityprofile.Requirements{ProfileID: identityprofile.ID, SourceSchemaVersion: 5, RequiredFields: []string{"instance"}}
++				if tc == "comm" {
++					r.RequiredFields = []string{"comm"}
++				}
++				if tc == "wrong-id" {
++					r.ProfileID = "other"
++				}
++				raw["hoopa-identity"] = r
++			}
++			b, _ := json.Marshal(raw)
++			file := filepath.Join(dir, "config.json")
++			os.WriteFile(file, b, 0600)
++			oldHome, oldFile, oldTest := homeDir, configFile, testConfig
++			defer func() { homeDir, configFile, testConfig = oldHome, oldFile, oldTest }()
++			homeDir, configFile, testConfig = dir, file, false
++			sum := sha256.Sum256(b)
++			t.Setenv("HOOPA_GUARD_GENERATION", "generation")
++			t.Setenv("HOOPA_GUARD_CONFIG_SHA256", hex.EncodeToString(sum[:]))
++			t.Setenv("HOOPA_TRACE_PROFILE", "5")
++			t.Setenv("HOOPA_TRACE_INBOUND", "entry")
++			t.Setenv("HOOPA_TRACE_GENERATION", "generation")
++			t.Setenv("HOOPA_TRACE_ROUTE_MAP", filepath.Join(dir, "routes.json"))
++			if tc == "legacy-with-new-config" {
++				t.Setenv("HOOPA_TRACE_PROFILE", "4")
++			}
++			if e := runHoopaGuard(); e == nil {
++				t.Fatal("unadopted/invalid field config started")
++			}
++			entries, _ := os.ReadDir(dir)
++			if len(entries) != 1 || entries[0].Name() != "config.json" {
++				t.Fatal("source prepared before rejection", entries)
++			}
++		})
++	}
++}
++
++// Inspect the actual compiled startup function rather than infer ordering from
++// a process exit or from a port sampled after that exit. Functional cases above
++// exercise its early returns. No timing claim is made by a missing listener.
++func TestFieldProfileStartupSourceCallOrder(t *testing.T) {
++	file, e := parser.ParseFile(token.NewFileSet(), "hoopa_guard_linux.go", nil, 0)
++	if e != nil {
++		t.Fatal(e)
++	}
++	positions := map[string]token.Pos{}
++	for _, decl := range file.Decls {
++		fn, ok := decl.(*ast.FuncDecl)
++		if !ok || fn.Name.Name != "runHoopaGuard" {
++			continue
++		}
++		ast.Inspect(fn.Body, func(n ast.Node) bool {
++			call, ok := n.(*ast.CallExpr)
++			if !ok {
++				return true
++			}
++			s, ok := call.Fun.(*ast.SelectorExpr)
++			if ok {
++				if _, exists := positions[s.Sel.Name]; !exists {
++					positions[s.Sel.Name] = call.Pos()
++				}
++			}
++			return true
++		})
++	}
++	for _, pair := range [][2]string{{"ValidateDeclaredIdentity", "Adopt"}, {"Adopt", "FieldProfile"}, {"FieldProfile", "ValidateWithIdentity"}, {"ValidateWithIdentity", "PrepareGuard"}, {"PrepareGuard", "ApplyConfig"}, {"ApplyConfig", "Reserve"}, {"Reserve", "Listen"}} {
++		if positions[pair[0]] == 0 || positions[pair[1]] <= positions[pair[0]] {
++			t.Fatal("startup binding order", pair, positions)
++		}
++	}
++}
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -103,8 +103,8 @@
+ 	wantProfile := "2"
+ 	if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
+ 		wantProfile = "3"
+-		if os.Getenv("HOOPA_TRACE_PROFILE") == "4" {
+-			wantProfile = "4"
++		if os.Getenv("HOOPA_TRACE_PROFILE") == "4" || os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
++			wantProfile = os.Getenv("HOOPA_TRACE_PROFILE")
+ 		}
+ 	}
+ 	if !found || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_PROFILE") != wantProfile || !filepath.IsAbs(os.Getenv("HOOPA_TRACE_ROUTE_MAP")) {
+@@ -136,7 +136,12 @@
+ 		return errHoopaGuard
+ 	}
+ 	generation := os.Getenv("HOOPA_GUARD_GENERATION")
+-	p, err := profile.Validate(raw, generation)
++	var p profile.Config
++	if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
++		p, _, err = profile.ValidateDeclaredIdentity(raw, generation)
++	} else {
++		p, err = profile.Validate(raw, generation)
++	}
+ 	if err != nil {
+ 		return errHoopaGuard
+ 	}
+@@ -156,6 +161,9 @@
+ 		return errHoopaGuard
+ 	}
+ 	if testConfig {
++		if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
++			return errHoopaGuard
++		}
+ 		if _, identity := os.LookupEnv("HOOPA_IDENTITY_HANDOFF"); identity {
+ 			return errHoopaGuard // Runtime FD adoption cannot be replaced by -t.
+ 		}
+@@ -176,6 +184,18 @@
+ 			}
+ 		}()
+ 		if strconv.Itoa(identity.EventSchemaVersion()) != os.Getenv("HOOPA_TRACE_PROFILE") {
++			return errHoopaGuard
++		}
++	}
++	if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
++		if identity == nil {
++			return errHoopaGuard
++		}
++		actual, e := identity.FieldProfile()
++		if e != nil {
++			return errHoopaGuard
++		}
++		if _, e = profile.ValidateWithIdentity(raw, generation, actual); e != nil {
+ 			return errHoopaGuard
+ 		}
+ 	}

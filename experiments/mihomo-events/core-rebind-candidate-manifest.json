@@ -1,0 +1,396 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-25",
+  "scope": "T136 protected loopback socket rebind build candidate; no runtime assessment",
+  "status": "clean_build_runtime_not_assessed",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "license_file": {
+    "path": "private/t136-rebind-fix/artifact-cgo1/source/LICENSE",
+    "bytes": 35149,
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0014-enforce-connector-namespace.patch",
+      "bytes": 14486,
+      "sha256": "1f3353b523a4a8201924bf71562018e9f3d656006de20a28cffbc05c7bf05ae6"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0015-add-restricted-field-profile.patch",
+      "bytes": 76418,
+      "sha256": "b953ef468978a5e8cf1f3285256d550f9f08e332620b00747ae50f703158a3d0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0016-reuse-protected-listener-address.patch",
+      "bytes": 6680,
+      "sha256": "4030d6075372734f5d343fd55a7054121fc2394990ef83cc0bca1c9a44516533"
+    }
+  ],
+  "binary": {
+    "path": "private/t136-rebind-fix/artifact-cgo1/mihomo-protected-rebind",
+    "bytes": 51321239,
+    "sha256": "616133dd060b14cdbde68c6d5029f003429d7a8b6adeee4452e8176c63ca80e6"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-field-profile-candidate-manifest.json",
+    "bytes": 41769,
+    "sha256": "e356b964518399a4312303a24cb82db9d0450de7012f2233ff41796fa20e34d6"
+  },
+  "source": {
+    "fresh_applied": "private/t136-rebind-fix/artifact-cgo1/source",
+    "reviewed_target": "private/t136-rebind-fix/reviewed-source",
+    "tree_sha256": "86b7d167d88e0e6378a792f636b06928b0d12688bd0c935e1050fa4f23d7f570",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1192,
+    "file_count": 995,
+    "reviewed_tree_equal": true,
+    "changed_from_0015": [
+      "component/hoopaguard/socket_linux.go",
+      "component/hoopaguard/socket_linux_test.go"
+    ],
+    "build_evidence": {
+      "path": "private/t136-rebind-fix/build-result.json",
+      "bytes": 198639,
+      "sha256": "eb6cc755b479b88abf9b5ef51c542cc8688c0df929d3607db90ba04d53b52958"
+    }
+  },
+  "build": {
+    "toolchain": {
+      "path": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+      "bytes": 17164222,
+      "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b"
+    },
+    "version": "go version go1.27.3 linux/amd64",
+    "core_cgo_enabled": "1",
+    "core_cgo_matches_0015": true,
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    },
+    "core_compile_command": {
+      "label": "compile",
+      "argv": [
+        "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+        "build",
+        "-p=2",
+        "-trimpath",
+        "-buildvcs=false",
+        "-o",
+        "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/mihomo-protected-rebind",
+        "."
+      ],
+      "cwd": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/source",
+      "exit_code": 0,
+      "stdout": {
+        "path": "private/t136-rebind-fix/cgo1-compile.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "private/t136-rebind-fix/cgo1-compile.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "printed_version": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time",
+    "printed_version_not_source_version": true,
+    "build_script": {
+      "path": "private/t136-rebind-fix/build_core.py",
+      "bytes": 5786,
+      "sha256": "8b336be52d44234119eef9b994e8d5cd1451cdf6bbdcc54686ef5a56eeca721c"
+    },
+    "freeze": {
+      "path": "private/t136-rebind-fix/freeze.json",
+      "bytes": 1296,
+      "sha256": "ebd4809e9de333416e2f33daf15880c8f5e2b0c57737418703b6ef72c054c849"
+    },
+    "correction": {
+      "path": "private/t136-rebind-fix/build-correction.md",
+      "bytes": 456,
+      "sha256": "534b16fea3c2986a7bf4ff0f4342005cd4985417633b8e7294d061afefb10cea"
+    }
+  },
+  "dependencies": {
+    "unchanged_from_0015": true,
+    "checksum_provenance": {
+      "path": "experiments/mihomo-events/closure-candidate-manifest.json",
+      "bytes": 12458,
+      "sha256": "43543ec28cc9fa4198d21690b3bf15e5866a2cea036f35cdfdf21fa269d2fcd6"
+    },
+    "files": [
+      {
+        "name": "go.mod",
+        "fresh": {
+          "path": "private/t136-rebind-fix/artifact-cgo1/source/go.mod",
+          "bytes": 6961,
+          "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+        },
+        "previous": {
+          "path": "private/t132-core-field-profile/artifact/source/go.mod",
+          "bytes": 6961,
+          "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+        },
+        "unchanged": true
+      },
+      {
+        "name": "go.sum",
+        "fresh": {
+          "path": "private/t136-rebind-fix/artifact-cgo1/source/go.sum",
+          "bytes": 29819,
+          "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+        },
+        "previous": {
+          "path": "private/t132-core-field-profile/artifact/source/go.sum",
+          "bytes": 29819,
+          "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+        },
+        "unchanged": true
+      }
+    ],
+    "network_downloads": "none; GOPROXY=off"
+  },
+  "socket_change": {
+    "setsockopt_before_bind": "SO_REUSEADDR=1",
+    "setsockopt_failure": "close owned socket and reject",
+    "reuseport_enabled": false,
+    "reserve_semantics": "bind without listen; reusable unlistening reservations may coexist; successful bind does not guarantee later Listen success",
+    "live_listener_exclusive": true,
+    "startup_order_unchanged": true,
+    "all_owned_reservations_closed_on_failure": true
+  },
+  "checks": {
+    "patch_check_and_apply": {
+      "count": 16,
+      "exit_code": 0
+    },
+    "socket_vet": {
+      "label": "socket-vet",
+      "argv": [
+        "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+        "vet",
+        "./component/hoopaguard"
+      ],
+      "cwd": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/source",
+      "exit_code": 0,
+      "stdout": {
+        "path": "private/t136-rebind-fix/cgo1-socket-vet.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "path": "private/t136-rebind-fix/cgo1-socket-vet.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "guest_socket_test_compile": {
+      "command": {
+        "label": "socket-test-compile",
+        "argv": [
+          "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+          "test",
+          "-trimpath",
+          "-c",
+          "-o",
+          "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/guard-socket.test",
+          "./component/hoopaguard"
+        ],
+        "cwd": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t136-rebind-fix/artifact-cgo1/source",
+        "exit_code": 0,
+        "stdout": {
+          "path": "private/t136-rebind-fix/cgo1-socket-test-compile.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "path": "private/t136-rebind-fix/cgo1-socket-test-compile.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "cgo_enabled": "0",
+      "binary": {
+        "path": "private/t136-rebind-fix/artifact-cgo1/guard-socket.test",
+        "bytes": 5361262,
+        "sha256": "ac10a9c307dcfc96a39e4cab70b7329ffd2ac0385df835c6e08928bbfba24df3"
+      },
+      "runtime_executed": false,
+      "compile_only_not_test_pass": true
+    }
+  },
+  "profile": {
+    "name": "scoped-executable-online",
+    "identity_profile": "linux_amd64_loopback_connect_v1",
+    "handoff": "hoopa-core-identity-handoff-v4",
+    "maps": 10,
+    "programs": 6,
+    "links": 5,
+    "fds": 21,
+    "scope": {
+      "map": "identity_scope",
+      "bytes": 24,
+      "schema_version": 1,
+      "fields": [
+        "generation:u64",
+        "userns_inode:u32",
+        "mountns_inode:u32",
+        "schema_version:u32",
+        "reserved:u32=0"
+      ],
+      "frozen_before_any_attach": true,
+      "current_caller_user_level": 0,
+      "current_caller_user_inode": "registered initial",
+      "current_caller_mount_inode": "registered initial",
+      "checks": [
+        "LSM before exe capture",
+        "LSM after path capture before publication",
+        "connect4 before consuming executable",
+        "connect4 before connect observation publication"
+      ],
+      "actual_scope_readback_in_exec_intent": true
+    },
+    "connect_record_bytes": 112,
+    "executable_record_bytes": 296,
+    "event_schema_version": 5,
+    "manifest_schema_version": 2,
+    "declared_fields": {
+      "instance": "available",
+      "program_name": "available",
+      "program_path": "available",
+      "comm": "unverified"
+    },
+    "declared_fields_not_runtime_acceptance": true,
+    "process_rules": "unsupported; rejected at protected config load"
+  },
+  "bpf_object": {
+    "bytes": 924400,
+    "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+    "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+  },
+  "unchanged": {
+    "source_v1_through_v4_wire": true,
+    "source_v5_manifest2_and_protected_profile": true,
+    "identity_field_scope": true,
+    "process_rules": "unsupported; rejected at protected config load",
+    "prior_0015_binary": {
+      "path": "private/t132-core-field-profile/artifact/mihomo-identity-field-profile",
+      "bytes": 51320639,
+      "sha256": "1ef1b53ae41435596844c264ae5e1e5201ce95b5d2762be872371023f4d6af25"
+    },
+    "prior_0015_tree": "8f79c90508d8a3719eee356778fc513f872c615b0fba2591c0191ca4ecc26020",
+    "bpf_object": true,
+    "admission_lock_capture_ack_gc_recovery_order": true
+  },
+  "retained_preliminary_build": {
+    "status": "cgo0_core_build_retained_not_run_or_promoted",
+    "binary": {
+      "path": "private/t136-rebind-fix/artifact/mihomo-protected-rebind",
+      "bytes": 51245972,
+      "sha256": "c6dd0dd182eb59e6f40b1155f73a9fba36f0243fca35b21587ae7c49e7329e64"
+    },
+    "build_evidence": {
+      "path": "private/t136-rebind-fix/cgo0-pre-review-build-result.json",
+      "bytes": 198024,
+      "sha256": "8e8236fc968e4514c678ed7951b1e95463228c4b27f0f4e1f36ab468d43afe7b"
+    },
+    "core_cgo_enabled": "0",
+    "reason": "Original0015core uses CGO1; corrected clean candidate preserves it. Standalone guest test alone uses CGO0."
+  },
+  "runtime": {
+    "status": "not_assessed_for_this_binary",
+    "prior_passed_evidence_inherited": false,
+    "candidate_validation_record": "Root will separately bind actual evidence to this binary SHA; no runtime claim here."
+  },
+  "boundaries": {
+    "new_identity_capability": false,
+    "formal_g01_new_samples": 0,
+    "T136_complete": false,
+    "new_candidate_T137_runtime_accepted": false,
+    "prior_T137_record_unchanged": true,
+    "P0_released": false,
+    "P1_released": false
+  }
+}

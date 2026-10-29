@@ -1,0 +1,32 @@
+# Public template only. The harness renders random credentials in a private file.
+mixed-port: {{.MihomoPort}}
+bind-address: 127.0.0.1
+allow-lan: false
+mode: rule
+log-level: warning
+ipv6: false
+find-process-mode: always
+external-controller: 127.0.0.1:{{.ControllerPort}}
+secret: "{{.ControllerSecret}}"
+authentication:
+  - "{{.MihomoAuth.Username}}:{{.MihomoAuth.Password}}"
+skip-auth-prefixes: []
+geo-auto-update: false
+dns:
+  enable: false
+tun:
+  enable: false
+sniffer:
+  enable: false
+profile:
+  store-selected: false
+  store-fake-ip: false
+{{if .UpstreamHost}}proxies:
+  - name: UPSTREAM
+    type: socks5
+    server: {{.UpstreamHost}}
+    port: {{.UpstreamPort}}
+{{else}}proxies: []
+{{end}}rules:
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - MATCH,{{.DefaultTarget}}

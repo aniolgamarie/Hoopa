@@ -1,0 +1,407 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-25",
+  "scope": "T132 finite connect-time initial user/mount namespace guard; source v4 unverified; not T137",
+  "status": "fresh 001-014 build; actual verifier and new VM unverified at creation",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0014-enforce-connector-namespace.patch",
+      "bytes": 14486,
+      "sha256": "1f3353b523a4a8201924bf71562018e9f3d656006de20a28cffbc05c7bf05ae6"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-core-namespace-guard/artifact/mihomo-identity-namespace-guard",
+    "bytes": 51271973,
+    "sha256": "97d0a450202a94cee40a78d32a747865534bee1ef06b8d64efaf24819bb84167"
+  },
+  "previous_manifest": {
+    "path": "experiments/mihomo-events/core-capture-diagnostics-candidate-manifest.json",
+    "bytes": 9437,
+    "sha256": "60b11367c2331fb87d41f17f34311d40aacf111ca1bb7a80b832acb6bf1eb001"
+  },
+  "source": {
+    "fresh_applied": "private/t132-core-namespace-guard/artifact/source",
+    "reviewed_target": "private/t132-core-namespace-guard/reviewed-source",
+    "tree_sha256": "68ccb3e5d54842fa7ab12904a0694d7214af88f629828cb45b4ff5e880a71be6",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF for each entry; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1181,
+    "file_count": 985,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-core-namespace-guard/build-result.json",
+      "bytes": 195310,
+      "sha256": "1f0535d0a32904e6cbb7cfa90e60300e1675df3b46640e3da1db9f9795143d89"
+    },
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    }
+  },
+  "integration": {
+    "mirrors": [
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/handoff.go",
+          "bytes": 5282,
+          "sha256": "107294a2d0b0bb0baa828fd8b7281694f13b7d7402188a1c92f58db1274fa865"
+        },
+        "core_path": "component/hoopaid/handoff.go"
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/native_linux_amd64.go",
+          "bytes": 10236,
+          "sha256": "f29d335d5c460e55065f4a149a033e86d337d14dc6491bae7518df5e5860edd1"
+        },
+        "core_path": "component/hoopaid/native_linux_amd64.go"
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/owner.go",
+          "bytes": 12197,
+          "sha256": "64e94f8447b34554f77894b336309c0ee82f82fa74fb548566d264e15bb8c6f0"
+        },
+        "core_path": "component/hoopaid/owner.go"
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v2.go",
+          "bytes": 3961,
+          "sha256": "39f23aaee571c3f5911756916b496b5ca52c11487c89277f695f613965daec3f"
+        },
+        "core_path": "component/hoopaid/profile_v2.go"
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v3.go",
+          "bytes": 1760,
+          "sha256": "f7ffd06fc2fe3a586202027a5c9279cfda28210064b30c99dc8a48630fcd75ef"
+        },
+        "core_path": "component/hoopaid/profile_v3.go"
+      },
+      {
+        "public": {
+          "path": "experiments/sourceidentity/coreadmission/profile_v3_test.go",
+          "bytes": 7004,
+          "sha256": "4bea895d98bc99477af08fb64b7062d8a8fbf99738dc85839f75e1a028e80088"
+        },
+        "core_path": "component/hoopaid/profile_v3_test.go"
+      }
+    ],
+    "race_top_level": 8,
+    "race_including_subtests": 54,
+    "skipped": 0,
+    "vet_exit_code": 0,
+    "build_exit_code": 0,
+    "printed_version": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time",
+    "printed_version_not_source_tag": true,
+    "tests": [
+      {
+        "path": "private/t132-core-namespace-guard/integrated-race.stdout",
+        "bytes": 49307,
+        "sha256": "35bce113eb8699ea906901367eaa51e0f3afa144d152df2c5340c8b053a88cf4"
+      },
+      {
+        "path": "private/t132-core-namespace-guard/integrated-race.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "private/t132-core-namespace-guard/integrated-vet.stdout",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "private/t132-core-namespace-guard/integrated-vet.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "public_implementation": {
+    "report": {
+      "path": "private/t132-namespace-guard/implementation-report.json",
+      "bytes": 4816,
+      "sha256": "8311d9a8fdc9198f8ba6d03a9a535d1e87321323e9bd9b99815cf55f6d9a3075"
+    },
+    "files": [
+      {
+        "bytes": 6573,
+        "path": "experiments/sourceidentity/bpf/scoped_executable_online/connect_snapshot.bpf.c",
+        "sha256": "719eb1ce3c979c0f8bc8d8af3ac7d57d693b0f92ceee77564feba070443b10d1"
+      },
+      {
+        "bytes": 7087,
+        "path": "experiments/sourceidentity/bpf/scoped_executable_online/online_snapshot.bpf.c",
+        "sha256": "763f59d1236e2b141c34e8296263164d1f0402389f65f348f4f36ab956de8337"
+      },
+      {
+        "bytes": 9100,
+        "path": "experiments/sourceidentity/bpf/scoped_executable_online/scoped_executable_online.bpf.c",
+        "sha256": "fbe1496d705a4db52d210c0bb461778b15cb02c87f12a0ace7ab99364d113d57"
+      },
+      {
+        "bytes": 11703,
+        "path": "experiments/sourceidentity/observations.py",
+        "sha256": "5fe8cde6936a58446a8be93b30f942fb32b8c376cfef569430e2e8bf953181c6"
+      },
+      {
+        "bytes": 32144,
+        "path": "experiments/sourceidentity/native_loader.py",
+        "sha256": "68e348da2c3615bdd43e8b70f450fb3a9ae73e5d428473fb9c2e0057a3065421"
+      },
+      {
+        "bytes": 15666,
+        "path": "experiments/sourceidentity/exec_core.py",
+        "sha256": "620ab2cf8d2b2b893d5e6af54f758e0f9c64c07ff3aad85997b30182d36dc05a"
+      },
+      {
+        "bytes": 9213,
+        "path": "experiments/sourceidentity/inspect_object.py",
+        "sha256": "80130992f86f2d225c8f3aa45b4de89c59e0b1c492f3354b6bcfbb45e19cd2a3"
+      },
+      {
+        "bytes": 12660,
+        "path": "experiments/sourceidentity/test_scoped_executable_online_profile.py",
+        "sha256": "a679aa897893ff2f8822d9793f0090c123c61dc9e08f0fcf9a0737afb56d9534"
+      },
+      {
+        "bytes": 5282,
+        "path": "experiments/sourceidentity/coreadmission/handoff.go",
+        "sha256": "107294a2d0b0bb0baa828fd8b7281694f13b7d7402188a1c92f58db1274fa865"
+      },
+      {
+        "bytes": 3961,
+        "path": "experiments/sourceidentity/coreadmission/profile_v2.go",
+        "sha256": "39f23aaee571c3f5911756916b496b5ca52c11487c89277f695f613965daec3f"
+      },
+      {
+        "bytes": 1760,
+        "path": "experiments/sourceidentity/coreadmission/profile_v3.go",
+        "sha256": "f7ffd06fc2fe3a586202027a5c9279cfda28210064b30c99dc8a48630fcd75ef"
+      },
+      {
+        "bytes": 7004,
+        "path": "experiments/sourceidentity/coreadmission/profile_v3_test.go",
+        "sha256": "4bea895d98bc99477af08fb64b7062d8a8fbf99738dc85839f75e1a028e80088"
+      },
+      {
+        "bytes": 12197,
+        "path": "experiments/sourceidentity/coreadmission/owner.go",
+        "sha256": "64e94f8447b34554f77894b336309c0ee82f82fa74fb548566d264e15bb8c6f0"
+      },
+      {
+        "bytes": 10236,
+        "path": "experiments/sourceidentity/coreadmission/native_linux_amd64.go",
+        "sha256": "f29d335d5c460e55065f4a149a033e86d337d14dc6491bae7518df5e5860edd1"
+      }
+    ],
+    "checks": {
+      "bpf_compile": {
+        "exit_code": 0,
+        "object": {
+          "bytes": 924400,
+          "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+          "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+        }
+      },
+      "cli_help": {
+        "exec_core_exit_code": 0,
+        "inspect_object_exit_code": 0
+      },
+      "elf_map_references": {
+        "exact_program_sets": 6,
+        "exit_code": 0
+      },
+      "go_race": {
+        "exit_code": 0,
+        "including_subtests_passes": 266,
+        "log": "go-race.jsonl",
+        "skips": 0,
+        "top_level_passes": 38
+      },
+      "go_vet": {
+        "exit_code": 0
+      },
+      "libbpf_offline_openinspect": {
+        "exit_code": 0,
+        "maps": 10,
+        "programs": 6
+      },
+      "python38_ast": {
+        "exit_code": 0,
+        "files": 5
+      },
+      "python_regression": {
+        "exit_code": 0,
+        "modules": [
+          "test_scoped_executable_online_profile",
+          "test_executable_online_profile",
+          "test_exec_core",
+          "test_native_loader",
+          "test_online_profile",
+          "test_observations",
+          "test_inspect_object"
+        ],
+        "tests": 104
+      }
+    }
+  },
+  "bpf_object": {
+    "bytes": 924400,
+    "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+    "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+  },
+  "profile": {
+    "name": "scoped-executable-online",
+    "handoff": "hoopa-core-identity-handoff-v3",
+    "maps": 10,
+    "programs": 6,
+    "links": 5,
+    "fds": 21,
+    "scope": {
+      "map": "identity_scope",
+      "bytes": 24,
+      "schema_version": 1,
+      "fields": [
+        "generation:u64",
+        "userns_inode:u32",
+        "mountns_inode:u32",
+        "schema_version:u32",
+        "reserved:u32=0"
+      ],
+      "frozen_before_any_attach": true,
+      "current_caller_user_level": 0,
+      "current_caller_user_inode": "registered initial",
+      "current_caller_mount_inode": "registered initial",
+      "checks": [
+        "LSM before exe capture",
+        "LSM after path capture before publication",
+        "connect4 before consuming executable",
+        "connect4 before connect observation publication"
+      ],
+      "actual_scope_readback_in_exec_intent": true
+    },
+    "connect_record_bytes": 112,
+    "executable_record_bytes": 296,
+    "event_schema_version": 4,
+    "identity_capability": "unverified",
+    "identity_instance": false,
+    "identity_name": false,
+    "identity_path": false,
+    "process_rules": "unsupported; rejected at protected config load"
+  },
+  "unchanged": {
+    "original_0013_binary": {
+      "path": "private/t132-capture-diagnostics/artifact/mihomo-identity-capture-diagnostics",
+      "bytes": 51254983,
+      "sha256": "476d57884b810e96d8b44367afbf91001bc63b6b516930a66b89d6e8dc05467b"
+    },
+    "original_0013_tree": "fafda3d95776abda19a829eed49eaa063cf0e90b6418e2b451478375c03fa154",
+    "source_v1_through_v4_wire": true
+  },
+  "review": {
+    "path": "private/t132-core-edges-review/namespace-guard-frozen-review.md",
+    "bytes": 4800,
+    "sha256": "44df36a2d1c8af8ebea76ebca73580fa777759cf6c7c7cab0af6a425628617a4"
+  },
+  "runtime": {
+    "status": "not executed at creation",
+    "contract": "specs/001-hoopa-proxy-manager/contracts/connector-namespace-guard-v1.md"
+  },
+  "boundaries": {
+    "T132_complete": false,
+    "T137_complete": false,
+    "formal_g01_new_samples": 0,
+    "formal_g01_old": "0/100",
+    "P0_released": false,
+    "P1_released": false,
+    "production_launcher": false,
+    "other_platform_support": false
+  }
+}

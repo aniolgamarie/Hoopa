@@ -1,0 +1,2357 @@
+diff --git a/component/hoopatrace/closure_linux_test.go b/component/hoopatrace/closure_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/closure_linux_test.go
+@@ -0,0 +1,613 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/binary"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++	"os"
++	"path/filepath"
++	"runtime"
++	"strconv"
++	"strings"
++	"syscall"
++	"testing"
++	"time"
++)
++
++func TestHoopaReopenRejectsMalformedManifest(t *testing.T) {
++	for _, kind := range []string{"invalid_json", "duplicate", "generation", "identity", "missing_manifest", "orphan_manifest"} {
++		t.Run(kind, func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			if _, err := s.begin(&net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32001}, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32002}, "example.test", "", time.Now()); err != nil {
++				t.Fatal(err)
++			}
++			dir, epoch := s.root.Name(), s.epoch
++			s.close()
++			name := filepath.Join(dir, "epoch-"+epoch[len("epoch:"):]+".source.json")
++			raw, err := os.ReadFile(name)
++			if err != nil {
++				t.Fatal(err)
++			}
++			var fields map[string]json.RawMessage
++			if json.Unmarshal(raw, &fields) != nil {
++				t.Fatal("fixture")
++			}
++			switch kind {
++			case "invalid_json":
++				raw = []byte(`{"schema_version":`)
++			case "duplicate":
++				raw = append(raw[:len(raw)-1], []byte(`,"schema_version":1}`)...)
++			case "generation":
++				fields["config_generation"] = json.RawMessage(`"wrong"`)
++				raw, _ = json.Marshal(fields)
++			case "identity":
++				fields["nonce"] = json.RawMessage(`"00000000000000000000000000000000"`)
++				raw, _ = json.Marshal(fields)
++			case "missing_manifest":
++				if err = os.Remove(name); err != nil {
++					t.Fatal(err)
++				}
++			case "orphan_manifest":
++				if err = os.Remove(filepath.Join(dir, "epoch-"+epoch[len("epoch:"):]+".frames")); err != nil {
++					t.Fatal(err)
++				}
++			}
++			if kind != "missing_manifest" {
++				if err = os.WriteFile(name, raw, 0600); err != nil {
++					t.Fatal(err)
++				}
++			}
++			before, _ := os.ReadFile(name)
++			next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++			if err == nil {
++				next.close()
++				t.Fatal("invalid manifest pairing accepted")
++			}
++			after, _ := os.ReadFile(name)
++			if string(before) != string(after) {
++				t.Fatal("evidence repaired")
++			}
++		})
++	}
++}
++
++func testPeer() net.Addr  { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32001} }
++func testEntry() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32002} }
++
++func newClosureFlow(t *testing.T, s *source) *Flow {
++	t.Helper()
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	return f
++}
++func snapshotsFor(t *testing.T, s *source, name string) [][]byte {
++	t.Helper()
++	snapshots, err := s.sendSnapshots()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, v := range snapshots {
++		if v.name == name {
++			return v.frames
++		}
++	}
++	t.Fatal("missing snapshot", name)
++	return nil
++}
++func TestHoopaSyncUncertainPrefixAndReopenExactRecovery(t *testing.T) {
++	for _, terminal := range []bool{false, true} {
++		t.Run(fmt.Sprint("closed_", terminal), func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			f := newClosureFlow(t, s)
++			name := filepath.Base(s.file.Name())
++			dir := s.root.Name()
++			confirmed := s.confirmedSize
++			f.AddUpload(9007199254740993)
++			f.AddDownload(17)
++			s.mu.Lock()
++			s.syncFrame = func() error {
++				if err := s.file.Sync(); err != nil {
++					return err
++				}
++				return io.ErrUnexpectedEOF
++			}
++			s.mu.Unlock()
++			if terminal {
++				f.Close()
++			} else if f.Checkpoint() == nil {
++				t.Fatal("uncertain sync accepted")
++			}
++			if !s.poisoned || s.seq != 1 || s.confirmedSize != confirmed || s.state.Snapshot().LastSourceSeq != 1 {
++				t.Fatal("uncertain frame advanced confirmation")
++			}
++			if got := snapshotsFor(t, s, name); len(got) != 1 {
++				t.Fatal("unconfirmed complete frame exposed to sender")
++			}
++			all := frames(t, s)
++			if len(all) != 2 {
++				t.Fatal("complete uncertain frame lost")
++			}
++			original, _ := os.ReadFile(s.file.Name())
++			s.close()
++			var factID, factHash string
++			for attempt := 0; attempt < 3; attempt++ {
++				next, err := openSource(dir, "new-generation", "", "", defaultLimit)
++				if err != nil {
++					t.Fatal(err)
++				}
++				got := snapshotsFor(t, next, name)
++				if len(got) != 2 || !bytes.Equal(got[0], all[0]) || !bytes.Equal(got[1], all[1]) {
++					next.close()
++					t.Fatal("reopen changed original ID/seq/bytes")
++				}
++				reports := next.recoveryReports()
++				var found bool
++				for _, r := range reports {
++					if r.SourceEpoch == s.epoch {
++						found = true
++						if r.RecordingStatus != "ready" || len(r.Flows) != 1 {
++							t.Fatal("history prevented current ready")
++						}
++						v := r.Flows[0]
++						if terminal {
++							if v.State != "closed" || v.Final == nil || v.Final.UploadBytes != 9007199254740993 || v.ReconciliationID != "" || v.TailBytes == nil {
++								t.Fatal("exact final changed or missing-final gap fabricated")
++							}
++						} else {
++							if v.State != "gap" || v.Reason != "epoch_ended_without_final" || v.TailBytes != nil || v.LastCheckpoint == nil || v.LastCheckpoint.UploadBytes != 9007199254740993 {
++								t.Fatal("checkpoint/unknown tail lost")
++							}
++							if attempt == 0 {
++								factID, factHash = v.ReconciliationID, v.FactSHA256
++							} else if v.ReconciliationID != factID || v.FactSHA256 != factHash {
++								t.Fatal("repeated recovery duplicated fact")
++							}
++						}
++						// Caller mutation of a report must not change subsequent projections.
++						r.Flows[0].State = "modified"
++						if r.Flows[0].LastCheckpoint != nil {
++							r.Flows[0].LastCheckpoint.UploadBytes = 0
++						}
++					}
++				}
++				if !found {
++					t.Fatal("missing old report")
++				}
++				for _, r := range next.recoveryReports() {
++					if r.SourceEpoch == s.epoch && r.Flows[0].State == "modified" {
++						t.Fatal("report aliases source")
++					}
++				}
++				active := newClosureFlow(t, next)
++				active.Close()
++				next.close()
++			}
++			after, _ := os.ReadFile(filepath.Join(dir, name))
++			if !bytes.Equal(original, after) {
++				t.Fatal("recovery rewrote old source")
++			}
++		})
++	}
++}
++
++func TestHoopaShortWriteAndENOSPCPreserveEvidence(t *testing.T) {
++	for _, partial := range []bool{false, true} {
++		t.Run(fmt.Sprint("partial_", partial), func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			f := newClosureFlow(t, s)
++			dir, name := s.root.Name(), s.file.Name()
++			confirmed := s.confirmedSize
++			s.mu.Lock()
++			s.writeFrame = func(b []byte) (int, error) {
++				if partial {
++					n, _ := s.file.Write(b[:len(b)/2])
++					return n, syscall.ENOSPC
++				}
++				return 0, syscall.ENOSPC
++			}
++			s.mu.Unlock()
++			if f.Checkpoint() == nil || !s.poisoned || s.seq != 1 || s.confirmedSize != confirmed {
++				t.Fatal("failed write advanced source")
++			}
++			if len(snapshotsFor(t, s, filepath.Base(name))) != 1 {
++				t.Fatal("partial write sent")
++			}
++			if _, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
++				t.Fatal("admitted after ENOSPC")
++			}
++			before, _ := os.ReadFile(name)
++			s.close()
++			next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++			if partial {
++				if err == nil {
++					next.close()
++					t.Fatal("partial tail accepted")
++				}
++			} else {
++				if err != nil {
++					t.Fatal(err)
++				}
++				next.close()
++			}
++			after, _ := os.ReadFile(name)
++			if !bytes.Equal(before, after) {
++				t.Fatal("failed write evidence truncated")
++			}
++		})
++	}
++}
++
++func rewriteClosureFrame(t *testing.T, name string, change func(map[string]json.RawMessage) []byte) {
++	t.Helper()
++	raw, err := os.ReadFile(name)
++	if err != nil {
++		t.Fatal(err)
++	}
++	n := binary.BigEndian.Uint32(raw[:4])
++	var fields map[string]json.RawMessage
++	if json.Unmarshal(raw[4:4+n], &fields) != nil {
++		t.Fatal("fixture")
++	}
++	payload := change(fields)
++	frame := make([]byte, 4+len(payload)+sha256.Size)
++	binary.BigEndian.PutUint32(frame, uint32(len(payload)))
++	copy(frame[4:], payload)
++	sum := sha256.Sum256(payload)
++	copy(frame[4+len(payload):], sum[:])
++	frame = append(frame, raw[4+int(n)+sha256.Size:]...)
++	if err = os.WriteFile(name, frame, 0600); err != nil {
++		t.Fatal(err)
++	}
++}
++func TestHoopaReopenRejectsStrictFrameViolations(t *testing.T) {
++	for _, kind := range []string{"duplicate", "generation", "instance", "unknown_field", "orphan_closed", "checksum"} {
++		t.Run(kind, func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			newClosureFlow(t, s)
++			dir, name := s.root.Name(), s.file.Name()
++			s.close()
++			if kind == "checksum" {
++				raw, _ := os.ReadFile(name)
++				raw[len(raw)-1] ^= 1
++				os.WriteFile(name, raw, 0600)
++			} else {
++				rewriteClosureFrame(t, name, func(f map[string]json.RawMessage) []byte {
++					switch kind {
++					case "generation":
++						f["config_generation"] = json.RawMessage(`"other"`)
++					case "instance":
++						f["source_instance_id"] = json.RawMessage(`"other"`)
++					case "unknown_field":
++						f["secret"] = json.RawMessage(`"private"`)
++					case "orphan_closed":
++						for _, k := range []string{"process", "source_addr", "entry_addr", "target_kind", "target", "identity_scope"} {
++							delete(f, k)
++						}
++						f["kind"] = json.RawMessage(`"closed"`)
++						f["upload_bytes"] = json.RawMessage(`"0"`)
++						f["download_bytes"] = json.RawMessage(`"0"`)
++					}
++					raw, _ := json.Marshal(f)
++					if kind == "duplicate" {
++						raw = append(raw[:len(raw)-1], []byte(`,"source\u005fseq":"1"}`)...)
++					}
++					return raw
++				})
++			}
++			before, _ := os.ReadFile(name)
++			next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++			if err == nil {
++				next.close()
++				t.Fatal("invalid strict frame admitted")
++			}
++			after, _ := os.ReadFile(name)
++			if !bytes.Equal(before, after) {
++				t.Fatal("bad evidence repaired")
++			}
++		})
++	}
++}
++func TestHoopaReplayMutationDisablesNewRecording(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	f := newClosureFlow(t, s)
++	f.Close()
++	dir, oldName := s.root.Name(), s.file.Name()
++	s.close()
++	next, err := openSource(dir, "next-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer next.close()
++	active := newClosureFlow(t, next)
++	rewriteClosureFrame(t, oldName, func(f map[string]json.RawMessage) []byte {
++		f["target"] = json.RawMessage(`"changed.test"`)
++		b, _ := json.Marshal(f)
++		return b
++	})
++	if _, err = next.sendSnapshots(); err == nil || !next.poisoned || !next.readOnly {
++		t.Fatal("changed old snapshot sent")
++	}
++	if _, err = next.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
++		t.Fatal("recording admitted after old snapshot mutation")
++	}
++	active.AddDownload(5)
++	if active.down != 5 {
++		t.Fatal("recording failure changed existing flow data path")
++	}
++	for _, r := range next.recoveryReports() {
++		if r.RecordingStatus != "unavailable" {
++			t.Fatal("current recording failure hidden")
++		}
++	}
++}
++func TestHoopaUnknownEpochFileRejected(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	dir := s.root.Name()
++	s.close()
++	path := filepath.Join(dir, "epoch-stranger.tmp")
++	os.WriteFile(path, []byte("retained"), 0600)
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err == nil {
++		next.close()
++		t.Fatal("unknown epoch file ignored")
++	}
++	raw, _ := os.ReadFile(path)
++	if string(raw) != "retained" {
++		t.Fatal("unknown file changed")
++	}
++}
++
++func TestHoopaThirtyTwoPendingFlowsKeepHistorySeparateFromReady(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	for i := 0; i < maxActive; i++ {
++		newClosureFlow(t, s)
++	}
++	if _, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
++		t.Fatal("active flow bound bypassed")
++	}
++	dir, epoch := s.root.Name(), s.epoch
++	s.close()
++	next, err := openSource(dir, "new-generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer next.close()
++	var count int
++	for _, r := range next.recoveryReports() {
++		if r.SourceEpoch == epoch {
++			count = len(r.Flows)
++			if r.HistoryQuality != "gap" || r.RecordingStatus != "ready" {
++				t.Fatal("historical gap blocked ready")
++			}
++			for _, f := range r.Flows {
++				if f.TailBytes != nil || f.State != "gap" {
++					t.Fatal("unfinished flow became exact")
++				}
++			}
++		}
++	}
++	if count != 32 {
++		t.Fatal("pending census missing", count)
++	}
++	newClosureFlow(t, next).Close()
++}
++
++// Fixed scan-regression budget declared before this measured run: exactly 32
++// epoch pairs and 8MiB total source evidence, <=60s scan, <=512MiB extra sampled
++// Go heap. These bounds are regression guards, not product RSS/CPU guarantees.
++func TestHoopaBoundedThirtyTwoEpochEightMiBScanCost(t *testing.T) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0700)
++	var firstFrames string
++	var template map[string]json.RawMessage
++	for i := 0; i < 32; i++ {
++		s, err := openSource(dir, "test-generation", "", "", defaultLimit)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if i == 0 {
++			f := newClosureFlow(t, s)
++			f.Close()
++			rows := frames(t, s)
++			json.Unmarshal(rows[0], &template)
++			firstFrames = s.file.Name()
++		}
++		s.close()
++	}
++	entries, _ := os.ReadDir(dir)
++	var metadataBytes int
++	for _, e := range entries {
++		if strings.HasSuffix(e.Name(), ".source.json") {
++			info, _ := e.Info()
++			metadataBytes += int(info.Size())
++		}
++	}
++	target := defaultLimit - metadataBytes
++	var buffer bytes.Buffer
++	seq, flow, steps := 0, 0, 0
++	emit := func(kind string, payload int, padTo int) {
++		fields := map[string]json.RawMessage{}
++		for k, v := range template {
++			fields[k] = v
++		}
++		seq++
++		fields["source_seq"], _ = json.Marshal(strconv.Itoa(seq))
++		fields["event_id"], _ = json.Marshal("scan-event-" + strconv.Itoa(seq))
++		fields["flow_id"], _ = json.Marshal("scan-flow-" + strconv.Itoa(flow))
++		fields["attempt_id"], _ = json.Marshal("scan-attempt-" + strconv.Itoa(flow))
++		fields["kind"], _ = json.Marshal(kind)
++		if kind != "opened" {
++			for _, k := range []string{"process", "source_addr", "entry_addr", "target_kind", "target", "identity_scope"} {
++				delete(fields, k)
++			}
++		}
++		switch kind {
++		case "route_decided":
++			fields["rule"] = json.RawMessage(`"MATCH"`)
++			fields["rule_payload"], _ = json.Marshal(strings.Repeat("x", payload))
++			fields["logical_target"] = json.RawMessage(`"DIRECT"`)
++			fields["process"] = template["process"]
++		case "closed":
++			fields["upload_bytes"] = json.RawMessage(`"0"`)
++			fields["download_bytes"] = json.RawMessage(`"0"`)
++		}
++		raw, _ := json.Marshal(fields)
++		if padTo > 0 {
++			if padTo < 4+len(raw)+sha256.Size || padTo > maxFrame+36 {
++				t.Fatal("padding fixture bound")
++			}
++			raw = append(raw, bytes.Repeat([]byte(" "), padTo-4-len(raw)-sha256.Size)...)
++		}
++		var header [4]byte
++		binary.BigEndian.PutUint32(header[:], uint32(len(raw)))
++		buffer.Write(header[:])
++		buffer.Write(raw)
++		sum := sha256.Sum256(raw)
++		buffer.Write(sum[:])
++	}
++	emit("opened", 0, 0)
++	for target-buffer.Len() > 2*(maxFrame+36) {
++		if steps == 20 {
++			emit("closed", 0, 0)
++			flow++
++			emit("opened", 0, 0)
++			steps = 0
++		}
++		emit("route_decided", 3600, 0)
++		steps++
++	}
++	// Close the last real flow. Final closed JSON whitespace fills the exact cap;
++	// all preceding events stay below the original per-flow event reservation.
++	for target-buffer.Len() > maxFrame+36 {
++		emit("route_decided", 0, 0)
++	}
++	emit("closed", 0, target-buffer.Len())
++	if buffer.Len() != target {
++		t.Fatal("not exact quota")
++	}
++	if err := os.WriteFile(firstFrames, buffer.Bytes(), 0600); err != nil {
++		t.Fatal(err)
++	}
++	buffer.Reset()
++	buffer = bytes.Buffer{}
++	runtime.GC()
++	var baseline runtime.MemStats
++	runtime.ReadMemStats(&baseline)
++	stop, done := make(chan struct{}), make(chan uint64)
++	go func() {
++		peak := baseline.HeapAlloc
++		timer := time.NewTicker(time.Millisecond)
++		defer timer.Stop()
++		for {
++			select {
++			case <-stop:
++				done <- peak
++				return
++			case <-timer.C:
++				var m runtime.MemStats
++				runtime.ReadMemStats(&m)
++				if m.HeapAlloc > peak {
++					peak = m.HeapAlloc
++				}
++			}
++		}
++	}()
++	started := time.Now()
++	s, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	elapsed := time.Since(started)
++	close(stop)
++	peak := <-done
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer s.close()
++	if !s.readOnly || s.used != defaultLimit || len(s.recoveryReports()) != 32 {
++		t.Fatal("quota scan/capacity classification wrong")
++	}
++	extra := peak - baseline.HeapAlloc
++	var usage syscall.Rusage
++	syscall.Getrusage(syscall.RUSAGE_SELF, &usage)
++	t.Logf("scale=32 epoch pairs, source_bytes=%d, frames=%d, unfinished_flows=0; scan=%s, sampled_extra_Go_heap_bytes=%d, process_lifetime_MaxRSS_KiB=%d; thresholds scan<=60s heap<=512MiB", s.used, seq, elapsed, extra, usage.Maxrss)
++	if elapsed > 60*time.Second || extra > 512*1024*1024 {
++		t.Fatal("declared scan regression budget exceeded")
++	}
++	// One extra byte is both beyond the quota and an invalid suffix; do not repair.
++	s.close()
++	f, _ := os.OpenFile(firstFrames, os.O_APPEND|os.O_WRONLY, 0)
++	f.Write([]byte{0})
++	f.Close()
++	before, _ := os.Stat(firstFrames)
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err == nil {
++		next.close()
++		t.Fatal("over-capacity history accepted")
++	}
++	after, _ := os.Stat(firstFrames)
++	if before.Size() != after.Size() {
++		t.Fatal("over-capacity evidence truncated")
++	}
++}
++
++func TestHoopaReopenRejectsThirtyThreePendingFlows(t *testing.T) {
++	s := testSource(t, defaultLimit)
++	// Use the real admission/write path for the supported 32-flow prefix, with
++	// the periodic worker stopped only to keep this fixture's sequence fixed.
++	s.stopCheckpoints()
++	for i := 0; i < 32; i++ {
++		newClosureFlow(t, s)
++	}
++	name, dir := s.file.Name(), s.root.Name()
++	first := frames(t, s)[0]
++	nextSeq := s.seq + 1
++	s.close()
++	var fields map[string]json.RawMessage
++	if err := json.Unmarshal(first, &fields); err != nil {
++		t.Fatal(err)
++	}
++	fields["source_seq"], _ = json.Marshal(strconv.FormatUint(nextSeq, 10))
++	fields["event_id"] = json.RawMessage(`"pending-event-extra"`)
++	fields["flow_id"] = json.RawMessage(`"pending-flow-extra"`)
++	fields["attempt_id"] = json.RawMessage(`"pending-attempt-extra"`)
++	raw, err := json.Marshal(fields)
++	if err != nil {
++		t.Fatal(err)
++	}
++	original, err := os.ReadFile(name)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var buffer bytes.Buffer
++	buffer.Write(original)
++	var header [4]byte
++	binary.BigEndian.PutUint32(header[:], uint32(len(raw)))
++	buffer.Write(header[:])
++	buffer.Write(raw)
++	sum := sha256.Sum256(raw)
++	buffer.Write(sum[:])
++	before := append([]byte(nil), buffer.Bytes()...)
++	if len(before) >= defaultLimit {
++		t.Fatal("fixture exceeds independent byte quota")
++	}
++	if err := os.WriteFile(name, before, 0600); err != nil {
++		t.Fatal(err)
++	}
++	// The generated manifest and real prefix remain intact; only the appended
++	// 33rd concurrent opened exceeds its validated active-flow capability.
++	next, err := openSource(dir, "test-generation", "", "", defaultLimit)
++	if err == nil {
++		next.close()
++		t.Fatal("33 pending flows admitted under valid manifest")
++	}
++	after, err := os.ReadFile(name)
++	if err != nil || !bytes.Equal(before, after) {
++		t.Fatal("over-active evidence changed", err)
++	}
++}
+diff --git a/component/hoopatrace/lifecycle_linux_test.go b/component/hoopatrace/lifecycle_linux_test.go
+--- a/component/hoopatrace/lifecycle_linux_test.go
++++ b/component/hoopatrace/lifecycle_linux_test.go
+@@ -24,7 +24,7 @@
+ }
+ func TestSourceCheckpointExactCumulativeAndFinal(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -48,7 +48,7 @@
+ }
+ func TestSourceCheckpointQuotaPreservesFinalAndEpoch(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -87,7 +87,7 @@
+ }
+ func TestSourceNormalShutdownIncompleteAndNoLateEvents(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -116,14 +116,14 @@
+ 	if len(lifecycleRows(t, s)) != 3 {
+ 		t.Fatal("events after epoch marker")
+ 	}
+-	if _, e = s.begin(nil, nil, "example.test", "", time.Now()); e == nil {
++	if _, e = s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); e == nil {
+ 		t.Fatal("begin after shutdown")
+ 	}
+ }
+ func TestSourceConcurrentCloseShutdownOrdering(t *testing.T) {
+ 	for i := 0; i < 12; i++ {
+ 		s := testSource(t, defaultLimit)
+-		f, e := s.begin(nil, nil, "example.test", "", time.Now())
++		f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 		if e != nil {
+ 			t.Fatal(e)
+ 		}
+@@ -150,7 +150,7 @@
+ }
+ func TestSourceCheckpointWriteUncertainPoisons(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -165,7 +165,7 @@
+ }
+ func TestSourcePeriodicCheckpointWorkerStops(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -198,7 +198,7 @@
+ 
+ func TestSourceRawCloseStopsWorkerWithoutEpochMarker(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, e := s.begin(nil, nil, "example.test", "", time.Now())
++	f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if e != nil {
+ 		t.Fatal(e)
+ 	}
+@@ -211,7 +211,7 @@
+ 	if s.epochClosed || f.Checkpoint() == nil {
+ 		t.Fatal("raw close claimed epoch finality")
+ 	}
+-	if _, e = s.begin(nil, nil, "example.test", "", time.Now()); e == nil {
++	if _, e = s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); e == nil {
+ 		t.Fatal("raw close allowed Begin")
+ 	}
+ 	if f.Decide("MATCH", "", "DIRECT") == nil {
+diff --git a/component/hoopatrace/recovery_linux.go b/component/hoopatrace/recovery_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/recovery_linux.go
+@@ -0,0 +1,251 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"io"
++	"io/fs"
++	"os"
++	"sort"
++	"strings"
++	"time"
++
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++)
++
++type replayEpoch struct {
++	manifest   telemetrywire.Manifest
++	framesHash string
++	size       int64
++}
++type sendSnapshot struct {
++	name   string
++	frames [][]byte
++}
++
++// readStableFile never repairs a file. The caller owns the source writer lock;
++// repeated content and pathname checks also detect changes by non-writer users.
++func readStableFile(root *os.Root, name string, maximum int64, confirm bool) ([]byte, error) {
++	f, err := privateFile(root, name, os.O_RDONLY)
++	if err != nil {
++		return nil, ErrSource
++	}
++	defer f.Close()
++	before, err := f.Stat()
++	if err != nil || before.Size() > maximum {
++		return nil, ErrSource
++	}
++	raw, err := io.ReadAll(io.LimitReader(f, maximum+1))
++	if err != nil || int64(len(raw)) != before.Size() {
++		return nil, ErrSource
++	}
++	if confirm && f.Sync() != nil {
++		return nil, ErrSource
++	}
++	if _, err = f.Seek(0, io.SeekStart); err != nil {
++		return nil, ErrSource
++	}
++	repeated, err := io.ReadAll(io.LimitReader(f, maximum+1))
++	if err != nil || !bytes.Equal(raw, repeated) {
++		return nil, ErrSource
++	}
++	after, err := f.Stat()
++	if err != nil || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
++		return nil, ErrSource
++	}
++	named, err := root.Lstat(name)
++	if err != nil || !os.SameFile(after, named) || named.Size() != after.Size() || !named.ModTime().Equal(after.ModTime()) {
++		return nil, ErrSource
++	}
++	return raw, nil
++}
++func boundFrames(raw []byte, m telemetrywire.Manifest, visit func([]byte) error) (telemetrywire.Lifecycle, error) {
++	life, err := scanFrames(bytes.NewReader(raw), visit)
++	if err != nil {
++		return life, ErrSource
++	}
++	if life.LastSourceSeq != 0 && (life.SourceEpoch != m.SourceEpoch || life.SourceInstanceID != m.SourceInstanceID || life.ConfigGeneration != m.ConfigGeneration) {
++		return life, ErrSource
++	}
++	return life, nil
++}
++
++func (s *source) scanPrevious(entries []fs.DirEntry) (int, error) {
++	pairs := map[string]uint8{}
++	for _, e := range entries {
++		name := e.Name()
++		if !strings.HasPrefix(name, "epoch-") {
++			continue
++		}
++		suffix := ""
++		bit := uint8(0)
++		if strings.HasSuffix(name, ".frames") {
++			suffix = ".frames"
++			bit = 1
++		} else if strings.HasSuffix(name, ".source.json") {
++			suffix = ".source.json"
++			bit = 2
++		} else {
++			return 0, ErrSource
++		}
++		stem := strings.TrimSuffix(name, suffix)
++		// A valid manifest will also prove the full canonical digest in the stem.
++		if len(stem) != len("epoch-")+64 {
++			return 0, ErrSource
++		}
++		pairs[stem] |= bit
++	}
++	if len(pairs) > 32 {
++		return 0, ErrSource
++	}
++	stems := make([]string, 0, len(pairs))
++	for stem, bits := range pairs {
++		if bits != 3 {
++			return 0, ErrSource
++		}
++		stems = append(stems, stem)
++	}
++	sort.Strings(stems)
++	for _, stem := range stems {
++		meta, err := readStableFile(s.root, stem+".source.json", maxFrame, true)
++		if err != nil {
++			return 0, err
++		}
++		m, err := telemetrywire.DecodeManifest(meta)
++		if err != nil || "epoch-"+strings.TrimPrefix(m.SourceEpoch, "epoch:") != stem {
++			return 0, ErrSource
++		}
++		raw, err := readStableFile(s.root, stem+".frames", s.limit, true)
++		if err != nil {
++			return 0, err
++		}
++		if uint64(len(meta)+len(raw)) > m.MaxSourceBytes {
++			return 0, ErrSource
++		}
++		s.used += int64(len(meta) + len(raw))
++		if s.used > s.limit {
++			return 0, ErrSource
++		}
++		life, err := boundFrames(raw, m, nil)
++		if err != nil {
++			return 0, err
++		}
++		digest := sha256.Sum256(raw)
++		framesHash := hex.EncodeToString(digest[:])
++		// A directory sync completes confirmation of the paired old files before
++		// they can enter the replay set or support a derived writer-end report.
++		if syncDir(s.root) != nil {
++			return 0, ErrSource
++		}
++		ended := &telemetrywire.WriterEndEvidence{Kind: "exclusive_writer_full_scan", SourceEpoch: m.SourceEpoch, ManifestSHA256: m.SHA256, FramesSHA256: framesHash, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}
++		report, err := telemetrywire.ProjectRecovery(m, life, framesHash, ended)
++		if err != nil {
++			return 0, ErrSource
++		}
++		s.replay[stem+".frames"] = replayEpoch{m, framesHash, int64(len(raw))}
++		s.reports = append(s.reports, report)
++	}
++	return len(pairs), nil
++}
++
++// sendSnapshots copies only confirmed bytes while holding s.mu; HTTP is outside
++// this lock. An uncertain full write remains on disk but is not sent until a
++// later writer-lock reopen has validated and synced the complete snapshot.
++func (s *source) sendSnapshots() ([]sendSnapshot, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.rawClosed {
++		return nil, ErrSource
++	}
++	bad := func() ([]sendSnapshot, error) { s.poisoned = true; s.readOnly = true; return nil, ErrSource }
++	names := make([]string, 0, len(s.replay))
++	for name := range s.replay {
++		names = append(names, name)
++	}
++	sort.Strings(names)
++	result := make([]sendSnapshot, 0, len(names)+1)
++	for _, name := range names {
++		old := s.replay[name]
++		meta, err := readStableFile(s.root, strings.TrimSuffix(name, ".frames")+".source.json", maxFrame, false)
++		if err != nil {
++			return bad()
++		}
++		m, err := telemetrywire.DecodeManifest(meta)
++		if err != nil || m.SHA256 != old.manifest.SHA256 {
++			return bad()
++		}
++		raw, err := readStableFile(s.root, name, s.limit, false)
++		if err != nil || int64(len(raw)) != old.size {
++			return bad()
++		}
++		digest := sha256.Sum256(raw)
++		if hex.EncodeToString(digest[:]) != old.framesHash {
++			return bad()
++		}
++		rows := [][]byte{}
++		if _, err = boundFrames(raw, m, func(b []byte) error { rows = append(rows, append([]byte(nil), b...)); return nil }); err != nil {
++			return bad()
++		}
++		result = append(result, sendSnapshot{name, rows})
++	}
++	if s.file != nil {
++		name := "epoch-" + strings.TrimPrefix(s.epoch, "epoch:") + ".frames"
++		meta, err := readStableFile(s.root, strings.TrimSuffix(name, ".frames")+".source.json", maxFrame, false)
++		if err != nil {
++			return bad()
++		}
++		m, err := telemetrywire.DecodeManifest(meta)
++		if err != nil || m.SHA256 != s.manifest.SHA256 {
++			return bad()
++		}
++		f, err := privateFile(s.root, name, os.O_RDONLY)
++		if err != nil {
++			return bad()
++		}
++		info, err := f.Stat()
++		if err != nil || info.Size() < s.confirmedSize {
++			f.Close()
++			return bad()
++		}
++		raw, err := io.ReadAll(io.NewSectionReader(f, 0, s.confirmedSize))
++		f.Close()
++		if err != nil || int64(len(raw)) != s.confirmedSize {
++			return bad()
++		}
++		digest := sha256.Sum256(raw)
++		if !bytes.Equal(digest[:], s.confirmedHasher.Sum(nil)) {
++			return bad()
++		}
++		rows := [][]byte{}
++		if _, err = boundFrames(raw, m, func(b []byte) error { rows = append(rows, append([]byte(nil), b...)); return nil }); err != nil {
++			return bad()
++		}
++		result = append(result, sendSnapshot{name, rows})
++	}
++	return result, nil
++}
++
++// recoveryReports returns detached derived history plus current recording state.
++// "ready" refers only to this bounded source's recording capacity, not protocol
++// ready, business success, identity completeness or a CapabilityRecord.
++func (s *source) recoveryReports() []telemetrywire.RecoveryReport {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	raw, _ := json.Marshal(s.reports)
++	var out []telemetrywire.RecoveryReport
++	_ = json.Unmarshal(raw, &out)
++	status := "ready"
++	if s.poisoned || s.rawClosed || s.stopping {
++		status = "unavailable"
++	} else if s.readOnly {
++		status = "replay_only"
++	}
++	for i := range out {
++		out[i].RecordingStatus = status
++	}
++	return out
++}
+diff --git a/component/hoopatrace/replay_linux_test.go b/component/hoopatrace/replay_linux_test.go
+--- a/component/hoopatrace/replay_linux_test.go
++++ b/component/hoopatrace/replay_linux_test.go
+@@ -86,7 +86,7 @@
+ 		t.Fatal(err)
+ 	}
+ 	t.Cleanup(s.close)
+-	if _, err := s.begin(nil, nil, "example.test", "", time.Now()); err != nil {
++	if _, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 	finished := make(chan struct{})
+diff --git a/component/hoopatrace/telemetrywire/counter_event.go b/component/hoopatrace/telemetrywire/counter_event.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/counter_event.go
+@@ -0,0 +1,155 @@
++// Package telemetrywire decodes candidate experimental counter frames. Parsing a
++// frame does not establish an event source, delivery guarantee or capability gate.
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"io"
++	"strings"
++	"time"
++	"unicode/utf8"
++)
++
++const counterInputLimit = 64 * 1024
++
++type CounterKind string
++
++const (
++	BytesCheckpoint CounterKind = "bytes_checkpoint"
++	Closed          CounterKind = "closed"
++)
++
++// ErrInvalidCounterEvent intentionally contains no input values or raw parser
++// errors, which could disclose private frame content.
++var ErrInvalidCounterEvent = errors.New("invalid candidate counter event")
++
++type CounterEvent struct {
++	SchemaVersion    uint8       `json:"schema_version"`
++	SourceInstanceID string      `json:"source_instance_id"`
++	SourceEpoch      string      `json:"source_epoch"`
++	EventID          string      `json:"event_id"`
++	SourceSeq        uint64      `json:"source_seq,string"`
++	FlowID           string      `json:"flow_id"`
++	AttemptID        string      `json:"attempt_id"`
++	ObservedAt       time.Time   `json:"observed_at"`
++	ConfigGeneration string      `json:"config_generation"`
++	BoundaryRef      string      `json:"boundary_ref"`
++	Kind             CounterKind `json:"kind"`
++	UploadBytes      uint64      `json:"upload_bytes,string"`
++	DownloadBytes    uint64      `json:"download_bytes,string"`
++}
++
++func knownCounterField(name string) bool {
++	switch name {
++	case "schema_version", "source_instance_id", "source_epoch", "event_id", "source_seq", "flow_id", "attempt_id", "observed_at", "config_generation", "boundary_ref", "kind", "upload_bytes", "download_bytes":
++		return true
++	default:
++		return false
++	}
++}
++
++// DecodeCounterEvent accepts only the candidate v1 flat wire profile. Version is
++// the literal JSON number token 1, sequence/counts are canonical decimal strings,
++// and observed_at must retain UTC Z syntax. No numeric value passes through float64.
++func DecodeCounterEvent(raw []byte) (CounterEvent, error) {
++	invalid := func() (CounterEvent, error) { return CounterEvent{}, ErrInvalidCounterEvent }
++	if len(raw) == 0 || len(raw) > counterInputLimit || !utf8.Valid(raw) {
++		return invalid()
++	}
++	decoder := json.NewDecoder(bytes.NewReader(raw))
++	decoder.UseNumber()
++	token, err := decoder.Token()
++	if err != nil || token != json.Delim('{') {
++		return invalid()
++	}
++	fields := make(map[string]json.RawMessage, 13)
++	for decoder.More() {
++		token, err := decoder.Token()
++		if err != nil {
++			return invalid()
++		}
++		name, ok := token.(string)
++		if !ok || !knownCounterField(name) {
++			return invalid()
++		}
++		// Token has already unescaped the name, so escaped duplicates also collide.
++		if _, exists := fields[name]; exists {
++			return invalid()
++		}
++		var value json.RawMessage
++		if err := decoder.Decode(&value); err != nil {
++			return invalid()
++		}
++		fields[name] = value
++	}
++	token, err = decoder.Token()
++	if err != nil || token != json.Delim('}') || len(fields) != 13 {
++		return invalid()
++	}
++	var trailing json.RawMessage
++	if decoder.Decode(&trailing) != io.EOF {
++		return invalid()
++	}
++	if !bytes.Equal(bytes.TrimSpace(fields["schema_version"]), []byte("1")) {
++		return invalid()
++	}
++	values := make(map[string]string, 12)
++	for name, value := range fields {
++		if name == "schema_version" {
++			continue
++		}
++		value = bytes.TrimSpace(value)
++		if len(value) == 0 || value[0] != '"' {
++			return invalid()
++		}
++		var text string
++		if err := json.Unmarshal(value, &text); err != nil {
++			return invalid()
++		}
++		values[name] = text
++	}
++	var instance, epoch, event, flow, attempt, generation string
++	for _, id := range []struct {
++		name   string
++		target *string
++	}{
++		{"source_instance_id", &instance}, {"source_epoch", &epoch}, {"event_id", &event}, {"flow_id", &flow}, {"attempt_id", &attempt}, {"config_generation", &generation},
++	} {
++		parsed, err := parseID(values[id.name])
++		if err != nil {
++			return invalid()
++		}
++		*id.target = parsed
++	}
++	seq, err := parseBytes(values["source_seq"])
++	if err != nil || seq == 0 {
++		return invalid()
++	}
++	upload, err := parseBytes(values["upload_bytes"])
++	if err != nil {
++		return invalid()
++	}
++	download, err := parseBytes(values["download_bytes"])
++	if err != nil {
++		return invalid()
++	}
++	if !strings.HasSuffix(values["observed_at"], "Z") {
++		return invalid()
++	}
++	observed, err := parseTimestamp(values["observed_at"])
++	if err != nil {
++		return invalid()
++	}
++	if values["boundary_ref"] != "mihomo_proxy_stream_v1" {
++		return invalid()
++	}
++	kind := CounterKind(values["kind"])
++	if kind != BytesCheckpoint && kind != Closed {
++		return invalid()
++	}
++	return CounterEvent{
++		SchemaVersion: 1, SourceInstanceID: instance, SourceEpoch: string(epoch), EventID: event, SourceSeq: uint64(seq), FlowID: flow, AttemptID: attempt, ObservedAt: observed, ConfigGeneration: string(generation), BoundaryRef: values["boundary_ref"], Kind: kind, UploadBytes: upload, DownloadBytes: download,
++	}, nil
++}
+diff --git a/component/hoopatrace/telemetrywire/manifest.go b/component/hoopatrace/telemetrywire/manifest.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/manifest.go
+@@ -0,0 +1,68 @@
++package telemetrywire
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"path/filepath"
++	"strings"
++	"unicode/utf8"
++)
++
++var ErrInvalidManifest = errors.New("invalid source manifest")
++
++// Manifest is the existing bounded P0 profile. Decode checks the identity
++// digest, not whether the historical binary or process still exists.
++type Manifest struct {
++	SourceEpoch, SourceInstanceID, ConfigGeneration string
++	SHA256                                          string
++	MaxSourceBytes                                  uint64
++	Raw                                             json.RawMessage
++}
++
++func hexBytes(s string, n int) bool {
++	b, err := hex.DecodeString(s)
++	return err == nil && len(b) == n && hex.EncodeToString(b) == s
++}
++
++func DecodeManifest(raw []byte) (Manifest, error) {
++	bad := func() (Manifest, error) { return Manifest{}, ErrInvalidManifest }
++	f, ok := object(raw)
++	if !ok || len(raw) > 8192 || !utf8.Valid(raw) || !exactFields(f, "schema_version source_epoch binary_path binary_sha256 boot_id pid start_ticks nonce config_generation max_source_bytes max_frame_bytes max_active_flows reclamation scope") || strings.TrimSpace(string(f["schema_version"])) != "1" {
++		return bad()
++	}
++	epoch, ok := id(f["source_epoch"])
++	if !ok || !strings.HasPrefix(epoch, "epoch:") || !hexBytes(strings.TrimPrefix(epoch, "epoch:"), 32) {
++		return bad()
++	}
++	exe, a := scalarText(f["binary_path"])
++	binaryHash, b := scalarText(f["binary_sha256"])
++	boot, c := scalarText(f["boot_id"])
++	nonce, d := scalarText(f["nonce"])
++	start, e := scalarText(f["start_ticks"])
++	generation, g := id(f["config_generation"])
++	pid, h := decimal(f["pid"], false, true)
++	if !a || !b || !c || !d || !e || !g || !h || !filepath.IsAbs(exe) || !hexBytes(binaryHash, 32) || !hexBytes(nonce, 16) || pid > 1<<31-1 {
++		return bad()
++	}
++	if len(boot) != 36 || boot[8] != '-' || boot[13] != '-' || boot[18] != '-' || boot[23] != '-' || !hexBytes(strings.ReplaceAll(boot, "-", ""), 16) {
++		return bad()
++	}
++	if _, err := parseBytes(start); err != nil {
++		return bad()
++	}
++	limit, ok := decimal(f["max_source_bytes"], false, true)
++	frame, frameOK := decimal(f["max_frame_bytes"], false, true)
++	active, activeOK := decimal(f["max_active_flows"], false, true)
++	if !ok || limit < 20*(8192+36) || limit > 8*1024*1024 || !frameOK || frame != 8192 || !activeOK || active != MaxActiveFlows || !literal(f, "reclamation", "not_implemented_bounded_stop") || !literal(f, "scope", "linux_amd64_tcp_same_uid_netns_ipv4_loopback") {
++		return bad()
++	}
++	digest := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s|%d|%s|%s", exe, binaryHash, boot, pid, start, nonce)))
++	if epoch != "epoch:"+hex.EncodeToString(digest[:]) {
++		return bad()
++	}
++	sum := sha256.Sum256(raw)
++	return Manifest{SourceEpoch: epoch, SourceInstanceID: "source:" + strings.TrimPrefix(epoch, "epoch:"), ConfigGeneration: generation, SHA256: hex.EncodeToString(sum[:]), MaxSourceBytes: limit, Raw: append(json.RawMessage(nil), raw...)}, nil
++}
+diff --git a/component/hoopatrace/telemetrywire/recovery.go b/component/hoopatrace/telemetrywire/recovery.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/recovery.go
+@@ -0,0 +1,122 @@
++package telemetrywire
++
++import (
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++)
++
++var ErrInvalidRecovery = errors.New("source recovery evidence invalid")
++
++// WriterEndEvidence is supplied only by an explicit recovery/start adapter
++// after taking the source writer lock and validating a full stable snapshot.
++// This pure package cannot acquire a lock or prove an OS/network process ended.
++type WriterEndEvidence struct {
++	Kind           string `json:"kind"`
++	SourceEpoch    string `json:"source_epoch"`
++	ManifestSHA256 string `json:"manifest_sha256"`
++	FramesSHA256   string `json:"frames_sha256"`
++	ObservedAt     string `json:"observed_at"`
++}
++
++type RecoveryCounter struct {
++	EventID       string `json:"event_id"`
++	SourceSeq     uint64 `json:"source_seq,string"`
++	UploadBytes   uint64 `json:"upload_bytes,string"`
++	DownloadBytes uint64 `json:"download_bytes,string"`
++}
++
++type RecoveryFlow struct {
++	FlowID           string           `json:"flow_id"`
++	OpenedEventID    string           `json:"opened_event_id"`
++	State            string           `json:"state"`
++	Reason           string           `json:"reason"`
++	LastCheckpoint   *RecoveryCounter `json:"last_trusted_checkpoint"`
++	Final            *RecoveryCounter `json:"final"`
++	TailBytes        *uint64          `json:"tail_bytes"`
++	GapDimensions    []string         `json:"gap_dimensions"`
++	ReconciliationID string           `json:"reconciliation_id,omitempty"`
++	FactSHA256       string           `json:"fact_sha256,omitempty"`
++}
++
++type RecoveryReport struct {
++	Scope            string             `json:"scope"`
++	SourceEpoch      string             `json:"source_epoch"`
++	SourceInstanceID string             `json:"source_instance_id"`
++	ConfigGeneration string             `json:"config_generation"`
++	ManifestSHA256   string             `json:"manifest_sha256"`
++	FramesSHA256     string             `json:"frames_sha256"`
++	LastSourceSeq    uint64             `json:"last_source_seq,string"`
++	EpochFinality    string             `json:"epoch_finality"`
++	ScanStatus       string             `json:"scan_status"`
++	HistoryQuality   string             `json:"history_quality"`
++	RecordingStatus  string             `json:"recording_status"`
++	WriterEnd        *WriterEndEvidence `json:"writer_end_evidence"`
++	Flows            []RecoveryFlow     `json:"flows"`
++}
++
++func recoveryCounter(c *CounterEvent) *RecoveryCounter {
++	if c == nil {
++		return nil
++	}
++	return &RecoveryCounter{c.EventID, c.SourceSeq, c.UploadBytes, c.DownloadBytes}
++}
++
++// ProjectRecovery consumes a validated State.Snapshot and a paired manifest.
++// A read-only adapter passes nil evidence and never seals a missing final.
++// Reports are derived data: no source/receipt position or byte fact is created.
++func ProjectRecovery(m Manifest, life Lifecycle, framesHash string, ended *WriterEndEvidence) (RecoveryReport, error) {
++	bad := func() (RecoveryReport, error) { return RecoveryReport{}, ErrInvalidRecovery }
++	validated, err := DecodeManifest(m.Raw)
++	if err != nil || validated.SHA256 != m.SHA256 || !hexBytes(framesHash, 32) {
++		return bad()
++	}
++	m = validated
++	if life.LastSourceSeq != 0 && (life.SourceEpoch != m.SourceEpoch || life.SourceInstanceID != m.SourceInstanceID || life.ConfigGeneration != m.ConfigGeneration) {
++		return bad()
++	}
++	if ended != nil {
++		if ended.Kind != "exclusive_writer_full_scan" || ended.SourceEpoch != m.SourceEpoch || ended.ManifestSHA256 != m.SHA256 || ended.FramesSHA256 != framesHash {
++			return bad()
++		}
++		if _, err := parseTimestamp(ended.ObservedAt); err != nil {
++			return bad()
++		}
++	}
++	r := RecoveryReport{Scope: "P0_derived_source_lifecycle_only", SourceEpoch: m.SourceEpoch, SourceInstanceID: m.SourceInstanceID, ConfigGeneration: m.ConfigGeneration, ManifestSHA256: m.SHA256, FramesSHA256: framesHash, LastSourceSeq: life.LastSourceSeq, EpochFinality: life.EpochFinality, ScanStatus: "validated", HistoryQuality: "no_missing_final", RecordingStatus: "unverified", Flows: []RecoveryFlow{}}
++	if ended != nil {
++		copy := *ended
++		r.WriterEnd = &copy
++	}
++	for _, f := range life.Flows {
++		out := RecoveryFlow{FlowID: f.FlowID, OpenedEventID: f.OpenedEventID, State: f.State, Reason: f.Reason, LastCheckpoint: recoveryCounter(f.LastCheckpoint), Final: recoveryCounter(f.Final), GapDimensions: append([]string{}, f.GapDimensions...)}
++		if f.TailBytes != nil {
++			copy := *f.TailBytes
++			out.TailBytes = &copy
++		}
++		if f.State == "pending" && ended != nil {
++			out.State, out.Reason, out.TailBytes = "gap", "epoch_ended_without_final", nil
++			out.GapDimensions = []string{"bytes", "route_or_setup", "window_checkpoints"}
++			key, _ := json.Marshal([]string{"hoopa_missing_final_v1", m.SourceInstanceID, m.SourceEpoch, f.FlowID, f.OpenedEventID, out.Reason})
++			sum := sha256.Sum256(key)
++			out.ReconciliationID = "reconciliation:" + hex.EncodeToString(sum[:])
++			// Run timestamps and scan cutoffs are observations, not fact content.
++			payload, _ := json.Marshal(struct {
++				ID         string
++				Checkpoint *RecoveryCounter
++				Boundary   string
++				Tail       *uint64
++			}{out.ReconciliationID, out.LastCheckpoint, "mihomo_proxy_stream_v1", nil})
++			fact := sha256.Sum256(payload)
++			out.FactSHA256 = hex.EncodeToString(fact[:])
++		}
++		if out.State == "gap" || len(out.GapDimensions) != 0 {
++			r.HistoryQuality = "gap"
++		} else if out.State == "pending" && r.HistoryQuality != "gap" {
++			r.HistoryQuality = "pending"
++		}
++		r.Flows = append(r.Flows, out)
++	}
++	return r, nil
++}
+diff --git a/component/hoopatrace/telemetrywire/scalars.go b/component/hoopatrace/telemetrywire/scalars.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/scalars.go
+@@ -0,0 +1,41 @@
++package telemetrywire
++
++import (
++	"errors"
++	"regexp"
++	"strconv"
++	"time"
++)
++
++func parseID(s string) (string, error) {
++	if len(s) == 0 || len(s) > 128 {
++		return "", errors.New("invalid ID")
++	}
++	for i, c := range []byte(s) {
++		alnum := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
++		if !alnum && (i == 0 || c != '.' && c != '_' && c != ':' && c != '-') {
++			return "", errors.New("invalid ID")
++		}
++	}
++	return s, nil
++}
++func parseBytes(s string) (uint64, error) {
++	if s == "" || len(s) > 1 && s[0] == '0' {
++		return 0, errors.New("invalid decimal")
++	}
++	for _, c := range []byte(s) {
++		if c < '0' || c > '9' {
++			return 0, errors.New("invalid decimal")
++		}
++	}
++	return strconv.ParseUint(s, 10, 64)
++}
++
++var timestampForm = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,9})?Z$`)
++
++func parseTimestamp(s string) (time.Time, error) {
++	if !timestampForm.MatchString(s) {
++		return time.Time{}, errors.New("invalid UTC timestamp")
++	}
++	return time.Parse(time.RFC3339Nano, s)
++}
+diff --git a/component/hoopatrace/telemetrywire/source_event.go b/component/hoopatrace/telemetrywire/source_event.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/source_event.go
+@@ -0,0 +1,374 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"io"
++	"net/netip"
++	"strings"
++	"unicode/utf8"
++)
++
++const SourceInputLimit = 8192
++
++var ErrInvalidSourceEvent = errors.New("invalid experimental source event")
++
++// SourceEvent is the frozen experimental wire profile, not proof of identity,
++// ready timing or a capability gate. Raw retains the original bytes for replay.
++// Null flow/attempt are allowed only on the source-scoped epoch_closed marker.
++type SourceEvent struct {
++	SourceInstanceID  string
++	SourceEpoch       string
++	EventID           string
++	SourceSeq         uint64
++	FlowID, AttemptID string
++	ConfigGeneration  string
++	Kind              string
++	Counter           *CounterEvent
++	Raw               json.RawMessage
++	Phase             string
++	GapReason         string
++	GapDimensions     []string
++	UnfinishedFlows   uint64
++	EpochFinality     string
++}
++
++type wireFields map[string]json.RawMessage
++
++// object rejects duplicate decoded names, including escaped aliases. Values
++// stay RawMessage: no integer ever passes through float64.
++func object(raw []byte) (wireFields, bool) {
++	d := json.NewDecoder(bytes.NewReader(raw))
++	t, err := d.Token()
++	if err != nil || t != json.Delim('{') {
++		return nil, false
++	}
++	f := wireFields{}
++	for d.More() {
++		t, err := d.Token()
++		if err != nil {
++			return nil, false
++		}
++		k, ok := t.(string)
++		if !ok {
++			return nil, false
++		}
++		if _, exists := f[k]; exists {
++			return nil, false
++		}
++		var v json.RawMessage
++		if d.Decode(&v) != nil {
++			return nil, false
++		}
++		f[k] = v
++	}
++	t, err = d.Token()
++	if err != nil || t != json.Delim('}') {
++		return nil, false
++	}
++	var tail json.RawMessage
++	return f, d.Decode(&tail) == io.EOF
++}
++
++func exactFields(f wireFields, names string) bool {
++	keys := strings.Fields(names)
++	if len(f) != len(keys) {
++		return false
++	}
++	for _, k := range keys {
++		if _, ok := f[k]; !ok {
++			return false
++		}
++	}
++	return true
++}
++
++func scalarText(raw []byte) (string, bool) {
++	var s string
++	raw = bytes.TrimSpace(raw)
++	if len(raw) == 0 || raw[0] != '"' || json.Unmarshal(raw, &s) != nil || len(s) > 4096 || strings.ContainsRune(s, 0) {
++		return "", false
++	}
++	return s, true
++}
++
++func literal(f wireFields, key, want string) bool {
++	s, ok := scalarText(f[key])
++	return ok && s == want
++}
++func null(raw []byte) bool { return bytes.Equal(bytes.TrimSpace(raw), []byte("null")) }
++func decimal(raw []byte, quoted bool, nonzero bool) (uint64, bool) {
++	s := string(bytes.TrimSpace(raw))
++	if quoted {
++		var ok bool
++		s, ok = scalarText(raw)
++		if !ok {
++			return 0, false
++		}
++	}
++	v, err := parseBytes(s)
++	return uint64(v), err == nil && (!nonzero || v != 0)
++}
++func id(raw []byte) (string, bool) {
++	s, ok := scalarText(raw)
++	v, err := parseID(s)
++	return v, ok && err == nil
++}
++func stringsArray(raw []byte, nonempty bool) ([]string, bool) {
++	raw = bytes.TrimSpace(raw)
++	if len(raw) == 0 || raw[0] != '[' {
++		return nil, false
++	}
++	var items []json.RawMessage
++	if json.Unmarshal(raw, &items) != nil || len(items) > 64 || nonempty && len(items) == 0 {
++		return nil, false
++	}
++	out := make([]string, 0, len(items))
++	for _, raw := range items {
++		s, ok := scalarText(raw)
++		if !ok {
++			return nil, false
++		}
++		out = append(out, s)
++	}
++	return out, true
++}
++
++func processValid(raw []byte) bool {
++	p, ok := object(raw)
++	if !ok {
++		return false
++	}
++	if literal(p, "status", "unknown") {
++		r, ok := id(p["reason"])
++		return exactFields(p, "status reason") && ok && r != ""
++	}
++	if !exactFields(p, "status pid name name_source start_ticks boot_id pid_namespace network_namespace socket_inode path") || !literal(p, "status", "identified") || !literal(p, "name_source", "linux_proc_comm") {
++		return false
++	}
++	pid, ok := decimal(p["pid"], false, true)
++	if !ok || pid > 1<<31-1 {
++		return false
++	}
++	if _, ok := decimal(p["start_ticks"], true, false); !ok {
++		return false
++	}
++	if _, ok := decimal(p["socket_inode"], true, true); !ok {
++		return false
++	}
++	for _, k := range []string{"name", "path", "boot_id"} {
++		if s, ok := scalarText(p[k]); !ok || s == "" {
++			return false
++		}
++	}
++	for _, pair := range []struct{ key, prefix string }{{"pid_namespace", "pid:["}, {"network_namespace", "net:["}} {
++		s, ok := scalarText(p[pair.key])
++		if !ok || !strings.HasPrefix(s, pair.prefix) || !strings.HasSuffix(s, "]") {
++			return false
++		}
++		n := strings.TrimSuffix(strings.TrimPrefix(s, pair.prefix), "]")
++		v, err := parseBytes(n)
++		if err != nil || v == 0 {
++			return false
++		}
++	}
++	return true
++}
++
++const commonFields = "schema_version source_instance_id source_epoch event_id source_seq flow_id attempt_id observed_at config_generation boundary_ref kind"
++
++func kindValid(f wireFields, kind string) bool {
++	switch kind {
++	case "opened":
++		if !exactFields(f, commonFields+" process source_addr entry_addr target_kind target identity_scope") || !processValid(f["process"]) || !literal(f, "identity_scope", "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified") {
++			return false
++		}
++		for _, k := range []string{"source_addr", "entry_addr"} {
++			s, ok := scalarText(f[k])
++			if !ok {
++				return false
++			}
++			if _, err := netip.ParseAddrPort(s); err != nil {
++				return false
++			}
++		}
++		target, ok := scalarText(f["target"])
++		if !ok {
++			return false
++		}
++		if literal(f, "target_kind", "unknown") {
++			return target == ""
++		}
++		if literal(f, "target_kind", "ip_only") {
++			_, err := netip.ParseAddr(target)
++			return err == nil
++		}
++		return literal(f, "target_kind", "host") && target != ""
++	case "route_decided":
++		if _, exists := f["phase"]; exists {
++			_, ok := id(f["connection_id"])
++			return exactFields(f, commonFields+" phase connection_id") && literal(f, "phase", "connection_binding") && ok
++		}
++		if !exactFields(f, commonFields+" rule rule_payload logical_target process") || !processValid(f["process"]) {
++			return false
++		}
++		for _, k := range []string{"rule", "rule_payload", "logical_target"} {
++			if _, ok := scalarText(f[k]); !ok {
++				return false
++			}
++		}
++		return true
++	case "setup_finished":
++		if !exactFields(f, commonFields+" definition duration_ms waited_ms flow_duration_ms flow_waited_ms flow_definition outcome failure_stage ordered_chain provider_chain route_evidence protocol_ready_validation") || !literal(f, "definition", "attempt_dial_handshake_v1_candidate") || !literal(f, "flow_definition", "request_known_to_ready_v1_candidate") || !literal(f, "route_evidence", "returned_conn_only") || !literal(f, "protocol_ready_validation", "unverified") {
++			return false
++		}
++		outcome, ok := scalarText(f["outcome"])
++		if !ok || outcome != "success" && outcome != "failure" && outcome != "timeout" && outcome != "unknown" {
++			return false
++		}
++		if _, ok := scalarText(f["failure_stage"]); !ok {
++			return false
++		}
++		for _, k := range []string{"ordered_chain", "provider_chain"} {
++			items, ok := stringsArray(f[k], false)
++			if !ok {
++				return false
++			}
++			// The fixed core preserves an empty provider name for a direct or
++			// otherwise unlabelled chain hop. Keep it verbatim, never infer a
++			// provider; actual node names themselves must be nonempty.
++			if k == "ordered_chain" {
++				for _, item := range items {
++					if item == "" {
++						return false
++					}
++				}
++			}
++		}
++		for _, pair := range []struct{ duration, waited string }{{"duration_ms", "waited_ms"}, {"flow_duration_ms", "flow_waited_ms"}} {
++			wait, ok := decimal(f[pair.waited], false, false)
++			if !ok || wait > 1<<63-1 {
++				return false
++			}
++			if outcome != "success" {
++				if !null(f[pair.duration]) {
++					return false
++				}
++				continue
++			}
++			duration, ok := decimal(f[pair.duration], false, false)
++			if !ok || duration > wait {
++				return false
++			}
++		}
++		return true
++	case "gap":
++		if !exactFields(f, commonFields+" reason dimensions upload_bytes download_bytes connection_id") || !null(f["upload_bytes"]) || !null(f["download_bytes"]) {
++			return false
++		}
++		if !literal(f, "reason", "source_event_uncertain") && !literal(f, "reason", "source_shutdown_before_final") {
++			return false
++		}
++		if s, ok := scalarText(f["connection_id"]); !ok {
++			return false
++		} else if s != "" {
++			if _, err := parseID(s); err != nil {
++				return false
++			}
++		}
++		dims, ok := stringsArray(f["dimensions"], true)
++		if !ok {
++			return false
++		}
++		seen := map[string]bool{}
++		for _, dim := range dims {
++			if seen[dim] || dim != "bytes" && dim != "route_or_setup" && dim != "window_checkpoints" {
++				return false
++			}
++			seen[dim] = true
++		}
++		return true
++	case "epoch_closed":
++		if !exactFields(f, commonFields+" reason unfinished_flows finality") || !null(f["flow_id"]) || !null(f["attempt_id"]) || !literal(f, "reason", "core_shutdown") {
++			return false
++		}
++		n, ok := decimal(f["unfinished_flows"], true, false)
++		return ok && (n == 0 && literal(f, "finality", "complete") || n != 0 && literal(f, "finality", "incomplete"))
++	}
++	return false
++}
++
++// DecodeSourceEvent strictly validates the current candidate, including nested
++// ProcessEvidence. It preserves unknown counters as null and candidate timing as
++// unverified. It does not infer source continuity from one well-shaped frame.
++func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
++	invalid := func() (SourceEvent, error) { return SourceEvent{}, ErrInvalidSourceEvent }
++	if len(raw) == 0 || len(raw) > SourceInputLimit || !utf8.Valid(raw) {
++		return invalid()
++	}
++	f, ok := object(raw)
++	if !ok || !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) || !literal(f, "boundary_ref", "mihomo_proxy_stream_v1") {
++		return invalid()
++	}
++	kind, ok := scalarText(f["kind"])
++	if !ok {
++		return invalid()
++	}
++	e := SourceEvent{Kind: kind}
++	var epoch, generation string
++	for _, item := range []struct {
++		key string
++		dst *string
++	}{{"source_instance_id", &e.SourceInstanceID}, {"source_epoch", &epoch}, {"event_id", &e.EventID}, {"config_generation", &generation}} {
++		v, ok := id(f[item.key])
++		if !ok {
++			return invalid()
++		}
++		*item.dst = v
++	}
++	e.SourceEpoch, e.ConfigGeneration = string(epoch), string(generation)
++	e.SourceSeq, ok = decimal(f["source_seq"], true, true)
++	if !ok {
++		return invalid()
++	}
++	s, ok := scalarText(f["observed_at"])
++	if !ok || !strings.HasSuffix(s, "Z") {
++		return invalid()
++	}
++	if _, err := parseTimestamp(s); err != nil {
++		return invalid()
++	}
++	if kind != "epoch_closed" {
++		e.FlowID, ok = id(f["flow_id"])
++		if !ok {
++			return invalid()
++		}
++		e.AttemptID, ok = id(f["attempt_id"])
++		if !ok {
++			return invalid()
++		}
++	}
++	if kind == string(BytesCheckpoint) || kind == string(Closed) {
++		counter, err := DecodeCounterEvent(raw)
++		if err != nil {
++			return invalid()
++		}
++		e.Counter = &counter
++	} else if !kindValid(f, kind) {
++		return invalid()
++	}
++	if kind == "route_decided" && literal(f, "phase", "connection_binding") {
++		e.Phase = "connection_binding"
++	}
++	if kind == "gap" {
++		e.GapReason, _ = scalarText(f["reason"])
++		e.GapDimensions, _ = stringsArray(f["dimensions"], true)
++	}
++	if kind == "epoch_closed" {
++		e.UnfinishedFlows, _ = decimal(f["unfinished_flows"], true, false)
++		e.EpochFinality, _ = scalarText(f["finality"])
++	}
++	e.Raw = append(json.RawMessage(nil), raw...)
++	return e, nil
++}
+diff --git a/component/hoopatrace/telemetrywire/state.go b/component/hoopatrace/telemetrywire/state.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/state.go
+@@ -0,0 +1,196 @@
++package telemetrywire
++
++import "errors"
++
++var ErrInvalidLifecycle = errors.New("invalid source epoch lifecycle")
++
++// MaxActiveFlows is the concurrent admission bound of this frozen P0 profile.
++// Terminal history remains available independently of the active-flow budget.
++const MaxActiveFlows = 32
++
++// Flow is a projection of confirmed v1 frames, not a network-end observation.
++type Flow struct {
++	SourceEpoch    string
++	FlowID         string
++	OpenedEventID  string
++	State          string
++	Reason         string
++	LastCheckpoint *CounterEvent
++	Final          *CounterEvent
++	TailBytes      *uint64
++	GapDimensions  []string
++}
++
++type Lifecycle struct {
++	SourceEpoch      string
++	SourceInstanceID string
++	ConfigGeneration string
++	LastSourceSeq    uint64
++	EpochFinality    string
++	Flows            []Flow
++}
++
++type flowState struct {
++	Flow
++	terminal, shutdown, gapSeen bool
++}
++
++// State is a single-writer, pure epoch validator. Its zero value is ready for
++// the first sequence-1 event. Only pass unmodified DecodeSourceEvent results.
++// Validate has no side effects; Commit revalidates and advances after the
++// caller's durable write succeeds. No duplicate event is accepted here: receipt
++// deduplication belongs to the receiver and precedes validation.
++type State struct {
++	epoch, instance, generation string
++	last                        uint64
++	finality                    string
++	flows                       map[string]flowState
++	order                       []string
++	events                      map[string]bool
++	attempts                    map[string]string
++	finished                    map[string]bool
++	active                      int
++}
++
++func (s *State) next(e SourceEvent) (flowState, error) {
++	bad := func() (flowState, error) { return flowState{}, ErrInvalidLifecycle }
++	if s.last == ^uint64(0) || e.SourceSeq != s.last+1 || s.finality != "" || s.events[e.EventID] {
++		return bad()
++	}
++	if s.last != 0 && (s.epoch != e.SourceEpoch || s.instance != e.SourceInstanceID || s.generation != e.ConfigGeneration) {
++		return bad()
++	}
++	if e.Kind == "epoch_closed" {
++		var unfinished uint64
++		for _, f := range s.flows {
++			if !f.terminal {
++				return bad()
++			}
++			if f.shutdown {
++				unfinished++
++			}
++		}
++		if unfinished != e.UnfinishedFlows {
++			return bad()
++		}
++		return flowState{}, nil
++	}
++	if owner, ok := s.attempts[e.AttemptID]; ok && owner != e.FlowID {
++		return bad()
++	}
++	f, exists := s.flows[e.FlowID]
++	if e.Kind == "opened" {
++		if exists || s.active >= MaxActiveFlows {
++			return bad()
++		}
++		return flowState{Flow: Flow{SourceEpoch: e.SourceEpoch, FlowID: e.FlowID, OpenedEventID: e.EventID, State: "pending", Reason: "source_final_missing", GapDimensions: []string{}}}, nil
++	}
++	if !exists || f.terminal && e.Kind != "gap" {
++		return bad()
++	}
++	switch e.Kind {
++	case "route_decided":
++		// v1 has no attempt-start event: decisions, bindings and checkpoints may
++		// observe an attempt before setup_finished. Multiple attempts are valid.
++	case "setup_finished":
++		if s.finished[e.AttemptID] {
++			return bad()
++		}
++	case "bytes_checkpoint", "closed":
++		if e.Counter == nil {
++			return bad()
++		}
++		previous := f.LastCheckpoint
++		if previous != nil && (e.Counter.UploadBytes < previous.UploadBytes || e.Counter.DownloadBytes < previous.DownloadBytes) {
++			return bad()
++		}
++		counter := *e.Counter
++		if e.Kind == "bytes_checkpoint" {
++			f.LastCheckpoint = &counter
++		} else {
++			zero := uint64(0)
++			f.Final, f.TailBytes, f.State, f.Reason, f.terminal = &counter, &zero, "closed", "", true
++		}
++	case "gap":
++		if f.gapSeen {
++			return bad()
++		}
++		for _, dim := range e.GapDimensions {
++			if dim == "bytes" && f.Final != nil {
++				return bad()
++			}
++		}
++		f.GapDimensions = append(append([]string{}, f.GapDimensions...), e.GapDimensions...)
++		if f.Final == nil {
++			f.State, f.Reason = "gap", e.GapReason
++		}
++		f.gapSeen, f.terminal = true, true
++		f.shutdown = e.GapReason == "source_shutdown_before_final"
++	default:
++		return bad()
++	}
++	return f, nil
++}
++
++func (s *State) Validate(e SourceEvent) error { _, err := s.next(e); return err }
++
++func (s *State) Commit(e SourceEvent) error {
++	f, err := s.next(e)
++	if err != nil {
++		return err
++	}
++	if s.events == nil {
++		s.events = map[string]bool{}
++		s.flows = map[string]flowState{}
++		s.attempts = map[string]string{}
++		s.finished = map[string]bool{}
++	}
++	if s.last == 0 {
++		s.epoch, s.instance, s.generation = e.SourceEpoch, e.SourceInstanceID, e.ConfigGeneration
++	}
++	s.last = e.SourceSeq
++	s.events[e.EventID] = true
++	if e.Kind == "epoch_closed" {
++		s.finality = e.EpochFinality
++		return nil
++	}
++	if e.Kind == "opened" {
++		s.order = append(s.order, e.FlowID)
++		s.active++
++	} else if previous := s.flows[e.FlowID]; !previous.terminal && f.terminal {
++		s.active--
++	}
++	s.flows[e.FlowID] = f
++	s.attempts[e.AttemptID] = e.FlowID
++	if e.Kind == "setup_finished" {
++		s.finished[e.AttemptID] = true
++	}
++	return nil
++}
++
++// Snapshot returns a detached, stable projection in original opened order.
++func (s *State) Snapshot() Lifecycle {
++	finality := s.finality
++	if finality == "" {
++		finality = "unverified"
++	}
++	out := Lifecycle{SourceEpoch: s.epoch, SourceInstanceID: s.instance, ConfigGeneration: s.generation, LastSourceSeq: s.last, EpochFinality: finality, Flows: []Flow{}}
++	for _, id := range s.order {
++		f := s.flows[id].Flow
++		f.GapDimensions = append([]string{}, f.GapDimensions...)
++		if f.LastCheckpoint != nil {
++			v := *f.LastCheckpoint
++			f.LastCheckpoint = &v
++		}
++		if f.Final != nil {
++			v := *f.Final
++			f.Final = &v
++		}
++		if f.TailBytes != nil {
++			v := *f.TailBytes
++			f.TailBytes = &v
++		}
++		out.Flows = append(out.Flows, f)
++	}
++	return out
++}
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -14,6 +14,8 @@
+ 	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	"hash"
+ 	"io"
+ 	"net"
+ 	"net/http"
+@@ -53,7 +55,14 @@
+ 	mu                    sync.Mutex
+ 	root                  *os.Root
+ 	lock, file            *os.File
+-	syncFrame             func() error // nil uses the real file Sync; test fault seam only.
++	syncFrame             func() error              // nil uses the real file Sync; test fault seam only.
++	writeFrame            func([]byte) (int, error) // nil uses file.Write; test fault seam only.
++	state                 telemetrywire.State
++	confirmedSize         int64
++	confirmedHasher       hash.Hash
++	manifest              telemetrywire.Manifest
++	replay                map[string]replayEpoch
++	reports               []telemetrywire.RecoveryReport
+ 	epoch, generation     string
+ 	seq                   uint64
+ 	used, reserved, limit int64
+@@ -197,7 +206,7 @@
+ 		root.Close()
+ 		return nil, ErrSource
+ 	}
+-	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret}
++	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret, replay: map[string]replayEpoch{}, confirmedHasher: sha256.New()}
+ 	ok = false
+ 	defer func() {
+ 		if !ok {
+@@ -213,59 +222,9 @@
+ 	if err != nil {
+ 		return nil, ErrSource
+ 	}
+-	epochs := 0
+-	for _, entry := range names {
+-		if strings.HasPrefix(entry.Name(), "epoch-") && strings.HasSuffix(entry.Name(), ".source.json") {
+-			f, e := privateFile(root, entry.Name(), os.O_RDONLY)
+-			if e != nil {
+-				return nil, e
+-			}
+-			info, e := f.Stat()
+-			f.Close()
+-			if e != nil || info.Size() > maxFrame {
+-				return nil, ErrSource
+-			}
+-			s.used += info.Size()
+-			if s.used > limit {
+-				return nil, ErrSource
+-			}
+-			continue
+-		}
+-		if !strings.HasPrefix(entry.Name(), "epoch-") || !strings.HasSuffix(entry.Name(), ".frames") {
+-			continue
+-		}
+-		epochs++
+-		if epochs > 32 {
+-			return nil, ErrSource
+-		}
+-		f, e := privateFile(root, entry.Name(), os.O_RDONLY)
+-		if e != nil {
+-			return nil, e
+-		}
+-		info, e := f.Stat()
+-		if e != nil {
+-			f.Close()
+-			return nil, ErrSource
+-		}
+-		s.used += info.Size()
+-		if s.used > limit {
+-			f.Close()
+-			return nil, ErrSource
+-		}
+-		expectedEpoch := "epoch:" + strings.TrimSuffix(strings.TrimPrefix(entry.Name(), "epoch-"), ".frames")
+-		_, e = readFrames(f, func(raw []byte) error {
+-			var m struct {
+-				SourceEpoch string `json:"source_epoch"`
+-			}
+-			if json.Unmarshal(raw, &m) != nil || m.SourceEpoch != expectedEpoch {
+-				return ErrSource
+-			}
+-			return nil
+-		})
+-		f.Close()
+-		if e != nil {
+-			return nil, e
+-		}
++	epochs, err := s.scanPrevious(names)
++	if err != nil {
++		return nil, err
+ 	}
+ 	// Capacity prevents new source epochs/flows, but never prevents replay of
+ 	// already durable records. This prototype deliberately performs no reclamation.
+@@ -304,6 +263,10 @@
+ 	s.epoch = "epoch:" + hex.EncodeToString(digest[:])
+ 	manifest, err := json.Marshal(map[string]any{"schema_version": 1, "source_epoch": s.epoch, "binary_path": exe, "binary_sha256": hex.EncodeToString(h.Sum(nil)), "boot_id": strings.TrimSpace(string(boot)), "pid": self.PID, "start_ticks": self.StartTicks, "nonce": nonce, "config_generation": generation, "max_source_bytes": limit, "max_frame_bytes": maxFrame, "max_active_flows": maxActive, "reclamation": "not_implemented_bounded_stop", "scope": "linux_amd64_tcp_same_uid_netns_ipv4_loopback"})
+ 	if err != nil || len(manifest) > maxFrame || s.used+int64(len(manifest))+flowBudget+epochBudget > limit {
++		return nil, ErrSource
++	}
++	s.manifest, err = telemetrywire.DecodeManifest(manifest)
++	if err != nil {
+ 		return nil, ErrSource
+ 	}
+ 	meta, err := privateFile(root, "epoch-"+hex.EncodeToString(digest[:])+".source.json", os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+@@ -486,6 +449,10 @@
+ 	if err != nil || len(raw) > maxFrame {
+ 		return ErrSource
+ 	}
++	event, err := telemetrywire.DecodeSourceEvent(raw)
++	if err != nil || s.state.Validate(event) != nil {
++		return ErrSource
++	}
+ 	frame := make([]byte, 4+len(raw)+sha256.Size)
+ 	binary.BigEndian.PutUint32(frame[:4], uint32(len(raw)))
+ 	copy(frame[4:], raw)
+@@ -504,7 +471,11 @@
+ 	if f != nil && kind != "closed" && kind != "gap" && f.reserved-int64(len(frame)) < terminalReserve {
+ 		return ErrSource
+ 	}
+-	n, err := s.file.Write(frame)
++	write := s.file.Write
++	if s.writeFrame != nil {
++		write = s.writeFrame
++	}
++	n, err := write(frame)
+ 	if err != nil || n != len(frame) {
+ 		s.poisoned = true
+ 		s.readOnly = true
+@@ -519,6 +490,13 @@
+ 		s.readOnly = true
+ 		return ErrSource
+ 	}
++	if s.state.Commit(event) != nil {
++		s.poisoned = true
++		s.readOnly = true
++		return ErrSource
++	}
++	s.confirmedSize += int64(len(frame))
++	s.confirmedHasher.Write(frame)
+ 	s.seq = seq
+ 	s.used += int64(len(frame))
+ 	if f != nil {
+@@ -535,42 +513,40 @@
+ 	return nil
+ }
+ func readFrames(r io.Reader, visit func([]byte) error) (uint64, error) {
+-	var seq uint64
++	life, err := scanFrames(r, visit)
++	return life.LastSourceSeq, err
++}
++func scanFrames(r io.Reader, visit func([]byte) error) (telemetrywire.Lifecycle, error) {
++	var state telemetrywire.State
++	bad := func() (telemetrywire.Lifecycle, error) { return state.Snapshot(), ErrSource }
+ 	for {
+ 		var head [4]byte
+-		_, err := io.ReadFull(r, head[:])
+-		if err == io.EOF {
+-			return seq, nil
++		n, err := io.ReadFull(r, head[:])
++		if err == io.EOF && n == 0 {
++			return state.Snapshot(), nil
+ 		}
+ 		if err != nil {
+-			return seq, ErrSource
+-		}
+-		n := binary.BigEndian.Uint32(head[:])
+-		if n == 0 || n > maxFrame {
+-			return seq, ErrSource
+-		}
+-		b := make([]byte, int(n)+sha256.Size)
+-		if _, err = io.ReadFull(r, b); err != nil {
+-			return seq, ErrSource
+-		}
+-		sum := sha256.Sum256(b[:n])
+-		if !bytes.Equal(sum[:], b[n:]) {
+-			return seq, ErrSource
+-		}
+-		var meta struct {
+-			SourceSeq string `json:"source_seq"`
+-		}
+-		if json.Unmarshal(b[:n], &meta) != nil {
+-			return seq, ErrSource
+-		}
+-		got, e := strconv.ParseUint(meta.SourceSeq, 10, 64)
+-		if e != nil || got != seq+1 || strconv.FormatUint(got, 10) != meta.SourceSeq {
+-			return seq, ErrSource
+-		}
+-		seq = got
++			return bad()
++		}
++		size := binary.BigEndian.Uint32(head[:])
++		if size == 0 || size > maxFrame {
++			return bad()
++		}
++		frame := make([]byte, int(size)+sha256.Size)
++		if _, err = io.ReadFull(r, frame); err != nil {
++			return bad()
++		}
++		sum := sha256.Sum256(frame[:size])
++		if !bytes.Equal(sum[:], frame[size:]) {
++			return bad()
++		}
++		event, err := telemetrywire.DecodeSourceEvent(frame[:size])
++		if err != nil || state.Commit(event) != nil {
++			return bad()
++		}
+ 		if visit != nil {
+-			if err = visit(b[:n]); err != nil {
+-				return seq, err
++			if err = visit(frame[:size]); err != nil {
++				return state.Snapshot(), err
+ 			}
+ 		}
+ 	}
+@@ -581,32 +557,15 @@
+ 	// segment is reclaimed by this bounded prototype, including after HTTP ACK.
+ 	positions := map[string]uint64{}
+ 	for {
+-		entries, err := s.root.Open(".")
++		snapshots, err := s.sendSnapshots()
+ 		if err != nil {
+ 			return
+ 		}
+-		names, err := entries.ReadDir(-1)
+-		entries.Close()
+-		if err != nil {
+-			return
+-		}
+-		for _, name := range names {
+-			if !strings.HasPrefix(name.Name(), "epoch-") || !strings.HasSuffix(name.Name(), ".frames") {
+-				continue
+-			}
+-			s.mu.Lock()
+-			f, e := privateFile(s.root, name.Name(), os.O_RDONLY)
+-			var rawFrames [][]byte
+-			if e == nil {
+-				_, e = readFrames(f, func(raw []byte) error { rawFrames = append(rawFrames, append([]byte(nil), raw...)); return nil })
+-				f.Close()
+-			}
+-			s.mu.Unlock()
+-			if e != nil {
+-				continue
+-			}
++		for _, snapshot := range snapshots {
++			rawFrames := snapshot.frames
++			name := snapshot.name
+ 			for i, raw := range rawFrames {
+-				if uint64(i+1) <= positions[name.Name()] {
++				if uint64(i+1) <= positions[name] {
+ 					continue
+ 				}
+ 				req, e := http.NewRequest(http.MethodPost, s.receiver, bytes.NewReader(raw))
+@@ -624,7 +583,7 @@
+ 				if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+ 					break
+ 				}
+-				positions[name.Name()] = uint64(i + 1)
++				positions[name] = uint64(i + 1)
+ 			}
+ 		}
+ 		select {
+diff --git a/component/hoopatrace/trace_linux_test.go b/component/hoopatrace/trace_linux_test.go
+--- a/component/hoopatrace/trace_linux_test.go
++++ b/component/hoopatrace/trace_linux_test.go
+@@ -44,7 +44,7 @@
+ }
+ func TestSourceCumulativeFinalAndStableReplay(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -102,7 +102,7 @@
+ 		t.Fatal("source epoch not bound")
+ 	}
+ 	old := s.epoch
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -134,7 +134,7 @@
+ 		other.close()
+ 		t.Fatal("second source writer accepted")
+ 	}
+-	f, err := s.begin(nil, nil, "", "127.0.0.1", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "", "127.0.0.1", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -160,15 +160,15 @@
+ func TestSourceBoundedAdmissionReservesFinal(t *testing.T) {
+ 	// Independent epoch marker headroom must not be borrowed by either flow.
+ 	s := testSource(t, 2*flowBudget+2*epochBudget)
+-	a, err := s.begin(nil, nil, "example.test", "", time.Now())
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	b, err := s.begin(nil, nil, "example.test", "", time.Now())
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++	a, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	b, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err = s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
+ 		t.Fatal("unreserved admission accepted")
+ 	}
+ 	a.Close()
+@@ -182,7 +182,7 @@
+ }
+ func TestSourceIntermediateBudgetCannotConsumeTerminal(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -217,13 +217,13 @@
+ }
+ func TestSourceOpenedPrewriteFailureReleasesAdmission(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	if _, err := s.begin(nil, nil, strings.Repeat("x", 9000), "", time.Now()); err == nil {
++	if _, err := s.begin(testPeer(), testEntry(), strings.Repeat("x", 9000), "", time.Now()); err == nil {
+ 		t.Fatal("oversized opened accepted")
+ 	}
+ 	if len(s.flows) != 0 || s.reserved != 0 || s.poisoned {
+ 		t.Fatal("prewrite error leaked flow/reservation")
+ 	}
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -239,7 +239,7 @@
+ 			t.Fatal(i, err)
+ 		}
+ 		if i == 0 {
+-			f, e := s.begin(nil, nil, "example.test", "", time.Now())
++			f, e := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 			if e != nil {
+ 				t.Fatal(e)
+ 			}
+@@ -256,7 +256,7 @@
+ 	if err := s.shutdown(); err != nil || s.epochClosed {
+ 		t.Fatal("replay-only source invented a current epoch", err)
+ 	}
+-	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++	if _, err = s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
+ 		t.Fatal("new flow admitted at epoch capacity")
+ 	}
+ 	f, err := os.Open(old)
+@@ -271,7 +271,7 @@
+ }
+ func TestSourceWriteFailurePoisonsAndKeepsCensus(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -280,7 +280,7 @@
+ 	if !s.poisoned {
+ 		t.Fatal("failed terminal did not poison source")
+ 	}
+-	if _, err = s.begin(nil, nil, "example.test", "", time.Now()); err == nil {
++	if _, err = s.begin(testPeer(), testEntry(), "example.test", "", time.Now()); err == nil {
+ 		t.Fatal("admitted after uncertain source")
+ 	}
+ 	rows := frames(t, s)
+@@ -290,7 +290,7 @@
+ }
+ func TestSourceUnknownReadyAndErrorDoNotHaveSuccessDuration(t *testing.T) {
+ 	s := testSource(t, defaultLimit)
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -357,7 +357,7 @@
+ 	s := testSource(t, defaultLimit)
+ 	s.receiver = server.URL + "/events"
+ 	s.secret = "test-secret"
+-	f, err := s.begin(nil, nil, "example.test", "", time.Now())
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}

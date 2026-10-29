@@ -1,0 +1,39 @@
+{
+  "api_version": "v1",
+  "request_id": "fixture-request",
+  "ok": true,
+  "data": {
+    "observed_at": "2026-10-27T00:00:00Z",
+    "revision": "fixture-revision",
+    "generation": null,
+    "desired_runtime": "stopped",
+    "committed_runtime": "stopped",
+    "service": "running",
+    "core": {
+      "state": "verified-stopped",
+      "reason": "empty_configuration",
+      "run_id": null,
+      "pid": null,
+      "start_ticks": null,
+      "boot_id": null
+    },
+    "collector": "unavailable",
+    "collector_reason": "not_implemented",
+    "pending": [],
+    "pending_total": 0,
+    "pending_truncated": false,
+    "degraded": false,
+    "degraded_reasons": [],
+    "restart_policy": "disabled",
+    "capabilities": [
+      "status.get",
+      "operation.get",
+      "runtime.start",
+      "runtime.stop",
+      "operation.recover",
+      "service.stop"
+    ]
+  },
+  "error": null,
+  "warnings": []
+}

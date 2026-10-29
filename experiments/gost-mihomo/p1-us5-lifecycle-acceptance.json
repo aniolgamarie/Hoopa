@@ -1,0 +1,100 @@
+{
+  "schema": "hoopa-us5-lifecycle-acceptance-v1",
+  "date": "2026-10-28",
+  "task": "T034",
+  "task_completed": true,
+  "required_scenario_coverage_complete": true,
+  "single_full_matrix_invocation": false,
+  "P1_complete": false,
+  "project_complete": false,
+  "platform": "Linux/amd64; fixed host and isolated KVM environments",
+  "required_cases": [
+    "F01",
+    "F02",
+    "F03",
+    "F04",
+    "F06",
+    "F10",
+    "F11",
+    "F12",
+    "F13",
+    "F14",
+    "F18",
+    "C01"
+  ],
+  "additional_cases": [
+    "control-only empty/live",
+    "durable-stop manager crash",
+    "prelaunch/postlaunch registration windows",
+    "no-authorized-restart"
+  ],
+  "accepted_batch_indexes": [
+    {
+      "path": "experiments/gost-mihomo/p1-product-harness-validation.json",
+      "bytes": 5745,
+      "sha256": "91af7c4a0a4d4e83f9e8044513f54fe7d75986189a5172bf72f1970309c30fd2"
+    },
+    {
+      "path": "experiments/gost-mihomo/p1-product-fault-increment-validation.json",
+      "bytes": 47668,
+      "sha256": "e51c498223ea4c2e9d4bf1907e27c6da65349a44780039ebe27ef12c15d88576"
+    },
+    {
+      "path": "experiments/gost-mihomo/p1-product-session-validation.json",
+      "bytes": 8809,
+      "sha256": "be86121d3d59550a4a1ad80d98157e40915a6af1f5476cbd0e12697509456d79"
+    },
+    {
+      "path": "experiments/gost-mihomo/p1-product-pid-reuse-validation.json",
+      "bytes": 2960,
+      "sha256": "0fb958eba0efe2022a71e20f92723b543b6627144883591d345454807a21380c"
+    }
+  ],
+  "final_source": {
+    "path": "private/p1-session-vm/final-stable-source-check.json",
+    "bytes": 451,
+    "sha256": "2c67b35093f95420c574cdb8e2af316fe995dc1da9e92c1225d38fe82aa1bffc"
+  },
+  "final_scoped_vet": {
+    "path": "private/p1-session-vm/final-vet/receipt.json",
+    "bytes": 470,
+    "sha256": "5ed0ef9bb13f73fe83e76bfd21c2b47b774a11d92150a6788923872840e37fef"
+  },
+  "reviews": [
+    {
+      "path": "private/p1-trace-preparation/us5-final-review/ledger-review.md",
+      "bytes": 4648,
+      "sha256": "ba45d1ad10c5520eddcc88da988dfddf006eb371581405ec271db22f63163cf5"
+    },
+    {
+      "path": "private/p1-trace-preparation/lifecycle-final-review/review.md",
+      "bytes": 4030,
+      "sha256": "b5d54d296eeca4479a2d18157ae7a7f9e497ef9923b5f1ddbf824838438ec67a"
+    },
+    {
+      "path": "private/p1-session-vm/ssh-final-review/independent-review.md",
+      "bytes": 6070,
+      "sha256": "90b50032838194826fe3acd773b4130ebe4327bb9503cda37fbc8cdfb0630758"
+    },
+    {
+      "path": "private/p1-session-vm/ssh-checker/check-final/receipt.json",
+      "bytes": 3343,
+      "sha256": "f4609c43cae344616159fcb82cd04eac09190cc9008cd2977690d8cc18ecf960"
+    }
+  ],
+  "source_boundaries": "Each batch retains its exact inputs; final201-input live source matches SSH02. F02 same sharedfactory uses201 inputs with only priorF04 assertion. S3 uses197 earlier inputs plus separately documented offline five-dimension noMutation comparison.",
+  "historical_failures_retained": true,
+  "limits": [
+    "All accepted results are bounded fixed-core TCP scenarios, not general platform certification.",
+    "S3, SSH/logout and kernel PID reuse VM runs are ordinary builds, not race VM runs.",
+    "SSH uses loopback PTY with no PAM; other logind/PAM/session policies remain unverified.",
+    "Empty evidence references/unknown counters remain unavailable, not zero or verified.",
+    "Fixture cleanup signals in fault/capacity scenes are separately recorded, not product Stop success.",
+    "Payload echo is traffic/route continuity evidence, not production ledger, billing or latency.",
+    "No macOS/Windows runtime, guest OS shutdown, complete power-loss or resource-budget acceptance."
+  ],
+  "next_tasks": [
+    "T035",
+    "T036"
+  ]
+}

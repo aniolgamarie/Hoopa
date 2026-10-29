@@ -1,0 +1,238 @@
+{
+  "schema": "hoopa-basic-control-core-candidate-v1",
+  "date": "2026-10-27",
+  "status": "accepted_finite_basic_gate_component_product_integration_pending",
+  "task_T026_complete": false,
+  "P0_released": false,
+  "P1_released": false,
+  "production_capability_issued": false,
+  "upstream": {
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041"
+  },
+  "binary": {
+    "path": "private/p1-core-control-candidate/build-stable/mihomo",
+    "bytes": 51458731,
+    "sha256": "2921c2468cf1e62099ac40a1872fbb58cc0048696a91c9dd920dc9790f27fabb"
+  },
+  "embedded_version": "1.10.0",
+  "version_is_not_upstream_revision": true,
+  "scope": {
+    "goos": "linux",
+    "goarch": "amd64",
+    "mode": "basic",
+    "identity": false,
+    "accounting": false,
+    "runtime_mutable_rules": false,
+    "product_adapter": false
+  },
+  "patches": [
+    {
+      "path": "experiments/mihomo-events/patches/0018-multi-entry-owners.patch",
+      "bytes": 46259,
+      "sha256": "ebb0fb898d9492c2aafa7b81c481e064a50416cf46ffe1a96054cf74f0a2f2cc"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0019-basic-control-v1.patch",
+      "bytes": 84674,
+      "sha256": "bf7663df3d763eb834593d10db9076da432f5b19e6c25cbffaf032066db726db"
+    }
+  ],
+  "protocol_sources": [
+    {
+      "path": "protocol/corecontrol/corecontrol_test.go",
+      "bytes": 21074,
+      "sha256": "88606526ae71592821a81b3c5f524ff04b72c0886593f4c648af42ad2661ece3"
+    },
+    {
+      "path": "protocol/corecontrol/decode.go",
+      "bytes": 4740,
+      "sha256": "7513b9019f4747d92654f186559ed5d300175b7da52f436143571bf51154cfa5"
+    },
+    {
+      "path": "protocol/corecontrol/types.go",
+      "bytes": 10617,
+      "sha256": "fc8037f39f112ffd8d9c7c92fda432bbae128876aa204ceb2f2bd6be7c5844a8"
+    }
+  ],
+  "changed_source_files": [
+    "component/corecontrol/corecontrol_test.go",
+    "component/corecontrol/decode.go",
+    "component/corecontrol/types.go",
+    "hoopa_control_v1_linux.go",
+    "hoopa_control_v1_test.go",
+    "hoopa_guard_linux.go",
+    "main.go"
+  ],
+  "reproduction": {
+    "fresh_applied_from": "private/t140-program-rules/reviewed-source",
+    "files_match_bytes_and_modes": 1012,
+    "fresh_binary_matches_tested": true,
+    "downloads": 0
+  },
+  "checks": {
+    "wire_race": {
+      "top_level": 7,
+      "subtest_nodes": 159,
+      "failed": 0,
+      "skipped": 0
+    },
+    "core_focused_race": {
+      "top_level": 40,
+      "subtest_nodes": 392,
+      "passed_nodes": 430,
+      "failed_nodes": 0,
+      "skipped_nodes": 2,
+      "new_top_level": 7,
+      "new_subtest_nodes": 54
+    },
+    "core_vet_exit_code": 0,
+    "native_core_runs": 1,
+    "native_business_flows": 2,
+    "native_VM_samples": 0,
+    "partial_window_successful_handshakes": 0,
+    "partial_window_observed": false
+  },
+  "gate_scope": {
+    "G04": "basic activation/drain/own-FD failure boundaries only; manager recovery pending",
+    "G05": "bounded static snapshot and two local groups, not arbitrary subscription/config support",
+    "G07": "bounded protected authentication/rejection paths; actual manager connected-owner integration pending",
+    "G01_G02_G03": "legacy identity/source/quality algorithms unchanged; no transfer of historical pass to this binary; basic mode does not enable these capabilities"
+  },
+  "limitations": [
+    "No product launcher/persistent registration then activation integration yet",
+    "No actual manager crash/adoption test here",
+    "Partial Listen handshake window not sampled",
+    "Two inherited socket opt-ins skipped, not passed",
+    "Native smoke does not retain per-request API wire bytes",
+    "No independent BPF link inventory, no VM or non-Linux support claim",
+    "Fixed core binary size is not Hoopa manager performance acceptance"
+  ],
+  "references": [
+    {
+      "path": "private/p1-core-control-candidate/base-copy.json",
+      "bytes": 361,
+      "sha256": "fc98c399622d9cc0e575f07906061d0a2f25c9f673c1b9bc9a5db96bb5a0d195"
+    },
+    {
+      "path": "private/p1-core-control-candidate/protocol-copy-v2.json",
+      "bytes": 782,
+      "sha256": "f4ad0cdea26462018795a884668d1e0244d8e5d07c70f1009658c15f7c219f48"
+    },
+    {
+      "path": "private/p1-core-control-candidate/source-manifest-v1.json",
+      "bytes": 189540,
+      "sha256": "d4ca04745735ac1fbce71f076932590212812a0f56f52295cb92039ab763f2a3"
+    },
+    {
+      "path": "private/p1-core-control-candidate/patch-apply-result.json",
+      "bytes": 1239,
+      "sha256": "df7e0de58f04cf7cc5f9a82e633bf6c056d59f053d0cdde2cca96e9b74023cd6"
+    },
+    {
+      "path": "private/p1-core-control-candidate/build-stable/command.json",
+      "bytes": 678,
+      "sha256": "0a05c4a2387b31190e7cd4d24edb39d83d9f460dc18565d5778953d3f6441cc0"
+    },
+    {
+      "path": "private/p1-core-control-candidate/build-stable/result.json",
+      "bytes": 262,
+      "sha256": "a92ec50e9e52c71699ccdf84671913672115fc011a69bc06368fe1b849ff9701"
+    },
+    {
+      "path": "private/p1-core-control-candidate/fresh-build/command.json",
+      "bytes": 685,
+      "sha256": "9c70ebb2f580d9f2d7be0f8a9485b432adcf017cf21914831fa3961e95fa057e"
+    },
+    {
+      "path": "private/p1-core-control-candidate/fresh-build/result.json",
+      "bytes": 260,
+      "sha256": "8c0528a6d6ffe13f3c298f2b419341a723439eb22410b7c81eeb1a70221d9a9d"
+    },
+    {
+      "path": "private/p1-core-control-candidate/test-support/receipt.json",
+      "bytes": 212427,
+      "sha256": "9b5b1a3dddad2d2e69d99a183f3b4cb7c0fcc7b42bd62716e3ee6771e1926b38"
+    },
+    {
+      "path": "private/p1-core-control-candidate/test-support/freeze.json",
+      "bytes": 211894,
+      "sha256": "ddb60a874b4b3757d07e4c542bb48c6d5911f7ca00b45d264420691e6653bd33"
+    },
+    {
+      "path": "private/p1-core-control-candidate/test-support/census.json",
+      "bytes": 9655,
+      "sha256": "1d7fdc785a6fe3c9b7fb16e2b4b0bcf421067b25ac1bb5d0682b7d01ca4769d9"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native_basic.py",
+      "bytes": 12962,
+      "sha256": "5d15b5d53d7f7db49d781c7c25810b09521ee3a3e9ac81888a03cc3241faac55"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native-basic-01/result.json",
+      "bytes": 936,
+      "sha256": "fa0c0b043cbf0c9440bb716f47f3297f18e056e4b77097099bae0b366a456a78"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native-basic-01/config.json",
+      "bytes": 954,
+      "sha256": "f195a52cdb4bc17c9078cda852c8bb737aca9876275304535cb392207544292f"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native-basic-01/expected-snapshot.json",
+      "bytes": 1669,
+      "sha256": "756b8f9d72f13edcf637c9e890173bde6e6b324621b8868639f0481c3a3d6ad0"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native-basic-01/observed-snapshot.json",
+      "bytes": 1669,
+      "sha256": "756b8f9d72f13edcf637c9e890173bde6e6b324621b8868639f0481c3a3d6ad0"
+    },
+    {
+      "path": "private/p1-core-control-candidate/native-basic-01/final-status.json",
+      "bytes": 794,
+      "sha256": "d96e70435ad5fa00b55f2a2bb8f4ea1fc35210a59b1aa333ae9472014f82b4a5"
+    },
+    {
+      "path": "private/p1-core-control-protocol/revision-02-state-history/receipt.json",
+      "bytes": 3999,
+      "sha256": "04dedc2a7b1b9cd04bd614ae6a48e71ff2144f995af77eaf7321d729522818db"
+    },
+    {
+      "path": "private/p1-core-control-protocol/revision-02-state-history/freeze.json",
+      "bytes": 1233,
+      "sha256": "e48cbdff8bee27218daf66bb9357a516a70e8679da747bcfbaeeff698e55374d"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/candidate-final-review.md",
+      "bytes": 4026,
+      "sha256": "8024f8d9f621daa1338c313cfba4c53d5ab96e6be05e10e6ea5dfe4e5d3d8e33"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/candidate-final-review.json",
+      "bytes": 6868,
+      "sha256": "d5200292655257eaa7983e39580a47e42f96462855a55529109d3d3d5f7e414b"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/native-basic-review.md",
+      "bytes": 4418,
+      "sha256": "13e72cfc432b541cde2124c941ea2871d7608a0a8ab9d20e6f55a62b5962e6d5"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/native-basic-review.json",
+      "bytes": 4475,
+      "sha256": "33251e87b6e5824804a4a3c0e71935803f94a0bb3aa05156b26a5d19a3a11c5d"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/protocol-review.md",
+      "bytes": 5510,
+      "sha256": "1c8375c10fb2d0ec02cce5d7fa67bac4a058053ca256756aac720e3505c6ae66"
+    },
+    {
+      "path": "private/p1-core-gate-preparation/protocol-review.json",
+      "bytes": 7937,
+      "sha256": "447d7a354d7f412ac8ca7f01c2acbfd6889911f39871d06ade75071a23334ca6"
+    }
+  ]
+}

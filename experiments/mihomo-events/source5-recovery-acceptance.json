@@ -1,0 +1,155 @@
+{
+  "schema": "hoopa-source5-recovery-acceptance-v1",
+  "scope": "restricted_source5_recovery",
+  "core_sha256": "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967",
+  "cases": {
+    "held-opened": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    },
+    "offline-drop-closed": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    },
+    "offline-reject-closed": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    },
+    "combined-reopen": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    },
+    "source-write-enospc": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    },
+    "logical-quota": {
+      "registered": 3,
+      "executed": 3,
+      "passed": 3
+    },
+    "active-term": {
+      "registered": 1,
+      "executed": 1,
+      "passed": 1
+    },
+    "buffer-conflict": {
+      "registered": 2,
+      "executed": 2,
+      "passed": 2
+    }
+  },
+  "vms": 8,
+  "slots": 16,
+  "task_T128_complete": true,
+  "P0_released": false,
+  "P1_released": false,
+  "identity_acceptance": {
+    "path": "experiments/mihomo-events/source5-identity-acceptance.json",
+    "bytes": 3257,
+    "sha256": "b1c7fc20eab3f7bcc9023de30704501c425a755195baedf275e838cee20fe98f"
+  },
+  "matrix_registration": {
+    "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/matrix-registration.json",
+    "bytes": 12981,
+    "sha256": "9782a54605316e1c8cdd32766bbc3f0bb4e7e1bbe01cf20f82f439d15125e52d"
+  },
+  "report": {
+    "path": "experiments/mihomo-events/source5-recovery-formal-validation.json",
+    "bytes": 105682,
+    "sha256": "f5c0c5e1b0448e083d285fe4450adae5fb6ece77884d46cdc4e2a725aff53b08"
+  },
+  "actual_overlays": {
+    "combined-reopen": {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/overlays/combined-reopen/validation.json",
+      "bytes": 18926,
+      "sha256": "b0190aa2d233179794c95690ed6b93160173bb38e8c9a176b450daae97d4032f"
+    },
+    "source-write-enospc": {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/overlays/source-write-enospc/validation.json",
+      "bytes": 5619,
+      "sha256": "c6326e5b73159630d04ff3a158c9952b02f3d2aaa4d976d5e5731d709254965b"
+    }
+  },
+  "fixed_source_checks": {
+    "path": "experiments/mihomo-events/source5-fault-boundaries-preparation-validation.json",
+    "bytes": 4548,
+    "sha256": "1553e51dbd7433b2865a6da909066393f59c07f9713b92874bd72f5af451aa93"
+  },
+  "limits": [
+    "仅固定0017、已登记Linux amd64受控VM拓扑；不是生产或跨平台支持声明。",
+    "原始连接归connect_initiator_v1；共享FD/转交不改写历史，不推断逐字节writer。",
+    "本矩阵验收来源spool与receiver journal；source_seq、receipt_seq、delivery_index分开；ACK不证明SQL提交。",
+    "重启旧来源只读仍pending；只有实际输入私有副本的固定源码独占全扫描证明派生gap，未伪造原事件。",
+    "实际ENOSPC留下92B partial尾，三次私有重开拒绝且无修复；实际complete尾成功恢复未观察。",
+    "活动TERM实际closed12/12、complete/unfinished0；另一shutdown gap分支未在VM观察。",
+    "退出marker只按本次实际收取记录，不能推出通用退出交付保证。",
+    "buffer实际客户端预读为空；应用send调用不当作TCP包边界，强制预读仅由固定源码pipe测试覆盖。",
+    "整数大值、窗口耗尽、partial/full Write和Sync不确定、lazy未知外层及强制预读单列合成/注入检查，不增加正式VM槽。",
+    "SQL、生产Gap持久化/GC、质量线路正式T129、SSH/休眠和平台/性能按后续任务验收。",
+    "前两个transport driver返回2代表单case通过但family尚有待执行槽，最终family6/6；保留原退出码。",
+    "首root result的动态summary引用已用执行时原字节快照保留；旧result不改写、不重跑或重新评分。"
+  ],
+  "root_decision": {
+    "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/acceptance-decision.json",
+    "bytes": 3858,
+    "sha256": "66f1b4b239b695e42190da07b22b5dac8939454e0a469bf5d424ca7db3d3e4fb"
+  },
+  "historical_failures": [
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/docs/validation/native-candidate.summary.json",
+      "bytes": 6381,
+      "sha256": "a903bd0f0455be761e8d9a6a8f934b22876bbb0479f6b1038c2e6e6ab9394008"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/experiments/mihomo-events/source5-identity-first-formal-validation.json",
+      "bytes": 80898,
+      "sha256": "b6a68df332016f7befe47580db3155c8403808675dc718300028f87dee30de82"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-preparation/transport-attempt1-decision.json",
+      "bytes": 1975,
+      "sha256": "98e3b1d0c3087e9126eecf56bdf7073ea2727d23bfcf9638a06c5ea489fd06b3"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-preparation/source5-restart-attempt1-decision.json",
+      "bytes": 1797,
+      "sha256": "d61b69541ff20e0215164806f1acbc1429abf3b0af2510d3c0fff4dbe8e93fec"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-preparation/core-attach-attempt1-decision.json",
+      "bytes": 3045,
+      "sha256": "b3bcdc0e7eb3e1adc538e46f74a576035956611129f12816b3a48c42e7714e93"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-preparation/core-enospc-preboot-blocker-decision.json",
+      "bytes": 1673,
+      "sha256": "b84a7e5660dacc204156ed2fd4372fd27365141699d86545cfefcc36034395bb"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-preparation/core-enospc-packaging-failure-decision.json",
+      "bytes": 2734,
+      "sha256": "f7f657a04a85e931f3466bc5610168c984a3bdc68150eb31d52db489860206f9"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/overlay-registration-attempt1-failure.json",
+      "bytes": 429,
+      "sha256": "f780ee6629a1b76833fe2f6e3300ddf632c6ea3e500d8275913190f4fa66d1cf"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-formal-control/overlays/combined-reopen/preflight-attempt1.json",
+      "bytes": 410,
+      "sha256": "ed005241326255a2ec1d2e8e6f06f150373674f2f2aacdc37b22baea7ab0795d"
+    },
+    {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t128-source5-formal-vm/preparation-failure-ledger.json",
+      "bytes": 749,
+      "sha256": "d11c7262301e92be4bc98c135b5452aae88c395929c9cedd197163a3b9bf072b"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schema": "hoopa-source5-event-source-decision-v1",
+  "date": "2026-10-26",
+  "status": "restricted_event_source_feasibility_accepted",
+  "decider": "root",
+  "task_T017_complete": true,
+  "task_T018_complete": false,
+  "P0_released": false,
+  "P1_released": false,
+  "new_runtime_samples": 0,
+  "old_core_sha256": "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967",
+  "current_core_sha256": "5e934bdc28dd07e7b7f8cf372d1d4f7a553a3aa3bd835de24f982dfed011a388",
+  "current_core": {
+    "path": "private/t016-multi-entry-candidate/mihomo-build-stable",
+    "bytes": 51336161,
+    "sha256": "5e934bdc28dd07e7b7f8cf372d1d4f7a553a3aa3bd835de24f982dfed011a388"
+  },
+  "evidence_policy": "Old complete-binary runtime results remain on their original hash. Unchanged source algorithms retain their qualified evidence, combined with current affected-path tests and current accepted integration; no old matrix is relabelled or rerun.",
+  "findings": {
+    "identity": "connect_initiator_v1: original TCP connector PID/start instance and executable snapshot; FD transfer does not rewrite history",
+    "source_recovery": "Same-source epochs/sequences/flow IDs and integer terminals, original replay, reopen and derived pending/gap evidence; receipt ACK does not imply source completeness or SQL commit",
+    "quality": "Same-flow/attempt monotonic setup to protocol-ready and actual connection route; unknown/injected/real cases remain separate",
+    "routing": "Immutable multi-entry owner binding and source selection, ordered tri-state rules, native missing-proof removal/restoration and shared sticky refusal accepted in finite current integration",
+    "accounting_cost": "Core file sizes are 51339954 and 51336161 bytes; two-owner inventories show 42 typed FDs. Idle CPU/RSS, incremental memory and production scale unmeasured and assigned T020."
+  },
+  "limits": [
+    "Linux amd64, initial namespaces, IPv4 loopback, dedicated cgroups and trusted isolated guest; no default privileged installation or production support declaration.",
+    "Source recording_status unverified/writer_end null in original readers remain unchanged; actual source/recovery matrix and derived gaps are separate evidence.",
+    "Exact NAME/PATH and finite AND profile only; instance/UID/regex and other unsupported process conditions must be rejected by capability checks.",
+    "Four owners are synthetic only, two entries actually exercised; no UDP/QUIC, arbitrary platforms, source GC, SQL, seamless replacement or performance guarantee.",
+    "Stock Mihomo and compatibility GOST do not inherit the experimental full-source capability. Historical recorder rejection and failed runs remain.",
+    "T018 separately reviews management/access-protection lineage before permitting DB-free P1 implementation."
+  ],
+  "references": [
+    {
+      "path": "private/t017-final-source-index-preparation/draft-index.json",
+      "bytes": 1573330,
+      "sha256": "aa7e90a54e4b766f9025dc78e85cb87379611c04ed90d6211696f16d1b751203"
+    },
+    {
+      "path": "private/t017-final-source-index-preparation/draft-index.md",
+      "bytes": 4580,
+      "sha256": "338cfcdbe5118385c2b199cb3eaecc4f9160d14ea91907c9ddf436cf0a815828"
+    },
+    {
+      "path": "private/t017-final-source-index-preparation/receipt.json",
+      "bytes": 1985,
+      "sha256": "3dfeb3b43d664347d23577435153504bf858fd4838023b277f137bcc0149e899"
+    },
+    {
+      "path": "private/t016-multi-entry-preparation/root-t017-delta-review-scope.md",
+      "bytes": 5176,
+      "sha256": "381bcd6efc5f6d342673a2d3a6e502c6fedfe8341be7df34dcc7e9af1c767b76"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-identity-acceptance.json",
+      "bytes": 3257,
+      "sha256": "b1c7fc20eab3f7bcc9023de30704501c425a755195baedf275e838cee20fe98f"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-identity-gate-validation.json",
+      "bytes": 2750,
+      "sha256": "2cd5695bf4e957db773fdab603387039b3def3ad01a2f01397ae3e6ef1acc4ae"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-recovery-acceptance.json",
+      "bytes": 6605,
+      "sha256": "b6838b6ad670d3aa6eb151264778786bbeb31a400446c0cb59a5ec2b0ae89667"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-recovery-gate-validation.json",
+      "bytes": 2565,
+      "sha256": "dcd85735270bac80f76e046a9d1e85b436154cbfe527806a18e1f2dc87cf0558"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-quality-acceptance.json",
+      "bytes": 5531,
+      "sha256": "ce1b0afdfe5622bae78b47fe0889c1547040a06efdb19de18d6f5344ead4464c"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-quality-gate-validation.json",
+      "bytes": 6229,
+      "sha256": "e582d15a83b68fae81ac6d37f430d8aaf89b6ad4f922243c0d18907d89059363"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-routing-acceptance.json",
+      "bytes": 130439,
+      "sha256": "acb2c953a71d63b02ac1c11ac0e94008ebfcef7bee065d28b6b9be4f09274a24"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-routing-gate-validation.json",
+      "bytes": 3238,
+      "sha256": "2773b0ce8047dd8cc983568c0b145c776119ffeddfa6f7c0cc4ef4ad208609c7"
+    }
+  ]
+}

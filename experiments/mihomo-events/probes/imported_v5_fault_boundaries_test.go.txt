@@ -1,0 +1,213 @@
+//go:build linux && amd64
+
+// Test-only overlay on fixed 0017. All identities and syscall errors here are
+// synthetic/injected. This does not prove VM crashes or actual core ENOSPC.
+package hoopatrace
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
+)
+
+func source5BoundaryFlow(t *testing.T) (*source, *Flow, *Attempt) {
+	t.Helper()
+	t.Setenv("HOOPA_TRACE_PROFILE", "5")
+	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "")
+	s := testSource(t, defaultLimit)
+	t.Cleanup(s.close)
+	proof := fieldIdentity(t)
+	f, err := s.begin(testPeer(), testEntry(), "synthetic.test", "", time.Now(), &proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Decide("MATCH", "", "DIRECT"); err != nil {
+		t.Fatal(err)
+	}
+	a := f.NewAttempt()
+	conn := qualityAttach(t, a, "synthetic:source5-boundary", true)
+	a.FinishConnection(nil, "", conn, false)
+	a.Bind("synthetic:tracker")
+	return s, f, a
+}
+
+func source5BoundaryRead(t *testing.T, s *source) telemetrywire.RecoveryReport {
+	t.Helper()
+	raw, err := os.ReadFile(s.file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	life, err := boundFrames(raw, s.manifest, func(body []byte) error {
+		event, err := telemetrywire.DecodeSourceEvent(body)
+		if err != nil || event.SchemaVersion != 5 {
+			return ErrSource
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash := sha256.Sum256(raw)
+	report, err := telemetrywire.ProjectRecovery(s.manifest, life, hex.EncodeToString(hash[:]), nil)
+	if err != nil || report.WriterEnd != nil || len(report.Flows) != 1 {
+		t.Fatal("readonly source5 report", err)
+	}
+	return report
+}
+
+func TestSource5BoundaryQuotaKeepsExactFinal(t *testing.T) {
+	t.Log("SYNTHETIC ONLY: direct Checkpoint calls exhaust per-flow event quota; no actual disk-full or periodic runtime claim")
+	s, f, a := source5BoundaryFlow(t)
+	a.AddUpload(9007199254740993)
+	a.AddDownload(17)
+	checkpoints := 0
+	for ; checkpoints < 1000; checkpoints++ {
+		seq, confirmed, used := s.seq, s.confirmedSize, s.used
+		if err := f.Checkpoint(); err != nil {
+			if !errors.Is(err, ErrSource) || s.poisoned || s.seq != seq || s.confirmedSize != confirmed || s.used != used {
+				t.Fatal("quota failure changed confirmed prefix or poisoned source", err)
+			}
+			break
+		}
+	}
+	if checkpoints == 0 || checkpoints == 1000 || !f.windowGap {
+		t.Fatal("bounded checkpoint exhaustion missing", checkpoints)
+	}
+	a.AddUpload(5)
+	f.Close()
+	if err := s.shutdown(); err != nil {
+		t.Fatal("quota lost terminal reserves", err)
+	}
+	report := source5BoundaryRead(t, s)
+	flow := report.Flows[0]
+	if flow.State != "closed" || flow.Final == nil || flow.Final.UploadBytes != 9007199254740998 || flow.Final.DownloadBytes != 17 || flow.TailBytes == nil || *flow.TailBytes != 0 || !reflect.DeepEqual(flow.GapDimensions, []string{"window_checkpoints"}) {
+		t.Fatal("known exact final became missing/rounded or window gap lost", flow)
+	}
+	rows := frames(t, s)
+	closed, gap, markers := 0, 0, 0
+	for _, body := range rows {
+		event, err := telemetrywire.DecodeSourceEvent(body)
+		if err != nil || event.SchemaVersion != 5 {
+			t.Fatal(err)
+		}
+		switch event.Kind {
+		case "closed":
+			closed++
+		case "gap":
+			gap++
+		case "epoch_closed":
+			markers++
+		}
+	}
+	if closed != 1 || gap != 1 || markers != 1 || s.reserved != 0 || s.epochReserved != 0 {
+		t.Fatal("terminal/gap/marker census or reservation leak")
+	}
+	t.Logf("synthetic_checkpoint_count=%d; exact_upload=9007199254740998; gap_dimension=window_checkpoints", checkpoints)
+}
+
+func TestSource5BoundaryUncertainAppend(t *testing.T) {
+	for _, fault := range []string{"zero_write_enospc", "partial_write_enospc", "full_write_sync_uncertain"} {
+		t.Run(fault, func(t *testing.T) {
+			t.Log("INJECTED ONLY: fixed source writeFrame/syncFrame seams; not an actual kernel ENOSPC observation")
+			s, f, a := source5BoundaryFlow(t)
+			a.AddUpload(12)
+			a.AddDownload(12)
+			if err := f.Checkpoint(); err != nil {
+				t.Fatal(err)
+			}
+			name, dir := filepath.Base(s.file.Name()), s.root.Name()
+			before := frames(t, s)
+			seq, confirmed := s.seq, s.confirmedSize
+			a.AddUpload(5)
+			switch fault {
+			case "zero_write_enospc":
+				s.writeFrame = func([]byte) (int, error) { return 0, syscall.ENOSPC }
+			case "partial_write_enospc":
+				s.writeFrame = func(raw []byte) (int, error) {
+					n, err := s.file.Write(raw[:len(raw)/2])
+					if err != nil {
+						return n, err
+					}
+					return n, syscall.ENOSPC
+				}
+			case "full_write_sync_uncertain":
+				s.syncFrame = func() error {
+					if err := s.file.Sync(); err != nil {
+						return err
+					}
+					return io.ErrUnexpectedEOF
+				}
+			}
+			if err := f.Checkpoint(); !errors.Is(err, ErrSource) || !s.poisoned || !s.readOnly || s.seq != seq || s.confirmedSize != confirmed || s.state.Snapshot().LastSourceSeq != seq {
+				t.Fatal("uncertain append advanced confirmation", err)
+			}
+			if !reflect.DeepEqual(snapshotsFor(t, s, name), before) {
+				t.Fatal("sender exposed unconfirmed suffix or lost confirmed raw bytes")
+			}
+			proof := fieldIdentity(t)
+			if next, err := s.begin(testPeer(), testEntry(), "new.test", "", time.Now(), &proof); err == nil || next != nil {
+				t.Fatal("new source5 flow admitted after poison")
+			}
+			if err := s.shutdown(); !errors.Is(err, ErrSource) {
+				t.Fatal("poisoned source claimed complete shutdown", err)
+			}
+			raw, err := os.ReadFile(s.file.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.close()
+			next, err := openSource(dir, "source5-boundary-reopen", "", "", defaultLimit)
+			if fault == "partial_write_enospc" {
+				if err == nil {
+					next.close()
+					t.Fatal("partial source tail accepted")
+				}
+			} else {
+				if err != nil {
+					t.Fatal("complete original source rejected", err)
+				}
+				defer next.close()
+				wanted, upload := len(before), uint64(12)
+				if fault == "full_write_sync_uncertain" {
+					wanted++
+					upload = 17
+				}
+				replay := snapshotsFor(t, next, name)
+				if len(replay) != wanted || !reflect.DeepEqual(replay[:len(before)], before) {
+					t.Fatal("new full scan changed original confirmed bytes")
+				}
+				found := false
+				for _, report := range next.recoveryReports() {
+					if report.SourceEpoch != s.epoch {
+						continue
+					}
+					found = true
+					if report.WriterEnd == nil || report.WriterEnd.Kind != "exclusive_writer_full_scan" || len(report.Flows) != 1 {
+						t.Fatal("exclusive writer recovery proof missing")
+					}
+					flow := report.Flows[0]
+					if flow.State != "gap" || flow.Reason != "epoch_ended_without_final" || flow.Final != nil || flow.TailBytes != nil || flow.LastCheckpoint == nil || flow.LastCheckpoint.UploadBytes != upload || flow.LastCheckpoint.DownloadBytes != 12 {
+						t.Fatal("new scan invented final or lost trusted checkpoint", flow)
+					}
+				}
+				if !found {
+					t.Fatal("original epoch lost on reopen")
+				}
+			}
+			after, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || !bytes.Equal(after, raw) {
+				t.Fatal("recovery changed original source, including partial tail", err)
+			}
+		})
+	}
+}

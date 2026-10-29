@@ -1,0 +1,285 @@
+{
+  "schema_version": 1,
+  "scope": "T135_protected_configuration_admission_authentication_generation_and_drain_local_not_T137",
+  "status": "built_from_clean_fixed_upstream_plus_001_to_007; local_T135_passed; formal_gates_not_passed",
+  "date": "2026-10-23",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "pristine_checkout": "/tmp/hoopa-mihomo-v1.19.26-audit/source",
+    "status_short": "",
+    "provenance": {
+      "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/upstream-provenance.json",
+      "bytes": 433,
+      "sha256": "182ae95264a569a4e79d07b007c7081ca34010115589040b8a992c57a7bb02db"
+    },
+    "source_lock_sha256": "d074c0c12f09a9e5e0780061f5bc20bb0b9ecaa59bff748f5555ce1886af37e7"
+  },
+  "source": {
+    "reviewed_target": "/tmp/hoopa-t135-dl7j479q/source",
+    "fresh_applied": "/tmp/hoopa-t135-artifact-tg95ee9o/source",
+    "tree_sha256": "3e546ee209c0049e14c6f7cb6938c4b7586307d76ca66e480af331b0d8147656",
+    "tree_sha256_algorithm": "SHA256 of sorted relative path entries encoded as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; root/.git excluded",
+    "full_file_contents_paths_symlinks_and_modes_equal": true,
+    "apply_evidence": {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/apply-evidence.json",
+      "bytes": 6300,
+      "sha256": "13affb5c9b5362c33ecbd5a9c6efef869be30f334b0b8e1774416c87ca567da2"
+    }
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    }
+  ],
+  "changed_files_since_006": [
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopaguard/profile/profile.go",
+      "bytes": 11262,
+      "sha256": "3b6ff718046dc8d3ded6fa8a87ef3cf5934d9aab90b8efd4739c6d1d82b475a5"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopaguard/socket_linux.go",
+      "bytes": 1243,
+      "sha256": "cdf6938fd926073bc5ee8ab227b54714ea3718300d3259ab4d4bac233d01e076"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopaguard/socket_linux_test.go",
+      "bytes": 1634,
+      "sha256": "06b25e79de3b1bb51dec64177c4da14a4961cd3069731e1e6f70328a43560cde"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopatrace/guard_linux.go",
+      "bytes": 1231,
+      "sha256": "650a3d72af1b61b2a6341fb4b8f2c5e71eca0af23b2dd08934924109a6772425"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopatrace/guard_linux_test.go",
+      "bytes": 832,
+      "sha256": "4d7ca0db3b43c09ef836e2c34f1bd5ec4d1dbeea1d0dcb32e52b535e58628b53"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/component/hoopatrace/trace_linux.go",
+      "bytes": 23094,
+      "sha256": "f751d0f693e8bde5180777ce4af0698620926e93e67d3d4f1f5b3bd5e5edf00c"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/constant/hoopa_guard.go",
+      "bytes": 196,
+      "sha256": "cfb33afc6517877e6fdf21d90e380a80e685bd1bb85aca52559ffc76718b0391"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/hoopa_guard_linux.go",
+      "bytes": 10329,
+      "sha256": "3ba123bf870ecd6737fa73c0087c6d10c17a7ca251e518eb02605af2c52e8cac"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/listener/http/proxy.go",
+      "bytes": 4954,
+      "sha256": "30b197991eec4f3278bfddc193f2f0b5cca2d4e5601cc988061e742a6b3380cf"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/listener/mixed/hoopa_handler.go",
+      "bytes": 482,
+      "sha256": "32bcd440f8974e15fa162c62a247c63152e8799f211a53d8f2e74ab51a2f44f4"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/listener/socks/tcp.go",
+      "bytes": 5095,
+      "sha256": "2d888a34b6fc3fdb93f3916c7e019e32cd20593c85ff765aabcc091b736f539b"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/main.go",
+      "bytes": 6671,
+      "sha256": "d0e96291ab2273a21dd1a1a43944bb77d28c6d3e194e086847082bc364d5d3a8"
+    },
+    {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/transport/socks5/socks5.go",
+      "bytes": 12627,
+      "sha256": "ba60d13d498b7872e00632a6284336a76a95cb87fd7c72c770020ab4a3b0ca6e"
+    }
+  ],
+  "shared_wire_production_files": [
+    {
+      "hoopa_path": "protocol/telemetrywire/counter_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/counter_event.go",
+      "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/manifest.go",
+      "core_path": "component/hoopatrace/telemetrywire/manifest.go",
+      "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/quality_state.go",
+      "core_path": "component/hoopatrace/telemetrywire/quality_state.go",
+      "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/quality_v2.go",
+      "core_path": "component/hoopatrace/telemetrywire/quality_v2.go",
+      "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/recovery.go",
+      "core_path": "component/hoopatrace/telemetrywire/recovery.go",
+      "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/scalars.go",
+      "core_path": "component/hoopatrace/telemetrywire/scalars.go",
+      "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/source_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/source_event.go",
+      "sha256": "97e47b4d1c09a78c58705bdf2145e3e6b1ac8d8b48e1aea2c52a68fd857c1b9a",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/state.go",
+      "core_path": "component/hoopatrace/telemetrywire/state.go",
+      "sha256": "b524b089d20d4227d4a0dff9296b58c264dc6e661f3b4e0be3c1ae36813aa273",
+      "byte_identical": true
+    }
+  ],
+  "shared_profile_production_file": {
+    "hoopa_path": "experiments/mihomo-events/capabilityprofile/profile.go",
+    "core_path": "component/hoopaguard/profile/profile.go",
+    "sha256": "3b6ff718046dc8d3ded6fa8a87ef3cf5934d9aab90b8efd4739c6d1d82b475a5",
+    "byte_identical": true
+  },
+  "dependencies": {
+    "unchanged_from_001_to_006": true,
+    "compared_to": "/tmp/hoopa-t134-artifact-ul72y63w/source",
+    "files": [
+      {
+        "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/go.mod",
+        "bytes": 6961,
+        "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+      },
+      {
+        "path": "/tmp/hoopa-t135-artifact-tg95ee9o/source/go.sum",
+        "bytes": 29819,
+        "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+      }
+    ],
+    "downloads_this_turn": false
+  },
+  "build": {
+    "toolchain": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+    "version": "go1.27.3 linux/amd64",
+    "cwd": "/tmp/hoopa-t135-artifact-tg95ee9o/source",
+    "env": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/tmp/hoopa-mihomo-events-buildcache"
+    },
+    "argv": [
+      "go",
+      "build",
+      "-p=2",
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-X github.com/metacubex/mihomo/constant.Version=hoopa-t135-guard-final -X github.com/metacubex/mihomo/constant.BuildTime=2026-10-23",
+      "-o",
+      "/tmp/hoopa-t135-artifact-tg95ee9o/mihomo-guard",
+      "."
+    ],
+    "exit_code": 0,
+    "log": {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build_info": {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/build-info.log",
+      "bytes": 10472,
+      "sha256": "d97b0cbaebdb04987c86d69d2c769037ab487a7469fe3bee6938131ff9300160"
+    },
+    "version_log": {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/version.log",
+      "bytes": 72,
+      "sha256": "375e950187fae55543bff1483f769e9d4fe1e975e29c43b812deaa86f37a104d"
+    },
+    "binary": {
+      "path": "/tmp/hoopa-t135-artifact-tg95ee9o/mihomo-guard",
+      "bytes": 51025990,
+      "sha256": "7c022d3263cf5c16d72fd68834041ae2bfb15e748283b6aa75d529c1fdf4440f"
+    },
+    "core_binary_race_instrumented": false,
+    "binary_in_git": false
+  },
+  "protected_contract": {
+    "path": "specs/001-hoopa-proxy-manager/contracts/protected-core-v1.md",
+    "bytes": 6892,
+    "sha256": "13edfb1a0e7017c540700b20b141caefd17563d2d23bbdd0d3769e077fd3d50c"
+  },
+  "enabled_by": {
+    "HOOPA_GUARD_CONFIG_SHA256": "canonical SHA256 of the single private JSON input",
+    "HOOPA_GUARD_GENERATION": "validated immutable per-process generation",
+    "optional_trace": "existing HOOPA_TRACE_* with profile=2 and matching generation, node map and writable source"
+  },
+  "validated_local_scope": [
+    "bounded strict JSON profile; unsupported rules rejected before opening entries; same bytes validated and parsed",
+    "private loopback HTTP and SOCKS5 entry credentials; per-request HTTP keepalive authentication",
+    "authenticated read-only status and explicit TCP drain; other controller operations rejected",
+    "ordered first-match routes through two controlled HTTP proxies; named entries cannot use bypass fields",
+    "fixed generation/hash, ignored SIGHUP, rejected new candidate leaves existing forwarding intact",
+    "all sockets bind without listen before activation; late bind conflict cleanup; deterministic real reservation test",
+    "drain preserves accepted TCP through independent replacement and normal EOF",
+    "complete trace configuration with isolated generation/map/permission rejects and exact 257-byte duplex final",
+    "real source files at 32 epochs reject read-only admission; malformed AND parser regression fixed"
+  ],
+  "not_validated": [
+    "T132 connect_initiator_v1 backend and controlled kernel deployment; all three identity capabilities remain false",
+    "formal T127/T128/T129/T137/T018 gates, P1 CLI, production CapabilityRecord or SQL ledger",
+    "T136 ownership/adoption and persistent cross-process apply/rollback; cross-process generation allocation",
+    "hot reload or per-request drain boundary; existing accepted HTTP keepalive remains usable with authentication",
+    "full G05/G07 failure/scale matrix, host power-loss/disk-full, SSH/suspend, product budgets",
+    "non-linux/amd64, IPv6, UDP/QUIC, TLS proxies, named subscription providers and remote network paths",
+    "all listener conversion failures or multi-socket kernel atomicity; no such atomicity is claimed"
+  ],
+  "prior_evidence_scope": "001–006 patches/wire bytes preserved; their historical runs remain bound to prior binaries. New protected trace integration and affected paths tested, no promotion of old formal gates to this hash.",
+  "old_artifacts_preserved": true
+}

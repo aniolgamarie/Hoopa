@@ -1,0 +1,422 @@
+--- a/component/hoopaid/handoff.go
++++ b/component/hoopaid/handoff.go
+@@ -26,6 +26,8 @@
+ 	RootCgroupID   string         `json:"root_cgroup_id"`
+ 	NetnsCookie    string         `json:"netns_cookie"`
+ 	PIDNSInode     uint32         `json:"pidns_inode"`
++	UserNSInode    uint32         `json:"userns_inode,omitempty"`
++	MountNSInode   uint32         `json:"mountns_inode,omitempty"`
+ 	BootID         string         `json:"boot_id"`
+ 	SourcePath     string         `json:"source_path"`
+ 	Port           uint16         `json:"port"`
+@@ -102,6 +104,13 @@
+ 		return h, err
+ 	}
+ 	names := []string{"schema", "core_generation", "generation", "source_cgroup_id", "root_cgroup_id", "netns_cookie", "pidns_inode", "boot_id", "source_path", "port", "maps", "programs", "links"}
++	var schema string
++	if err := json.Unmarshal(keys["schema"], &schema); err != nil {
++		return h, err
++	}
++	if schema == "hoopa-core-identity-handoff-v3" {
++		names = append(names, "userns_inode", "mountns_inode")
++	}
+ 	if len(keys) != len(names) {
+ 		return h, errors.New("unexpected handoff field set")
+ 	}
+@@ -115,8 +124,11 @@
+ 	if err := d.Decode(&h); err != nil {
+ 		return h, err
+ 	}
+-	if (h.Schema != "hoopa-core-identity-handoff-v1" && h.Schema != "hoopa-core-identity-handoff-v2") || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
++	if (h.Schema != "hoopa-core-identity-handoff-v1" && h.Schema != "hoopa-core-identity-handoff-v2" && h.Schema != "hoopa-core-identity-handoff-v3") || h.CoreGeneration == "" || h.PIDNSInode == 0 || !uuid.MatchString(h.BootID) || !sourcePath.MatchString(h.SourcePath) || h.Port == 0 {
+ 		return h, errors.New("invalid handoff declaration")
++	}
++	if h.scoped() && (h.UserNSInode == 0 || h.MountNSInode == 0) {
++		return h, errors.New("nonzero scoped namespaces required")
+ 	}
+ 	for _, s := range []string{h.Generation, h.SourceCgroupID, h.RootCgroupID, h.NetnsCookie} {
+ 		if _, err := u64(s); err != nil {
+--- a/component/hoopaid/native_linux_amd64.go
++++ b/component/hoopaid/native_linux_amd64.go
+@@ -221,7 +221,11 @@
+ 	if boot != h.BootID {
+ 		return errors.New("boot ID mismatch")
+ 	}
+-	for _, ns := range []string{"pid", "net", "user", "time", "time_for_children"} {
++	namespaces := []string{"pid", "net", "user", "time", "time_for_children"}
++	if h.scoped() {
++		namespaces = append(namespaces, "mnt")
++	}
++	for _, ns := range namespaces {
+ 		self, err := inode("/proc/self/ns/" + ns)
+ 		if err != nil {
+ 			return err
+@@ -230,7 +234,7 @@
+ 		if err != nil {
+ 			return err
+ 		}
+-		if self != initial || ns == "pid" && self != uint64(h.PIDNSInode) {
++		if !h.namespaceMatches(ns, self, initial) {
+ 			return fmt.Errorf("initial guest namespace mismatch: %s", ns)
+ 		}
+ 	}
+--- a/component/hoopaid/owner.go
++++ b/component/hoopaid/owner.go
+@@ -87,7 +87,8 @@
+ var mapSpecs = map[string]mapSpec{
+ 	"capture_config": {2, 4, 32, 1, 128}, "connect_records": {1, 8, 112, 1024, 8}, "capture_faults": {2, 4, 8, 1, 8},
+ 	"capture_gate": {2, 4, 40, 1, 8}, "online_tuples": {1, 32, 8, 1024, 8}, "online_bindings": {1, 8, 56, 1024, 8},
+-	"exe_records": {1, 8, 296, 1024, 8}, "exe_state": {2, 4, 64, 1, 8}, "calls": {29, 4, 8, 0, 1},
++	"identity_scope": {2, 4, 24, 1, 128},
++	"exe_records":    {1, 8, 296, 1024, 8}, "exe_state": {2, 4, 64, 1, 8}, "calls": {29, 4, 8, 0, 1},
+ }
+ 
+ func kernelName(name string) string {
+@@ -226,7 +227,7 @@
+ 	if !bytes.Equal(raw, o.config) {
+ 		return errors.New("config readback mismatch")
+ 	}
+-	return nil
++	return o.checkIdentityScope()
+ }
+ func (o *Owner) gate(open bool) ([]byte, gate, error) {
+ 	raw, err := o.lookup("capture_gate", make([]byte, 4), 4)
+@@ -278,6 +279,9 @@
+ 		return fmt.Errorf("config freeze probe must be EPERM, got %v", err)
+ 	}
+ 	if err := o.checkConfig(); err != nil {
++		return err
++	}
++	if err := o.freezeIdentityScope(); err != nil {
+ 		return err
+ 	}
+ 	for _, name := range o.h.initialHashes() {
+--- a/component/hoopaid/profile_v2.go
++++ b/component/hoopaid/profile_v2.go
+@@ -11,8 +11,11 @@
+ var executableProgramNames = []string{"hoopa_connect", "hoopa_lifecycle", "hoopa_stop", "call_enter", "call_exit", "capture_exe"}
+ var executableLinkNames = []string{"call_exit", "call_enter", "capture_exe", "hoopa_connect", "hoopa_lifecycle"}
+ 
+-func (h handoff) executable() bool { return h.Schema == "hoopa-core-identity-handoff-v2" }
++func (h handoff) executable() bool { return h.Schema == "hoopa-core-identity-handoff-v2" || h.scoped() }
+ func (h handoff) mapNames() []string {
++	if h.scoped() {
++		return scopedMapNames
++	}
+ 	if h.executable() {
+ 		return executableMapNames
+ 	}
+@@ -61,11 +64,18 @@
+ 	case "call_enter", "call_exit":
+ 		return []string{"capture_config", "exe_state", "calls"}
+ 	case "capture_exe":
+-		return []string{"capture_config", "exe_state", "calls", "exe_records"}
++		names := []string{"capture_config", "exe_state", "calls", "exe_records"}
++		if h.scoped() {
++			names = append(names, "identity_scope", "capture_faults")
++		}
++		return names
+ 	case "hoopa_connect":
+ 		names := []string{"capture_config", "connect_records", "capture_faults", "capture_gate"}
+ 		if h.executable() {
+ 			names = append(names, "exe_state", "calls", "exe_records")
++		}
++		if h.scoped() {
++			names = append(names, "identity_scope")
+ 		}
+ 		return names
+ 	}
+--- /dev/null
++++ b/component/hoopaid/profile_v3.go
+@@ -0,0 +1,64 @@
++package hoopaid
++
++import (
++	"bytes"
++	"errors"
++	"fmt"
++	"syscall"
++)
++
++var scopedMapNames = append(append([]string{}, executableMapNames...), "identity_scope")
++
++func (h handoff) scoped() bool { return h.Schema == "hoopa-core-identity-handoff-v3" }
++
++func identityScopeConfig(h handoff) []byte {
++	raw := make([]byte, 24)
++	generation, _ := u64(h.Generation)
++	le.PutUint64(raw, generation)
++	le.PutUint32(raw[8:], h.UserNSInode)
++	le.PutUint32(raw[12:], h.MountNSInode)
++	le.PutUint32(raw[16:], 1)
++	return raw
++}
++
++// checkConfig calls this after the unchanged capture_config check and before
++// gate/fault reads. Legacy schemas perform no additional lookup.
++func (o *Owner) checkIdentityScope() error {
++	if !o.h.scoped() {
++		return nil
++	}
++	raw, err := o.lookup("identity_scope", make([]byte, 4), 0)
++	if err != nil {
++		return err
++	}
++	if !bytes.Equal(raw, identityScopeConfig(o.h)) {
++		return errors.New("identity scope readback mismatch")
++	}
++	return nil
++}
++func (o *Owner) freezeIdentityScope() error {
++	if !o.h.scoped() {
++		return nil
++	}
++	if err := o.b.update(o.h.Maps["identity_scope"], make([]byte, 4), identityScopeConfig(o.h)); !errors.Is(err, syscall.EPERM) {
++		return fmt.Errorf("identity scope freeze probe must be EPERM, got %v", err)
++	}
++	return o.checkIdentityScope()
++}
++
++// namespaceMatches preserves the legacy checks and binds v3's actual user/mnt
++// coordinates to both the immutable handoff and the current PID1 namespace.
++func (h handoff) namespaceMatches(name string, self, initial uint64) bool {
++	if self != initial || name == "pid" && self != uint64(h.PIDNSInode) {
++		return false
++	}
++	if h.scoped() {
++		if name == "user" {
++			return self == uint64(h.UserNSInode)
++		}
++		if name == "mnt" {
++			return self == uint64(h.MountNSInode)
++		}
++	}
++	return true
++}
+--- /dev/null
++++ b/component/hoopaid/profile_v3_test.go
+@@ -0,0 +1,224 @@
++package hoopaid
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"reflect"
++	"strings"
++	"syscall"
++	"testing"
++)
++
++func exampleV3() handoff {
++	h := exampleV2()
++	h.Schema = "hoopa-core-identity-handoff-v3"
++	h.UserNSInode = 4026531837
++	h.MountNSInode = 4026531841
++	fd := 200
++	for _, group := range []struct {
++		fds   map[string]int
++		names []string
++	}{{h.Maps, h.mapNames()}, {h.Programs, h.programNames()}, {h.Links, h.linkNames()}} {
++		for _, name := range group.names {
++			group.fds[name] = fd
++			fd++
++		}
++	}
++	return h
++}
++
++type scopedFake struct {
++	*executableFake
++	writableScope bool
++}
++
++func newScopedFake(h handoff) *scopedFake {
++	f := &scopedFake{executableFake: newExecutableFake(h)}
++	m := mapSpecs["identity_scope"]
++	raw := make([]byte, 256)
++	for i, v := range []uint32{m.kind, 10, m.key, m.value, m.max, m.flags} {
++		le.PutUint32(raw[i*4:], v)
++	}
++	copy(raw[24:40], "identity_scope")
++	fd := h.Maps["identity_scope"]
++	f.infos[fd] = raw
++	f.accessModes[fd] = 2
++	f.values[fd] = identityScopeConfig(h)
++	for _, name := range h.programNames() {
++		f.refs[h.Programs[name]] = nil
++		for _, m := range h.programMaps(name) {
++			f.refs[h.Programs[name]] = append(f.refs[h.Programs[name]], le.Uint32(f.infos[h.Maps[m]][4:]))
++		}
++	}
++	return f
++}
++func (f *scopedFake) update(fd int, key, value []byte) error {
++	if fd != f.h.Maps["identity_scope"] {
++		return f.fake.update(fd, key, value)
++	}
++	if err := f.record("scope-freeze-update"); err != nil {
++		return err
++	}
++	if !bytes.Equal(value, identityScopeConfig(f.h)) || !bytes.Equal(key, make([]byte, 4)) {
++		return errors.New("wrong same-value scope probe")
++	}
++	if f.writableScope {
++		return nil
++	}
++	return syscall.EPERM
++}
++func TestHandoffV3ExactScopeAndLegacyIsolation(t *testing.T) {
++	h := exampleV3()
++	p, err := parse(encoded(h))
++	if err != nil || len(p.orderedFDs()) != 21 || !p.scoped() {
++		t.Fatal(p, err)
++	}
++	for _, mutate := range []func(*handoff){func(h *handoff) { h.UserNSInode = 0 }, func(h *handoff) { h.MountNSInode = 0 }, func(h *handoff) { delete(h.Maps, "identity_scope") }, func(h *handoff) { h.Schema = "hoopa-core-identity-handoff-v2" }, func(h *handoff) { h.Maps["identity_scope"] = h.Maps["calls"] }, func(h *handoff) { h.Maps["extra"] = 999 }} {
++		v := exampleV3()
++		mutate(&v)
++		if _, err := parse(encoded(v)); err == nil {
++			t.Fatal("invalid v3 accepted", v)
++		}
++	}
++	for _, schema := range []string{"hoopa-core-identity-handoff-v1", "hoopa-core-identity-handoff-v2"} {
++		v := example()
++		if strings.HasSuffix(schema, "v2") {
++			v = exampleV2()
++		}
++		m := map[string]any{}
++		_ = json.Unmarshal(encoded(v), &m)
++		m["userns_inode"] = 1
++		m["mountns_inode"] = 2
++		raw, _ := json.Marshal(m)
++		if _, err := parse(raw); err == nil {
++			t.Fatal("legacy scope accepted")
++		}
++	}
++	for _, raw := range [][]byte{bytes.Replace(encoded(h), []byte(`"userns_inode":4026531837`), []byte(`"userns_inode":4294967296`), 1), bytes.Replace(encoded(h), []byte(`"mountns_inode":4026531841`), []byte(`"mountns_inode":true`), 1), bytes.Replace(encoded(h), []byte(`"userns_inode":`), []byte(`"\u0075serns_inode":1,"userns_inode":`), 1)} {
++		if _, err := parse(raw); err == nil {
++			t.Fatal("malformed namespace accepted", string(raw))
++		}
++	}
++}
++func TestHandoffV3ScopeAdoptionAndAdmitOrder(t *testing.T) {
++	h := exampleV3()
++	f := newScopedFake(h)
++	o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if o.EventSchemaVersion() != 4 || len(o.fds) != 21 {
++		t.Fatal("wrong profile")
++	}
++	if !strings.Contains(strings.Join(f.log, ","), "scope-freeze-update") {
++		t.Fatal("scope freeze not tested")
++	}
++	for _, entry := range f.log {
++		if entry == fmt.Sprintf("next:%d", h.Maps["calls"]) {
++			t.Fatal("task storage enumerated")
++		}
++	}
++	f.publishExecutable()
++	f.log = nil
++	id, err := o.Admit(nil)
++	if err != nil || !id.HasExecutable || id.Schema != "sourceidentity-core-admission-v2" || id.IdentityCapability != "unverified" {
++		t.Fatal(id, err)
++	}
++	index := func(s string) int {
++		for i, x := range f.log {
++			if x == s {
++				return i
++			}
++		}
++		return -1
++	}
++	config := index(fmt.Sprintf("lookup:%d:0", h.Maps["capture_config"]))
++	scope := index(fmt.Sprintf("lookup:%d:0", h.Maps["identity_scope"]))
++	gate := index(fmt.Sprintf("lookup:%d:4", h.Maps["capture_gate"]))
++	fault := index(fmt.Sprintf("lookup:%d:0", h.Maps["capture_faults"]))
++	if !(config >= 0 && scope > config && gate > scope && fault > gate) {
++		t.Fatal("original config/gate/fault order changed", f.log)
++	}
++	f.values[h.Maps["identity_scope"]][12] ^= 1
++	f.log = nil
++	if _, err = o.Admit(nil); err == nil || o.Status() != (Status{Admitted: 1, Rejected: 1, Revoked: true}) {
++		t.Fatal("changed scope admitted", err, o.Status())
++	}
++	if index(fmt.Sprintf("lookup:%d:0", h.Maps["online_bindings"])) >= 0 {
++		t.Fatal("binding read after scope refusal")
++	}
++	if err = o.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if len(f.closed) != 21 {
++		t.Fatal("not all exactly owned FDs closed", f.closed)
++	}
++}
++func TestHandoffV3BadScopeClosesAllOnce(t *testing.T) {
++	for i := 0; i < 24; i++ {
++		t.Run(fmt.Sprint(i), func(t *testing.T) {
++			h := exampleV3()
++			f := newScopedFake(h)
++			f.values[h.Maps["identity_scope"]][i] ^= 1
++			if o, err := adopt(encoded(h), h.CoreGeneration, h.Port, f); err == nil || o != nil {
++				t.Fatal("corrupt config accepted")
++			}
++			if len(f.closed) != 21 {
++				t.Fatal(f.closed)
++			}
++			seen := map[int]bool{}
++			for _, fd := range f.closed {
++				if seen[fd] {
++					t.Fatal("double close")
++				}
++				seen[fd] = true
++			}
++		})
++	}
++	for _, cause := range []string{"writable", "short", "lookup", "abi", "refs"} {
++		t.Run(cause, func(t *testing.T) {
++			h := exampleV3()
++			f := newScopedFake(h)
++			switch cause {
++			case "writable":
++				f.writableScope = true
++			case "short":
++				f.values[h.Maps["identity_scope"]] = make([]byte, 23)
++			case "lookup":
++				f.fail = fmt.Sprintf("lookup:%d:0", h.Maps["identity_scope"])
++			case "abi":
++				f.infos[h.Maps["identity_scope"]][12] = 23
++			case "refs":
++				f.refs[h.Programs["capture_exe"]] = f.refs[h.Programs["capture_exe"]][1:]
++			}
++			if _, err := adopt(encoded(h), h.CoreGeneration, h.Port, f); err == nil {
++				t.Fatal("bad scoped resource accepted")
++			}
++			if len(f.closed) != 21 {
++				t.Fatal(f.closed)
++			}
++		})
++	}
++	if !reflect.DeepEqual(identityScopeConfig(exampleV3())[16:], []byte{1, 0, 0, 0, 0, 0, 0, 0}) {
++		t.Fatal("schema/reserved layout")
++	}
++}
++
++func TestHandoffV3ActualNamespaceCoordinates(t *testing.T) {
++	h := exampleV3()
++	for _, v := range []struct {
++		name  string
++		value uint32
++	}{{"pid", h.PIDNSInode}, {"user", h.UserNSInode}, {"mnt", h.MountNSInode}} {
++		n := uint64(v.value)
++		if !h.namespaceMatches(v.name, n, n) || h.namespaceMatches(v.name, n+1, n) || h.namespaceMatches(v.name, n+1, n+1) || h.namespaceMatches(v.name, 0, 0) || h.namespaceMatches(v.name, 1<<32, 1<<32) {
++			t.Fatal("invalid actual initial scope", v)
++		}
++	}
++	legacy := exampleV2()
++	if !legacy.namespaceMatches("user", 1, 1) || legacy.namespaceMatches("user", 1, 2) {
++		t.Fatal("legacy namespace behavior changed")
++	}
++}

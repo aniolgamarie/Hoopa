@@ -1,0 +1,265 @@
+diff --git a/component/sourcecontrol/types.go b/component/sourcecontrol/types.go
+--- a/component/sourcecontrol/types.go
++++ b/component/sourcecontrol/types.go
+@@ -292,10 +292,17 @@
+ }
+ 
+ func (s Status) Validate() error {
+-	if s.SchemaVersion != SchemaVersion || !validID(s.RunID) || !validID(s.ConfigGeneration) || !digestShape(s.ConfigSHA256) || !text(s.BinaryVersion, 1, MaxBinaryVersionBytes) || s.Mode != "basic-sources" || !digestShape(s.SnapshotSHA256) {
++	if s.SchemaVersion != SchemaVersion || !validID(s.RunID) || !validID(s.ConfigGeneration) || !digestShape(s.ConfigSHA256) || !text(s.BinaryVersion, 1, MaxBinaryVersionBytes) || !digestShape(s.SnapshotSHA256) {
+ 		return ErrInvalid
+ 	}
+ 	expected := []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "probe-qualified-groups-v1"}
++	switch s.Mode {
++	case "basic-sources":
++	case "basic-app-routing":
++		expected = []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "ordered-app-rules-v1", "probe-qualified-groups-v1", "unknown-ip-reject-v1"}
++	default:
++		return ErrInvalid
++	}
+ 	if len(s.Capabilities) != len(expected) {
+ 		return ErrInvalid
+ 	}
+diff --git a/constant/hoopa_guard.go b/constant/hoopa_guard.go
+--- a/constant/hoopa_guard.go
++++ b/constant/hoopa_guard.go
+@@ -3,3 +3,8 @@
+ // HoopaProtected is set once before starting the opt-in guarded data plane.
+ // It is never a mutable control API or a process-identity capability claim.
+ var HoopaProtected bool
++
++// HoopaOrderedRules is set once before starting the app-routing control profile.
++// It enables fail-closed three-valued rules without requiring telemetry flows.
++// It grants no process identity evidence and is not set by legacy entry paths.
++var HoopaOrderedRules bool
+diff --git a/hoopa_control_sources_linux.go b/hoopa_control_sources_linux.go
+--- a/hoopa_control_sources_linux.go
++++ b/hoopa_control_sources_linux.go
+@@ -31,7 +31,7 @@
+ )
+ 
+ func hoopaSourceCapabilities() []string {
+-	return []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "probe-qualified-groups-v1"}
++	return []string{"authenticated-activate-v1", "closed-start-v1", "immutable-source-snapshot-v2", "ordered-app-rules-v1", "probe-qualified-groups-v1", "unknown-ip-reject-v1"}
+ }
+ 
+ func runHoopaControlSources() error {
+@@ -63,7 +63,7 @@
+ 	if err != nil {
+ 		return errHoopaGuard
+ 	}
+-	status := sources.Status{SchemaVersion: 2, RunID: runID, ConfigGeneration: generation, ConfigSHA256: hash, BinaryVersion: C.Version, Mode: "basic-sources", Capabilities: hoopaSourceCapabilities(), State: "closed", SnapshotSHA256: hash}
++	status := sources.Status{SchemaVersion: 2, RunID: runID, ConfigGeneration: generation, ConfigSHA256: hash, BinaryVersion: C.Version, Mode: "basic-app-routing", Capabilities: hoopaSourceCapabilities(), State: "closed", SnapshotSHA256: hash}
+ 	if status.Validate() != nil {
+ 		return errHoopaGuard
+ 	}
+@@ -114,6 +114,7 @@
+ 	}
+ 	cfg.Listeners = nil
+ 	C.HoopaProtected = true
++	C.HoopaOrderedRules = true
+ 	executor.ApplyConfig(cfg, true)
+ 	defer executor.Shutdown()
+ 	r := &hoopaControlRuntime{sourceMode: true, state: "closed", runID: runID, generation: generation, hash: hash, secret: p.Secret, controllerAddress: p.Controller, declaredEntries: entries, conns: map[net.Conn]bool{}}
+@@ -181,7 +182,7 @@
+ 	return q.Digest()
+ }
+ func sourceStatus(s wire.Status) (sources.Status, error) {
+-	v := sources.Status{SchemaVersion: 2, RunID: s.RunID, ConfigGeneration: s.ConfigGeneration, ConfigSHA256: s.ConfigSHA256, BinaryVersion: s.BinaryVersion, Mode: "basic-sources", Capabilities: hoopaSourceCapabilities(), State: s.State, SnapshotSHA256: s.SnapshotSHA256}
++	v := sources.Status{SchemaVersion: 2, RunID: s.RunID, ConfigGeneration: s.ConfigGeneration, ConfigSHA256: s.ConfigSHA256, BinaryVersion: s.BinaryVersion, Mode: "basic-app-routing", Capabilities: hoopaSourceCapabilities(), State: s.State, SnapshotSHA256: s.SnapshotSHA256}
+ 	if s.Activation != nil {
+ 		x := sources.Result(*s.Activation)
+ 		v.Activation = &x
+diff --git a/rules/common/hoopa_ipcidr_test.go b/rules/common/hoopa_ipcidr_test.go
+new file mode 100644
+--- /dev/null
++++ b/rules/common/hoopa_ipcidr_test.go
+@@ -0,0 +1,61 @@
++package common
++
++import (
++	"net/netip"
++	"testing"
++
++	C "github.com/metacubex/mihomo/constant"
++)
++
++func TestHoopaIPCIDRPreservesUnavailableAddress(t *testing.T) {
++	for _, tc := range []struct {
++		name, initial, resolved string
++		noResolve, source       bool
++		want                    int8
++		calls                   int
++	}{
++		{"failed-domain", "", "", false, false, -1, 1},
++		{"resolved-inside", "", "127.0.0.2", false, false, 1, 1},
++		{"resolved-outside", "", "192.0.2.1", false, false, 0, 1},
++		{"literal-outside", "192.0.2.1", "", false, false, 0, 1},
++		{"unavailable-no-resolve", "", "127.0.0.2", true, false, -1, 0},
++		{"known-no-resolve", "127.0.0.2", "", true, false, 1, 0},
++		{"source-unavailable", "", "127.0.0.2", false, true, -1, 0},
++		{"source-known", "127.0.0.2", "", false, true, 1, 0},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			rule, err := NewIPCIDR("127.0.0.0/8", "REJECT", WithIPCIDRNoResolve(tc.noResolve), WithIPCIDRSourceIP(tc.source))
++			if err != nil {
++				t.Fatal(err)
++			}
++			m := &C.Metadata{Host: "controlled.invalid"}
++			if tc.initial != "" {
++				if tc.source {
++					m.SrcIP = netip.MustParseAddr(tc.initial)
++				} else {
++					m.DstIP = netip.MustParseAddr(tc.initial)
++					m.Host = ""
++				}
++			}
++			calls := 0
++			helper := C.RuleMatchHelper{ResolveIP: func() {
++				calls++
++				if tc.resolved != "" {
++					m.DstIP = netip.MustParseAddr(tc.resolved)
++				}
++			}}
++			got, target := MatchHoopa(rule, m, helper)
++			if got != tc.want || target != "REJECT" || calls != tc.calls {
++				t.Fatalf("state=%d target=%q calls=%d", got, target, calls)
++			}
++		})
++	}
++	// Legacy callers keep the boolean result; no unavailable->true conversion.
++	rule, _ := NewIPCIDR("127.0.0.0/8", "DIRECT")
++	if ok, target := rule.Match(&C.Metadata{Host: "controlled.invalid"}, C.RuleMatchHelper{}); ok || target != "DIRECT" {
++		t.Fatal(ok, target)
++	}
++	if state, _ := MatchHoopa(rule, &C.Metadata{Host: "controlled.invalid"}, C.RuleMatchHelper{}); state != -1 {
++		t.Fatal("missing resolver is not known false", state)
++	}
++}
+diff --git a/rules/common/ipcidr.go b/rules/common/ipcidr.go
+--- a/rules/common/ipcidr.go
++++ b/rules/common/ipcidr.go
+@@ -47,6 +47,27 @@
+ 	return ip.IsValid() && i.ipnet.Contains(ip.WithZone("")), i.adapter
+ }
+ 
++// MatchHoopa keeps unavailable address evidence distinct from a known prefix
++// miss. Only protected ordered routing calls this extension; ordinary Match
++// retains its upstream boolean behavior.
++func (i *IPCIDR) MatchHoopa(metadata *C.Metadata, helper C.RuleMatchHelper) (int8, string) {
++	if metadata == nil {
++		return -1, i.adapter
++	}
++	matched, target := i.Match(metadata, helper)
++	ip := metadata.DstIP
++	if i.isSourceIP {
++		ip = metadata.SrcIP
++	}
++	if !ip.IsValid() {
++		return -1, target
++	}
++	if matched {
++		return 1, target
++	}
++	return 0, target
++}
++
+ func (i *IPCIDR) Adapter() string {
+ 	return i.adapter
+ }
+diff --git a/rules/logic/hoopa_ipcidr_test.go b/rules/logic/hoopa_ipcidr_test.go
+new file mode 100644
+--- /dev/null
++++ b/rules/logic/hoopa_ipcidr_test.go
+@@ -0,0 +1,31 @@
++package logic
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/rules/common"
++	"testing"
++)
++
++func TestHoopaANDIPUnknownDominance(t *testing.T) {
++	for _, sibling := range []int8{0, 1} {
++		for _, ipFirst := range []bool{false, true} {
++			ip, err := common.NewIPCIDR("127.0.0.0/8", "REJECT")
++			if err != nil {
++				t.Fatal(err)
++			}
++			rules := []C.Rule{ip, &triRule{state: sibling}}
++			if !ipFirst {
++				rules[0], rules[1] = rules[1], rules[0]
++			}
++			and := &Logic{ruleType: C.AND, adapter: "REJECT", rules: rules}
++			got, target := and.MatchHoopa(&C.Metadata{Host: "controlled.invalid"}, C.RuleMatchHelper{ResolveIP: func() {}})
++			want := int8(-1)
++			if sibling == 0 {
++				want = 0
++			}
++			if got != want || target != "REJECT" {
++				t.Fatalf("sibling=%d ipFirst=%v state=%d target=%q", sibling, ipFirst, got, target)
++			}
++		}
++	}
++}
+diff --git a/tunnel/hoopa_ordered_app_test.go b/tunnel/hoopa_ordered_app_test.go
+new file mode 100644
+--- /dev/null
++++ b/tunnel/hoopa_ordered_app_test.go
+@@ -0,0 +1,34 @@
++package tunnel
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/rules/common"
++	"net/netip"
++	"testing"
++)
++
++func TestHoopaOrderedAppRulesWithoutTelemetryFlow(t *testing.T) {
++	oldRules, oldProxies, oldMode := rules, proxies, C.HoopaOrderedRules
++	defer func() { rules, proxies, C.HoopaOrderedRules = oldRules, oldProxies, oldMode }()
++	proxy := &hoopaProxyFake{}
++	proxies = map[string]C.Proxy{"DIRECT": proxy}
++	ip, _ := common.NewIPCIDR("127.0.0.0/8", "DIRECT")
++	rules = []C.Rule{ip, common.NewDomain("controlled.invalid", "DIRECT")}
++	m := &C.Metadata{Host: "controlled.invalid"}
++	C.HoopaOrderedRules = false
++	if got, rule, err := match(m, C.RuleMatchHelper{}); err != nil || got != proxy || rule != rules[1] {
++		t.Fatal("legacy bool path changed", err)
++	}
++	C.HoopaOrderedRules = true
++	if _, rule, err := match(m, C.RuleMatchHelper{}); err == nil || rule != rules[0] {
++		t.Fatal("app unknown must reject without FlowID", err)
++	}
++	m.DstIP = netip.MustParseAddr("192.0.2.1")
++	if got, rule, err := match(m, C.RuleMatchHelper{}); err != nil || got != proxy || rule != rules[1] {
++		t.Fatal("known miss cannot block", err)
++	}
++	m.DstIP = netip.MustParseAddr("127.0.0.2")
++	if got, rule, err := match(m, C.RuleMatchHelper{}); err != nil || got != proxy || rule != rules[0] {
++		t.Fatal("known match lost", err)
++	}
++}
+diff --git a/tunnel/tunnel.go b/tunnel/tunnel.go
+--- a/tunnel/tunnel.go
++++ b/tunnel/tunnel.go
+@@ -746,7 +746,7 @@
+ func match(metadata *C.Metadata, helper C.RuleMatchHelper) (C.Proxy, C.Rule, error) {
+ 	configMux.RLock()
+ 	defer configMux.RUnlock()
+-	if metadata.HoopaFlowID != "" {
++	if C.HoopaOrderedRules || metadata.HoopaFlowID != "" {
+ 		if err := rulescommon.ValidateHoopaRules(getRules(metadata)); err != nil {
+ 			return nil, nil, err
+ 		}
+@@ -755,7 +755,7 @@
+ 	for _, rule := range getRules(metadata) {
+ 		var matched bool
+ 		var ada string
+-		if metadata.HoopaFlowID != "" {
++		if C.HoopaOrderedRules || metadata.HoopaFlowID != "" {
+ 			state, target := rulescommon.MatchHoopa(rule, metadata, helper)
+ 			if state != 0 && state != 1 {
+ 				return nil, rule, errors.New("Hoopa rule result unknown")

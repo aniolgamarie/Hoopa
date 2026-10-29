@@ -1,0 +1,1131 @@
+--- a/component/hoopaguard/profile/profile.go
++++ b/component/hoopaguard/profile/profile.go
+@@ -27,6 +27,7 @@
+ 	Groups          []Group           `json:"proxy-groups"`
+ 	Rules           []string          `json:"rules"`
+ 	Profile         CacheProfile      `json:"profile"`
++	ProgramRules    string            `json:"-"`
+ }
+ type Entry struct {
+ 	Name   string `json:"name"`
+@@ -61,6 +62,10 @@
+ // rules and reference order are retained exactly as supplied. generation is a
+ // separate immutable identity and is validated, not inserted into the profile.
+ func Validate(raw []byte, generation string) (Config, error) {
++	return validateRules(raw, generation, validRule)
++}
++
++func validateRules(raw []byte, generation string, ruleCheck func(string, func(string) bool, map[string]bool) bool) (Config, error) {
+ 	bad := func() (Config, error) { return Config{}, ErrProfile }
+ 	if len(raw) == 0 || len(raw) > 64*1024 || !token(generation) {
+ 		return bad()
+@@ -199,7 +204,7 @@
+ 			if len(parts) != 2 || parts[0] != "MATCH" || !target(parts[1]) {
+ 				return bad()
+ 			}
+-		} else if !validRule(rule, target, entries) {
++		} else if !ruleCheck(rule, target, entries) {
+ 			return bad()
+ 		}
+ 	}
+@@ -389,6 +394,10 @@
+ 	return false
+ }
+ func validRule(rule string, target func(string) bool, entries map[string]bool) bool {
++	return validRuleWithAtom(rule, target, entries, atom)
++}
++
++func validRuleWithAtom(rule string, target func(string) bool, entries map[string]bool, checkAtom func([]string, map[string]bool) bool) bool {
+ 	if strings.HasPrefix(rule, "AND,(") {
+ 		// The grammar is AND,((atom),(atom)),target. Splitting at the
+ 		// outer close keeps no-resolve inside an IP-CIDR atom intact.
+@@ -405,7 +414,7 @@
+ 			return false
+ 		}
+ 		for _, a := range atoms {
+-			if !atom(strings.Split(a, ","), entries) {
++			if !checkAtom(strings.Split(a, ","), entries) {
+ 				return false
+ 			}
+ 		}
+@@ -417,7 +426,7 @@
+ 	}
+ 	// no-resolve is the sole supported rule option and follows the target.
+ 	if parts[0] == "IP-CIDR" && len(parts) == 4 {
+-		return target(parts[2]) && atom([]string{parts[0], parts[1], parts[3]}, entries)
+-	}
+-	return len(parts) == 3 && target(parts[2]) && atom(parts[:2], entries)
+-}
++		return target(parts[2]) && checkAtom([]string{parts[0], parts[1], parts[3]}, entries)
++	}
++	return len(parts) == 3 && target(parts[2]) && checkAtom(parts[:2], entries)
++}
+--- /dev/null
++++ b/component/hoopaguard/profile/program_rules.go
+@@ -0,0 +1,155 @@
++package profile
++
++import (
++	"bytes"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"io"
++	"strconv"
++	"strings"
++	"unicode"
++	"unicode/utf8"
++)
++
++const ProgramRuleProfileID = "connect_initiator_exact_program_v1"
++
++// ValidateDeclaredProgramIdentity accepts exact original-connector program
++// conditions only with explicit opt-in and the corresponding declared fields.
++// It grants no runtime capability; the adopted profile must still be matched.
++func ValidateDeclaredProgramIdentity(raw []byte, generation string) (Config, identityprofile.Requirements, error) {
++	bad := func() (Config, identityprofile.Requirements, error) {
++		return Config{}, identityprofile.Requirements{}, ErrProfile
++	}
++	if len(raw) == 0 || len(raw) > 64*1024 {
++		return bad()
++	}
++	d := json.NewDecoder(bytes.NewReader(raw))
++	d.UseNumber()
++	value, err := readValue(d, 0)
++	if err != nil {
++		return bad()
++	}
++	if _, err = d.Token(); err != io.EOF {
++		return bad()
++	}
++	root, ok := value.(map[string]any)
++	if !ok {
++		return bad()
++	}
++	if !has(root, "hoopa-program-rules") {
++		return ValidateDeclaredIdentity(raw, generation)
++	}
++	opt, ok := object(root["hoopa-program-rules"], "profile_id", "")
++	if !ok || opt["profile_id"] != ProgramRuleProfileID || !validProgramJSON(raw) {
++		return bad()
++	}
++	var original map[string]json.RawMessage
++	if json.Unmarshal(raw, &original) != nil {
++		return bad()
++	}
++	requirements, err := identityprofile.DecodeRequirements(original["hoopa-identity"])
++	if err != nil {
++		return bad()
++	}
++	required := make(map[string]bool, len(requirements.RequiredFields))
++	for _, field := range requirements.RequiredFields {
++		required[field] = true
++	}
++	checkAtom := func(parts []string, entries map[string]bool) bool {
++		field := ""
++		switch parts[0] {
++		case "PROCESS-NAME":
++			field = "program_name"
++		case "PROCESS-PATH":
++			field = "program_path"
++		default:
++			return atom(parts, entries)
++		}
++		return len(parts) == 2 && required[field] && validProgramPattern(parts[1], field == "program_path")
++	}
++	delete(root, "hoopa-program-rules")
++	delete(root, "hoopa-identity")
++	profileRaw, err := json.Marshal(root)
++	if err != nil {
++		return bad()
++	}
++	c, err := validateRules(profileRaw, generation, func(rule string, target func(string) bool, entries map[string]bool) bool {
++		return validRuleWithAtom(rule, target, entries, checkAtom)
++	})
++	if err != nil {
++		return bad()
++	}
++	c.ProgramRules = ProgramRuleProfileID
++	return c, requirements, nil
++}
++
++// ValidateWithProgramIdentity additionally verifies the adopted field profile.
++// Without opt-in it has the same behavior as ValidateWithIdentity.
++func ValidateWithProgramIdentity(raw []byte, generation string, actual identityprofile.Profile) (Config, error) {
++	c, requirements, err := ValidateDeclaredProgramIdentity(raw, generation)
++	if err != nil || requirements.Match(actual) != nil {
++		return Config{}, ErrProfile
++	}
++	return c, nil
++}
++
++func validProgramPattern(pattern string, path bool) bool {
++	if len(pattern) < 1 || len(pattern) > 255 || !utf8.ValidString(pattern) || strings.ContainsAny(pattern, ",()") {
++		return false
++	}
++	if path {
++		if !strings.HasPrefix(pattern, "/") {
++			return false
++		}
++	} else if strings.Contains(pattern, "/") {
++		return false
++	}
++	for _, r := range pattern {
++		if unicode.IsControl(r) || unicode.IsSpace(r) {
++			return false
++		}
++	}
++	return true
++}
++
++// encoding/json replaces malformed Unicode escapes with U+FFFD. Explicit
++// opt-in must reject that replacement rather than silently change a pattern.
++// The JSON parser already checked syntax before this bounded byte scan.
++func validProgramJSON(raw []byte) bool {
++	if !utf8.Valid(raw) {
++		return false
++	}
++	for i := 0; i < len(raw); {
++		if raw[i] != '\\' {
++			i++
++			continue
++		}
++		if i+1 >= len(raw) {
++			return false
++		}
++		if raw[i+1] != 'u' {
++			i += 2
++			continue
++		}
++		if i+6 > len(raw) {
++			return false
++		}
++		value, err := strconv.ParseUint(string(raw[i+2:i+6]), 16, 16)
++		if err != nil || value >= 0xdc00 && value <= 0xdfff {
++			return false
++		}
++		if value >= 0xd800 && value <= 0xdbff {
++			if i+12 > len(raw) || string(raw[i+6:i+8]) != "\\u" {
++				return false
++			}
++			low, err := strconv.ParseUint(string(raw[i+8:i+12]), 16, 16)
++			if err != nil || low < 0xdc00 || low > 0xdfff {
++				return false
++			}
++			i += 12
++		} else {
++			i += 6
++		}
++	}
++	return true
++}
+--- /dev/null
++++ b/component/hoopaguard/profile/program_rules_test.go
+@@ -0,0 +1,217 @@
++package profile
++
++import (
++	"bytes"
++	"encoding/json"
++	"github.com/metacubex/mihomo/component/identityprofile"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++)
++
++func programConfig(t *testing.T, fields []string, rules ...string) map[string]any {
++	t.Helper()
++	v := profileMap(t)
++	v["hoopa-identity"] = identityprofile.Requirements{ProfileID: identityprofile.ID, SourceSchemaVersion: 5, RequiredFields: fields}
++	v["hoopa-program-rules"] = map[string]any{"profile_id": ProgramRuleProfileID}
++	v["rules"] = append(append([]string(nil), rules...), "MATCH,node:direct")
++	return v
++}
++
++func rejectProgramConfig(t *testing.T, raw []byte) {
++	t.Helper()
++	c, r, err := ValidateDeclaredProgramIdentity(raw, "gen")
++	if err != ErrProfile || !reflect.DeepEqual(c, Config{}) || !reflect.DeepEqual(r, identityprofile.Requirements{}) {
++		t.Fatalf("invalid config returned data: c=%#v r=%#v err=%v", c, r, err)
++	}
++	if c, err := ValidateWithProgramIdentity(raw, "gen", actualFields(t)); err != ErrProfile || !reflect.DeepEqual(c, Config{}) {
++		t.Fatal("actual profile bypassed bad configuration")
++	}
++}
++
++func TestProgramRulesExplicitOptInAndOrdering(t *testing.T) {
++	rules := []string{
++		"PROCESS-NAME,python3,node:http",
++		"PROCESS-PATH,/bin/python3,group:main",
++		"AND,((PROCESS-NAME,Python3),(DOMAIN,alpha.test),(PROCESS-PATH,/Bin/python3)),REJECT",
++		"AND,((IP-CIDR,127.0.0.0/8,no-resolve),(PROCESS-NAME,python3)),node:direct",
++	}
++	v := programConfig(t, []string{"program_name", "program_path"}, rules...)
++	raw := encode(t, v)
++	c, r, err := ValidateDeclaredProgramIdentity(raw, "gen")
++	if err != nil || c.ProgramRules != ProgramRuleProfileID || !reflect.DeepEqual(c.Rules, v["rules"]) || !reflect.DeepEqual(r.RequiredFields, []string{"program_name", "program_path"}) {
++		t.Fatalf("declaration/order: %#v %#v %v", c, r, err)
++	}
++	actual, err := ValidateWithProgramIdentity(raw, "gen", actualFields(t))
++	if err != nil || !reflect.DeepEqual(c, actual) {
++		t.Fatal("valid adopted profile rejected", err)
++	}
++	serialized, err := json.Marshal(c)
++	if err != nil || bytes.Contains(serialized, []byte("ProgramRules")) || bytes.Contains(serialized, []byte(ProgramRuleProfileID)) {
++		t.Fatal("internal opt-in field serialized")
++	}
++	if _, err := ValidateWithProgramIdentity(raw, "gen", identityprofile.Profile{}); err == nil {
++		t.Fatal("missing adopted profile accepted")
++	}
++	for _, generation := range []string{"", "bad generation"} {
++		if _, _, err := ValidateDeclaredProgramIdentity(raw, generation); err == nil {
++			t.Fatal("invalid immutable generation accepted")
++		}
++	}
++	if _, err := Validate(raw, "gen"); err == nil {
++		t.Fatal("legacy Validate accepted opt-in")
++	}
++	if _, _, err := ValidateDeclaredIdentity(raw, "gen"); err == nil {
++		t.Fatal("legacy declaration accepted opt-in")
++	}
++	if _, err := ValidateWithIdentity(raw, "gen", actualFields(t)); err == nil {
++		t.Fatal("legacy adopted profile accepted opt-in")
++	}
++	// Opt-in is rejected by the old API even when no program condition exists.
++	v = programConfig(t, []string{"instance"})
++	if _, _, err := ValidateDeclaredIdentity(encode(t, v), "gen"); err == nil {
++		t.Fatal("old API silently ignored opt-in")
++	}
++}
++
++func TestProgramRulesNoOptInCompatibility(t *testing.T) {
++	for _, raw := range [][]byte{[]byte(validProfile), fieldConfig(t, []string{"instance"}), fieldConfig(t, []string{"program_name", "program_path"})} {
++		old, oldR, oldErr := ValidateDeclaredIdentity(raw, "gen")
++		got, gotR, err := ValidateDeclaredProgramIdentity(raw, "gen")
++		if err != oldErr || !reflect.DeepEqual(got, old) || !reflect.DeepEqual(gotR, oldR) || got.ProgramRules != "" {
++			t.Fatal("absent opt-in changed declaration behavior")
++		}
++		for _, actual := range []identityprofile.Profile{actualFields(t), {}} {
++			old, oldErr := ValidateWithIdentity(raw, "gen", actual)
++			got, err := ValidateWithProgramIdentity(raw, "gen", actual)
++			if err != oldErr || !reflect.DeepEqual(got, old) {
++				t.Fatal("absent opt-in changed adopted profile behavior")
++			}
++		}
++	}
++	for _, rule := range []string{"PROCESS-NAME,python3,node:direct", "PROCESS-PATH,/bin/python3,node:direct", "AND,((DOMAIN,alpha.test),(PROCESS-NAME,python3)),node:direct"} {
++		v := programConfig(t, []string{"program_name", "program_path"}, rule)
++		delete(v, "hoopa-program-rules")
++		raw := encode(t, v)
++		rejectProgramConfig(t, raw)
++		if _, _, err := ValidateDeclaredIdentity(raw, "gen"); err == nil {
++			t.Fatal("old declaration accepted PROCESS without opt-in")
++		}
++		if _, err := ValidateWithIdentity(raw, "gen", actualFields(t)); err == nil {
++			t.Fatal("old adopted profile accepted PROCESS without opt-in")
++		}
++	}
++}
++
++func TestProgramRulesFieldCoverage(t *testing.T) {
++	for _, tc := range []struct {
++		name, rule string
++		fields     []string
++		valid      bool
++	}{
++		{"name", "PROCESS-NAME,python3,node:direct", []string{"program_name"}, true},
++		{"path", "PROCESS-PATH,/bin/python3,node:direct", []string{"program_path"}, true},
++		{"name missing", "PROCESS-NAME,python3,node:direct", []string{"program_path"}, false},
++		{"path missing", "PROCESS-PATH,/bin/python3,node:direct", []string{"program_name"}, false},
++		{"AND missing", "AND,((DOMAIN,alpha.test),(PROCESS-NAME,python3)),node:direct", []string{"instance"}, false},
++		{"AND second field missing", "AND,((PROCESS-NAME,python3),(PROCESS-PATH,/bin/python3)),node:direct", []string{"program_name"}, false},
++		{"instance not a rule", "PROCESS-ID,42,node:direct", []string{"instance"}, false},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			raw := encode(t, programConfig(t, tc.fields, tc.rule))
++			if !tc.valid {
++				rejectProgramConfig(t, raw)
++			} else if _, _, err := ValidateDeclaredProgramIdentity(raw, "gen"); err != nil {
++				t.Fatal(err)
++			}
++		})
++	}
++}
++
++func TestProgramRulesPatternBoundaries(t *testing.T) {
++	for i, pattern := range []string{"p", "Python3", "程序", "python*", "python?", "p[3]", strings.Repeat("a", 255), strings.Repeat("界", 85)} {
++		t.Run("literal "+strconv.Itoa(i), func(t *testing.T) {
++			if _, _, err := ValidateDeclaredProgramIdentity(encode(t, programConfig(t, []string{"program_name"}, "PROCESS-NAME,"+pattern+",REJECT")), "gen"); err != nil {
++				t.Fatal("valid exact literal rejected", err)
++			}
++		})
++	}
++	for _, pattern := range []string{"/", "/bin/python3", "/bin/Python?", "/" + strings.Repeat("a", 254)} {
++		if _, _, err := ValidateDeclaredProgramIdentity(encode(t, programConfig(t, []string{"program_path"}, "PROCESS-PATH,"+pattern+",node:direct")), "gen"); err != nil {
++			t.Fatal("valid path rejected", err)
++		}
++	}
++	for i, pattern := range []string{"", "bin/python3", "/python3", "a b", "a\tb", "a\nb", "a\x00b", "a\x7fb", "a\u0085b", "a\u00a0b", "a\u2003b", "a,b", "a(b", "a)b", strings.Repeat("a", 256), strings.Repeat("界", 86)} {
++		t.Run("bad name "+strconv.Itoa(i), func(t *testing.T) {
++			rejectProgramConfig(t, encode(t, programConfig(t, []string{"program_name"}, "PROCESS-NAME,"+pattern+",node:direct")))
++		})
++	}
++	for _, pattern := range []string{"", "bin/python3", "/a b", "/a\u0085b", "/a,b", "/a(b", "/" + strings.Repeat("a", 255)} {
++		rejectProgramConfig(t, encode(t, programConfig(t, []string{"program_path"}, "PROCESS-PATH,"+pattern+",node:direct")))
++	}
++	if validProgramPattern(string([]byte{0xff}), false) || validProgramPattern("/"+string([]byte{0xff}), true) {
++		t.Fatal("invalid UTF8 pattern accepted")
++	}
++	raw := encode(t, programConfig(t, []string{"program_name"}, "PROCESS-NAME,python3,node:direct"))
++	rejectProgramConfig(t, bytes.Replace(raw, []byte("python3"), []byte{0xff}, 1))
++}
++
++func TestProgramRulesStrictShapeAndExistingConstraints(t *testing.T) {
++	for _, tc := range []struct {
++		name string
++		edit func(map[string]any)
++	}{
++		{"missing identity", func(v map[string]any) { delete(v, "hoopa-identity") }},
++		{"null optin", func(v map[string]any) { v["hoopa-program-rules"] = nil }},
++		{"wrong type", func(v map[string]any) { v["hoopa-program-rules"] = ProgramRuleProfileID }},
++		{"missing id", func(v map[string]any) { v["hoopa-program-rules"] = map[string]any{} }},
++		{"unknown id", func(v map[string]any) { v["hoopa-program-rules"] = map[string]any{"profile_id": "other"} }},
++		{"extra field", func(v map[string]any) {
++			v["hoopa-program-rules"] = map[string]any{"profile_id": ProgramRuleProfileID, "version": 1}
++		}},
++		{"case alias", func(v map[string]any) { v["hoopa-program-rules"] = map[string]any{"Profile_ID": ProgramRuleProfileID} }},
++		{"ipv6", func(v map[string]any) { v["ipv6"] = true }},
++		{"process lookup", func(v map[string]any) { v["find-process-mode"] = "always" }},
++		{"auth", func(v map[string]any) { v["secret"] = "short" }},
++		{"listener conflict", func(v map[string]any) { listener(v)["port"] = 19090 }},
++		{"unknown config", func(v map[string]any) { v["tun"] = map[string]any{"enable": true} }},
++		{"unknown node", func(v map[string]any) { v["rules"] = []string{"PROCESS-NAME,python3,node:missing", "MATCH,REJECT"} }},
++		{"missing terminal", func(v map[string]any) { v["rules"] = []string{"PROCESS-NAME,python3,node:direct"} }},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			v := programConfig(t, []string{"program_name"}, "AND,((PROCESS-NAME,python3),(DOMAIN,alpha.test)),node:direct")
++			tc.edit(v)
++			rejectProgramConfig(t, encode(t, v))
++		})
++	}
++	raw := encode(t, programConfig(t, []string{"program_name"}, "PROCESS-NAME,python3,node:direct"))
++	for _, bad := range [][]byte{
++		bytes.Replace(raw, []byte(`"hoopa-program-rules":`), []byte(`"hoopa-program-rules":{},"hoopa-program-rules":`), 1),
++		bytes.Replace(raw, []byte(`"profile_id":"`+ProgramRuleProfileID+`"`), []byte(`"profile_id":"`+ProgramRuleProfileID+`","profile_id":"`+ProgramRuleProfileID+`"`), 1),
++		bytes.Replace(raw, []byte(`"profile_id":"`+ProgramRuleProfileID+`"`), []byte(`"profile_id":"`+ProgramRuleProfileID+`","prof\u0069le_id":"`+ProgramRuleProfileID+`"`), 1),
++		append(append([]byte(nil), raw...), []byte(` {}`)...),
++	} {
++		rejectProgramConfig(t, bad)
++	}
++	for _, rule := range []string{
++		"PROCESS-NAME-WILDCARD,python*,node:direct", "PROCESS-NAME-REGEX,python.*,node:direct", "PROCESS-PATH-REGEX,/bin/.*,node:direct", "UID,65534,node:direct", "PROCESS-NAME,python3,DIRECT", "PROCESS-NAME,python3,node:direct,no-resolve",
++		"AND,((PROCESS-NAME,python3)),node:direct", "AND,((PROCESS-NAME,python3),(AND,((DOMAIN,a),(DOMAIN,b)))),node:direct", "OR,((PROCESS-NAME,python3),(DOMAIN,alpha.test)),node:direct", "AND,((UID,1),(PROCESS-NAME,python3)),node:direct",
++	} {
++		rejectProgramConfig(t, encode(t, programConfig(t, []string{"program_name", "program_path"}, rule)))
++	}
++}
++
++func TestProgramRulesUnicodeEscapesRemainExact(t *testing.T) {
++	raw := encode(t, programConfig(t, []string{"program_name"}, "PROCESS-NAME,python3,node:direct"))
++	for _, value := range []string{`\uD800`, `\uDC00`, `\uD800a`, `\uD800\u0041`, `\uDC00\uD800`} {
++		rejectProgramConfig(t, bytes.Replace(raw, []byte("python3"), []byte(value), 1))
++	}
++	for _, tc := range []struct{ raw, want string }{{`\uD83D\uDE00`, "😀"}, {`\\uD800`, `\uD800`}, {`\uFFFD`, "�"}, {`\u7A0B\u5E8F`, "程序"}, {`A\u0062\uD83D\uDE00\\uD800`, `Ab😀\uD800`}} {
++		input := bytes.Replace(raw, []byte("python3"), []byte(tc.raw), 1)
++		c, _, err := ValidateDeclaredProgramIdentity(input, "gen")
++		if err != nil || c.Rules[0] != "PROCESS-NAME,"+tc.want+",node:direct" {
++			t.Fatal("valid literal changed", err)
++		}
++	}
++}
+--- a/component/hoopatrace/guard_linux.go
++++ b/component/hoopatrace/guard_linux.go
+@@ -7,24 +7,47 @@
+ // PrepareGuard runs source/mapping admission before a protected entry accepts.
+ // expected maps immutable inline node/group names to the compiled adapter type.
+ func PrepareGuard(generation string, expected map[string]string) error {
++	return prepareGuard(generation, expected, "")
++}
++
++// PrepareGuardWithProgramRules requires explicit protected-config validation.
++// Binding completes inside the same once as source initialization. A source
++// initialized through another entry cannot later acquire this capability.
++func PrepareGuardWithProgramRules(generation string, expected map[string]string, profile string) error {
++	if profile != ProgramRuleProfileID || os.Getenv("HOOPA_TRACE_PROFILE") != "5" {
++		return ErrSource
++	}
++	return prepareGuard(generation, expected, profile)
++}
++
++func prepareGuard(generation string, expected map[string]string, programRules string) error {
+ 	if (os.Getenv("HOOPA_TRACE_PROFILE") != "2" && os.Getenv("HOOPA_TRACE_PROFILE") != "3" && os.Getenv("HOOPA_TRACE_PROFILE") != "4" && os.Getenv("HOOPA_TRACE_PROFILE") != "5") || os.Getenv("HOOPA_TRACE_GENERATION") != generation || os.Getenv("HOOPA_TRACE_ROUTE_MAP") == "" {
+ 		return ErrSource
+ 	}
+-	global.once.Do(func() {
+-		initializeWithRoutes(func(routes map[string]routeEntry) error {
+-			if len(routes) != len(expected) {
++	checkRoutes := func(routes map[string]routeEntry) error {
++		if len(routes) != len(expected) {
++			return ErrSource
++		}
++		for name, typ := range expected {
++			r, ok := routes[name]
++			if !ok || r.AdapterType != typ || r.ProviderName != "" || r.ProviderID != nil {
+ 				return ErrSource
+ 			}
+-			for name, typ := range expected {
+-				r, ok := routes[name]
+-				if !ok || r.AdapterType != typ || r.ProviderName != "" || r.ProviderID != nil {
+-					return ErrSource
+-				}
+-			}
+-			return nil
+-		})
++		}
++		return nil
++	}
++	global.once.Do(func() {
++		initializeWithRoutes(checkRoutes)
++		if global.err == nil && global.s != nil {
++			global.s.programRules = programRules
++		}
+ 	})
+-	if global.err != nil {
++	if global.err != nil || global.s == nil || global.s.programRules != programRules {
++		return ErrSource
++	}
++	// The admitted route map is immutable. Repeated preparation must compare
++	// the new request too; once only protects the original initialization.
++	if checkRoutes(global.s.routes) != nil {
+ 		return ErrSource
+ 	}
+ 	return guardReady(global.s, generation)
+--- /dev/null
++++ b/component/hoopatrace/program_rules_linux.go
+@@ -0,0 +1,56 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import "github.com/metacubex/mihomo/component/hoopaid"
++
++const ProgramRuleProfileID = "connect_initiator_exact_program_v1"
++
++type programSnapshot struct {
++	enabled              bool
++	name, path           string
++	nameKnown, pathKnown bool
++}
++
++func snapshotProgram(proof *hoopaid.Identity) programSnapshot {
++	if proof == nil || !proof.HasExecutable || !proof.HasFieldProfile || proof.FieldProfile.Validate(proof.Generation) != nil || proof.Executable.Status != "available" {
++		return programSnapshot{}
++	}
++	return programSnapshot{
++		enabled: true,
++		name:    proof.Executable.ProgramName, path: proof.Executable.PathText,
++		nameKnown: proof.Executable.ProgramNameTextValid,
++		pathKnown: proof.Executable.PathTextValid,
++	}
++}
++
++func (f *Flow) ProgramRulesEnabled() bool {
++	return f != nil && f.program.enabled
++}
++
++// MatchConnectorProgram reads immutable per-flow connector projections. An
++// unavailable text value is unknown, never the empty string or a legacy lookup.
++func (f *Flow) MatchConnectorProgram(field, pattern string) int8 {
++	if !f.ProgramRulesEnabled() {
++		return -1
++	}
++	var value string
++	switch field {
++	case "name":
++		if !f.program.nameKnown {
++			return -1
++		}
++		value = f.program.name
++	case "path":
++		if !f.program.pathKnown {
++			return -1
++		}
++		value = f.program.path
++	default:
++		return -1
++	}
++	if value == pattern {
++		return 1
++	}
++	return 0
++}
+--- /dev/null
++++ b/component/hoopatrace/program_rules_linux_test.go
+@@ -0,0 +1,116 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"bytes"
++	"encoding/binary"
++	"encoding/hex"
++	"testing"
++	"time"
++	"unicode/utf8"
++
++	"github.com/metacubex/mihomo/component/hoopaid"
++)
++
++// Change the original ABI and its projections together, so begin exercises the
++// real opened validator, rather than testing an inconsistent fabricated value.
++func programProof(t *testing.T, path []byte) hoopaid.Identity {
++	t.Helper()
++	p := fieldIdentity(t)
++	raw, err := hex.DecodeString(p.Executable.RawRecord)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for i := 40; i < 296; i++ {
++		raw[i] = 0
++	}
++	binary.LittleEndian.PutUint32(raw[16:], uint32(len(path)+1))
++	copy(raw[40:], path)
++	name := path[bytes.LastIndexByte(path, '/')+1:]
++	p.Executable.RawRecord = hex.EncodeToString(raw)
++	p.Executable.PathRawHex = hex.EncodeToString(path)
++	p.Executable.ProgramNameRawHex = hex.EncodeToString(name)
++	p.Executable.PathTextValid = utf8.Valid(path)
++	p.Executable.ProgramNameTextValid = utf8.Valid(name)
++	p.Executable.PathText, p.Executable.ProgramName = "", ""
++	if p.Executable.PathTextValid {
++		p.Executable.PathText = string(path)
++	}
++	if p.Executable.ProgramNameTextValid {
++		p.Executable.ProgramName = string(name)
++	}
++	return p
++}
++
++func TestConnectorProgramSnapshotUsesOriginalValidatedFlow(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "5")
++	for _, enabled := range []bool{false, true} {
++		t.Run(map[bool]string{false: "no_optin", true: "optin"}[enabled], func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			if enabled {
++				s.programRules = ProgramRuleProfileID
++			}
++			proof := programProof(t, []byte("/bin/Python*"))
++			f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
++			if err != nil {
++				t.Fatal(err)
++			}
++			defer f.Close()
++			proof.Executable.ProgramName = "changed-after-connect"
++			proof.Executable.PathText = "/changed-after-connect"
++			proof.FieldProfile.ID = "changed-after-connect"
++			if f.ProgramRulesEnabled() != enabled {
++				t.Fatal("opt-in boundary")
++			}
++			for _, check := range []struct {
++				field, pattern string
++				want           int8
++			}{
++				{"name", "Python*", 1}, {"name", "python*", 0}, {"name", "PythonX", 0},
++				{"path", "/bin/Python*", 1}, {"path", "/other/Python*", 0}, {"instance", "", -1},
++			} {
++				want := check.want
++				if !enabled {
++					want = -1
++				}
++				if got := f.MatchConnectorProgram(check.field, check.pattern); got != want {
++					t.Fatalf("%s/%q got=%d want=%d", check.field, check.pattern, got, want)
++				}
++			}
++			if f.identity.Status != "unknown" || f.identity.Reason != "legacy_process_fields_unused" || f.MatchProcess("name", "Python*") != -1 {
++				t.Fatal("legacy identity changed")
++			}
++		})
++	}
++}
++
++func TestConnectorProgramUnknownIsFieldSpecific(t *testing.T) {
++	t.Setenv("HOOPA_TRACE_PROFILE", "5")
++	for _, check := range []struct {
++		name               string
++		path               []byte
++		wantName, wantPath int8
++	}{
++		{"invalid_directory", []byte{'/', 0xff, '/', 'p', 'y'}, 1, -1},
++		{"invalid_basename", []byte{'/', 'b', 'i', 'n', '/', 0xff}, -1, -1},
++	} {
++		t.Run(check.name, func(t *testing.T) {
++			s := testSource(t, defaultLimit)
++			s.programRules = ProgramRuleProfileID
++			proof := programProof(t, check.path)
++			f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
++			if err != nil {
++				t.Fatal("valid raw connector must reach opened", err)
++			}
++			defer f.Close()
++			if !f.ProgramRulesEnabled() || f.MatchConnectorProgram("name", "py") != check.wantName || f.MatchConnectorProgram("path", "/bin/py") != check.wantPath {
++				t.Fatal("text unknown collapsed into false or leaked across fields")
++			}
++		})
++	}
++	var absent *Flow
++	if absent.MatchConnectorProgram("name", "py") != -1 || absent.ProgramRulesEnabled() {
++		t.Fatal("nil flow")
++	}
++}
+--- /dev/null
++++ b/component/hoopatrace/program_rules_prepare_linux_test.go
+@@ -0,0 +1,152 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"context"
++	"encoding/json"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++const prepareChildCase = "HOOPA_PROGRAM_RULES_PREPARE_CHILD_CASE"
++
++func TestProgramRulesPrepareGuardOnce(t *testing.T) {
++	if mode := os.Getenv(prepareChildCase); mode != "" {
++		programRulesPrepareChild(t, mode)
++		return
++	}
++	executable, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, mode := range []string{"legacy-then-enabled", "enabled-then-legacy", "legacy-repeat", "enabled-repeat", "changed-profile", "changed-generation", "changed-route-type", "changed-route-set", "bad-profile-before-init", "bad-schema-before-init"} {
++		t.Run(mode, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++			defer cancel()
++			cmd := exec.CommandContext(ctx, executable, "-test.run=^TestProgramRulesPrepareGuardOnce$", "-test.count=1", "-test.v")
++			for _, value := range os.Environ() {
++				if !strings.HasPrefix(value, prepareChildCase+"=") {
++					cmd.Env = append(cmd.Env, value)
++				}
++			}
++			cmd.Env = append(cmd.Env, prepareChildCase+"="+mode)
++			output, err := cmd.CombinedOutput()
++			if err != nil || ctx.Err() != nil {
++				t.Fatalf("isolated initialization case %s: %v context=%v\n%s", mode, err, ctx.Err(), output)
++			}
++		})
++	}
++}
++
++func programRulesPrepareChild(t *testing.T, mode string) {
++	t.Helper()
++	if global.s != nil || global.err != nil {
++		t.Fatal("child source was initialized before test")
++	}
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	sourceDir := filepath.Join(dir, "source")
++	if err := os.Mkdir(sourceDir, 0700); err != nil {
++		t.Fatal(err)
++	}
++	node := "node:a"
++	mapping := routeMapping{SchemaVersion: 1, ConfigGeneration: "gen:prepare-once", Entries: []routeEntry{{InternalName: node, AdapterType: "Http", NodeID: &node, DisplayAlias: "Node A"}}}
++	raw, err := json.Marshal(mapping)
++	if err != nil {
++		t.Fatal(err)
++	}
++	routeFile := filepath.Join(dir, "routes.json")
++	if err := os.WriteFile(routeFile, raw, 0600); err != nil {
++		t.Fatal(err)
++	}
++	for key, value := range map[string]string{"HOOPA_TRACE_DIR": sourceDir, "HOOPA_TRACE_GENERATION": mapping.ConfigGeneration, "HOOPA_TRACE_PROFILE": "5", "HOOPA_TRACE_ROUTE_MAP": routeFile, "HOOPA_TRACE_RECEIVER": "", "HOOPA_TRACE_SECRET": "", "HOOPA_TRACE_MAX_BYTES": ""} {
++		t.Setenv(key, value)
++	}
++	t.Cleanup(func() {
++		if global.s != nil {
++			global.s.close()
++		}
++	})
++	expected := map[string]string{node: "Http"}
++	generation := mapping.ConfigGeneration
++	prepare := func(enabled bool) error {
++		if enabled {
++			return PrepareGuardWithProgramRules(generation, expected, ProgramRuleProfileID)
++		}
++		return PrepareGuard(generation, expected)
++	}
++	if mode == "bad-profile-before-init" || mode == "bad-schema-before-init" {
++		if mode == "bad-profile-before-init" {
++			for _, profile := range []string{"", "other", ProgramRuleProfileID + "x"} {
++				if PrepareGuardWithProgramRules(generation, expected, profile) == nil {
++					t.Fatal("invalid profile accepted")
++				}
++			}
++		} else {
++			for _, schema := range []string{"", "1", "2", "3", "4", "05", "6"} {
++				t.Setenv("HOOPA_TRACE_PROFILE", schema)
++				if prepare(true) == nil {
++					t.Fatal("non-source5 schema accepted", schema)
++				}
++			}
++			t.Setenv("HOOPA_TRACE_PROFILE", "5")
++		}
++		entries, err := os.ReadDir(sourceDir)
++		if err != nil || len(entries) != 0 || global.s != nil || global.err != nil {
++			t.Fatal("invalid request consumed initialization or wrote source", entries, err)
++		}
++		if err := prepare(true); err != nil {
++			t.Fatal("pre-init rejection poisoned valid initialization", err)
++		}
++		return
++	}
++	enabled := mode != "legacy-then-enabled" && mode != "legacy-repeat"
++	if err := prepare(enabled); err != nil {
++		t.Fatal("first initialization", err)
++	}
++	original := global.s
++	profile := ""
++	if enabled {
++		profile = ProgramRuleProfileID
++	}
++	if original == nil || original.programRules != profile || original.profile != 5 || original.generation != generation || len(original.routes) != 1 || original.routes[node].AdapterType != "Http" {
++		t.Fatal("source initialization did not bind expected inputs")
++	}
++	epoch := original.epoch
++	var secondErr error
++	switch mode {
++	case "legacy-then-enabled":
++		secondErr = prepare(true)
++	case "enabled-then-legacy":
++		secondErr = prepare(false)
++	case "changed-profile":
++		secondErr = PrepareGuardWithProgramRules(generation, expected, "other")
++	case "changed-generation":
++		t.Setenv("HOOPA_TRACE_GENERATION", "gen:different")
++		secondErr = PrepareGuardWithProgramRules("gen:different", expected, ProgramRuleProfileID)
++	case "changed-route-type":
++		secondErr = PrepareGuardWithProgramRules(generation, map[string]string{node: "Socks5"}, ProgramRuleProfileID)
++	case "changed-route-set":
++		secondErr = PrepareGuardWithProgramRules(generation, map[string]string{}, ProgramRuleProfileID)
++	case "legacy-repeat", "enabled-repeat":
++		if err := prepare(enabled); err != nil {
++			t.Fatal("identical inputs could not reuse initialized source", err)
++		}
++	default:
++		t.Fatal("unknown child case", mode)
++	}
++	if mode != "legacy-repeat" && mode != "enabled-repeat" && secondErr == nil {
++		t.Fatal("conflicting repeat request accepted", mode)
++	}
++	if global.s != original || original.programRules != profile || original.epoch != epoch || original.generation != generation || len(original.routes) != 1 || original.routes[node].AdapterType != "Http" {
++		t.Fatal("repeat changed original source/profile/generation/routes")
++	}
++	// Each isolated child exits with its own once. It is never copied or reset.
++}
+--- /dev/null
++++ b/component/hoopatrace/program_rules_stub.go
+@@ -0,0 +1,6 @@
++//go:build !linux || !amd64
++
++package hoopatrace
++
++func (f *Flow) ProgramRulesEnabled() bool              { return false }
++func (f *Flow) MatchConnectorProgram(_, _ string) int8 { return -1 }
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -56,6 +56,7 @@
+ 
+ type source struct {
+ 	profile               int
++	programRules          string // Immutable before source initialization once completes.
+ 	routes                map[string]routeEntry
+ 	mu                    sync.Mutex
+ 	root                  *os.Root
+@@ -95,6 +96,7 @@
+ 	s                              *source
+ 	id                             string
+ 	identity                       ProcessEvidence
++	program                        programSnapshot // Original connector values, never legacy process fields.
+ 	started                        time.Time
+ 	attempt                        int
+ 	connection                     string
+@@ -452,6 +454,9 @@
+ 		ident = evidence(peer, local)
+ 	}
+ 	f := &Flow{s: s, id: id, identity: ident, started: started, reserved: flowBudget}
++	if s.profile == 5 && s.programRules == ProgramRuleProfileID && proof != nil {
++		f.program = snapshotProgram(proof)
++	}
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()
+ 	s.mu.Lock()
+--- a/hoopa_field_profile_test.go
++++ b/hoopa_field_profile_test.go
+@@ -17,7 +17,7 @@
+ )
+ 
+ func TestFieldProfileProtectedEntryRejectsBeforeSourceOrListeners(t *testing.T) {
+-	for _, tc := range []string{"missing", "comm", "wrong-id", "valid-without-handoff", "legacy-with-new-config"} {
++	for _, tc := range []string{"missing", "comm", "wrong-id", "valid-without-handoff", "legacy-with-new-config", "program-without-handoff", "program-legacy-source", "program-without-trace", "program-undeclared-field", "program-unknown-profile"} {
+ 		t.Run(tc, func(t *testing.T) {
+ 			identityCleanEnv(t)
+ 			dir := t.TempDir()
+@@ -25,6 +25,16 @@
+ 			raw := map[string]any{"mode": "rule", "log-level": "silent", "ipv6": false, "find-process-mode": "off", "external-controller": "127.0.0.1:32003", "secret": strings.Repeat("s", 32), "listeners": []any{map[string]any{"name": "entry", "type": "mixed", "listen": "127.0.0.1", "port": 32002, "udp": false, "users": []any{map[string]string{"username": "user", "password": strings.Repeat("p", 32)}}}}, "proxies": []any{map[string]string{"name": "node:test", "type": "direct"}}, "rules": []string{"MATCH,node:test"}, "profile": map[string]bool{"store-selected": false, "store-fake-ip": false}}
+ 			if tc != "missing" {
+ 				r := identityprofile.Requirements{ProfileID: identityprofile.ID, SourceSchemaVersion: 5, RequiredFields: []string{"instance"}}
++				if strings.HasPrefix(tc, "program-") {
++					raw["hoopa-program-rules"] = map[string]string{"profile_id": "connect_initiator_exact_program_v1"}
++					raw["rules"] = []string{"PROCESS-NAME,python3,node:test", "MATCH,node:test"}
++					if tc != "program-undeclared-field" {
++						r.RequiredFields = append(r.RequiredFields, "program_name")
++					}
++					if tc == "program-unknown-profile" {
++						raw["hoopa-program-rules"] = map[string]string{"profile_id": "unknown"}
++					}
++				}
+ 				if tc == "comm" {
+ 					r.RequiredFields = []string{"comm"}
+ 				}
+@@ -46,8 +56,11 @@
+ 			t.Setenv("HOOPA_TRACE_INBOUND", "entry")
+ 			t.Setenv("HOOPA_TRACE_GENERATION", "generation")
+ 			t.Setenv("HOOPA_TRACE_ROUTE_MAP", filepath.Join(dir, "routes.json"))
+-			if tc == "legacy-with-new-config" {
++			if tc == "legacy-with-new-config" || tc == "program-legacy-source" {
+ 				t.Setenv("HOOPA_TRACE_PROFILE", "4")
++			}
++			if tc == "program-without-trace" {
++				t.Setenv("HOOPA_TRACE_INBOUND", "")
+ 			}
+ 			if e := runHoopaGuard(); e == nil {
+ 				t.Fatal("unadopted/invalid field config started")
+@@ -88,7 +101,7 @@
+ 			return true
+ 		})
+ 	}
+-	for _, pair := range [][2]string{{"ValidateDeclaredIdentity", "Adopt"}, {"Adopt", "FieldProfile"}, {"FieldProfile", "ValidateWithIdentity"}, {"ValidateWithIdentity", "PrepareGuard"}, {"PrepareGuard", "ApplyConfig"}, {"ApplyConfig", "Reserve"}, {"Reserve", "Listen"}} {
++	for _, pair := range [][2]string{{"ValidateDeclaredProgramIdentity", "Adopt"}, {"Adopt", "FieldProfile"}, {"FieldProfile", "ValidateWithProgramIdentity"}, {"ValidateWithProgramIdentity", "PrepareGuard"}, {"ValidateWithProgramIdentity", "PrepareGuardWithProgramRules"}, {"PrepareGuard", "ApplyConfig"}, {"PrepareGuardWithProgramRules", "ApplyConfig"}, {"ApplyConfig", "Reserve"}, {"Reserve", "Listen"}} {
+ 		if positions[pair[0]] == 0 || positions[pair[1]] <= positions[pair[0]] {
+ 			t.Fatal("startup binding order", pair, positions)
+ 		}
+--- a/hoopa_guard_linux.go
++++ b/hoopa_guard_linux.go
+@@ -138,7 +138,7 @@
+ 	generation := os.Getenv("HOOPA_GUARD_GENERATION")
+ 	var p profile.Config
+ 	if os.Getenv("HOOPA_TRACE_PROFILE") == "5" {
+-		p, _, err = profile.ValidateDeclaredIdentity(raw, generation)
++		p, _, err = profile.ValidateDeclaredProgramIdentity(raw, generation)
+ 	} else {
+ 		p, err = profile.Validate(raw, generation)
+ 	}
+@@ -147,6 +147,9 @@
+ 	}
+ 	tracing, expected, err := guardTraceConfig(p, generation)
+ 	if err != nil {
++		return errHoopaGuard
++	}
++	if p.ProgramRules != "" && (!tracing || os.Getenv("HOOPA_TRACE_PROFILE") != "5") {
+ 		return errHoopaGuard
+ 	}
+ 	C.SetHomeDir(homeDir)
+@@ -195,12 +198,18 @@
+ 		if e != nil {
+ 			return errHoopaGuard
+ 		}
+-		if _, e = profile.ValidateWithIdentity(raw, generation, actual); e != nil {
++		if _, e = profile.ValidateWithProgramIdentity(raw, generation, actual); e != nil {
+ 			return errHoopaGuard
+ 		}
+ 	}
+ 	if tracing {
+-		if err := hoopatrace.PrepareGuard(generation, expected); err != nil {
++		var prepareErr error
++		if p.ProgramRules != "" {
++			prepareErr = hoopatrace.PrepareGuardWithProgramRules(generation, expected, p.ProgramRules)
++		} else {
++			prepareErr = hoopatrace.PrepareGuard(generation, expected)
++		}
++		if prepareErr != nil {
+ 			return errHoopaGuard
+ 		}
+ 	}
+@@ -210,7 +219,7 @@
+ 	C.HoopaProtected = true
+ 	executor.ApplyConfig(cfg, true)
+ 	defer executor.Shutdown()
+-	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}, identity: identity}
++	r := &hoopaGuardRuntime{state: "preparing", generation: generation, hash: hash, secret: p.Secret, conns: map[net.Conn]bool{}, identity: identity, programRules: p.ProgramRules}
+ 	defer r.stop()
+ 	// Reserve every socket first. A later bind failure closes the earlier ones;
+ 	// no auth/CONNECT response or payload can be dispatched before all succeed.
+@@ -275,6 +284,7 @@
+ 	conns                           map[net.Conn]bool
+ 	accept, workers                 sync.WaitGroup
+ 	identity                        *hoopaid.Owner
++	programRules                    string
+ }
+ 
+ func (r *hoopaGuardRuntime) serveEntry(ln net.Listener, name string, store auth.AuthStore) {
+@@ -373,12 +383,28 @@
+ 		http.Error(w, "unauthorized", http.StatusUnauthorized)
+ 		return
+ 	}
+-	known := q.Method == "GET" && (q.URL.Path == "/hoopa/status" || q.URL.Path == "/hoopa/capture-health") || q.Method == "POST" && q.URL.Path == "/hoopa/drain"
++	known := q.Method == "GET" && (q.URL.Path == "/hoopa/status" || q.URL.Path == "/hoopa/capture-health" || q.URL.Path == "/hoopa/program-rules") || q.Method == "POST" && q.URL.Path == "/hoopa/drain"
+ 	if known && (q.URL.RawQuery != "" || q.ContentLength != 0 || len(q.TransferEncoding) != 0) {
+ 		http.Error(w, "invalid request", 400)
+ 		return
+ 	}
+ 	switch {
++	case q.Method == "GET" && q.URL.Path == "/hoopa/program-rules":
++		if r.programRules != profile.ProgramRuleProfileID {
++			http.Error(w, "program rules unavailable", http.StatusConflict)
++			return
++		}
++		result := struct {
++			Schema   int    `json:"schema_version"`
++			Profile  string `json:"profile_id"`
++			Source   int    `json:"source_schema_version"`
++			Name     bool   `json:"name"`
++			Path     bool   `json:"path"`
++			Instance bool   `json:"instance"`
++			Comm     bool   `json:"comm"`
++		}{Schema: 1, Profile: r.programRules, Source: 5, Name: true, Path: true}
++		w.Header().Set("Content-Type", "application/json")
++		_ = json.NewEncoder(w).Encode(result)
+ 	case q.Method == "GET" && q.URL.Path == "/hoopa/status":
+ 		r.mu.Lock()
+ 		result := struct {
+--- /dev/null
++++ b/hoopa_program_rules_test.go
+@@ -0,0 +1,106 @@
++//go:build linux && amd64
++
++package main
++
++import (
++	"encoding/json"
++	"io"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"reflect"
++	"strings"
++	"testing"
++
++	"github.com/metacubex/mihomo/component/hoopaguard/profile"
++)
++
++func TestProgramRulesProtectedReadOnlySurface(t *testing.T) {
++	for _, tc := range []struct {
++		name, method, path, remote, auth string
++		program                          string
++		body                             string
++		length                           int64
++		missing, duplicate, chunked      bool
++		want                             int
++	}{
++		{name: "enabled exact body", program: profile.ProgramRuleProfileID, want: 200},
++		{name: "disabled", want: 409},
++		{name: "unknown profile disabled", program: "other", want: 409},
++		{name: "no credentials before unavailable", missing: true, want: 401},
++		{name: "wrong token", program: profile.ProgramRuleProfileID, auth: "Bearer wrong", want: 401},
++		{name: "duplicate token", program: profile.ProgramRuleProfileID, duplicate: true, want: 401},
++		{name: "nonloopback", program: profile.ProgramRuleProfileID, remote: "192.0.2.1:1234", want: 401},
++		{name: "IPv6 loopback", program: profile.ProgramRuleProfileID, remote: "[::1]:1234", want: 401},
++		{name: "bad peer", remote: "invalid", want: 401},
++		{name: "query", program: profile.ProgramRuleProfileID, path: "/hoopa/program-rules?refresh=1", want: 400},
++		{name: "body", program: profile.ProgramRuleProfileID, body: "x", length: 1, want: 400},
++		{name: "unknown length", program: profile.ProgramRuleProfileID, length: -1, want: 400},
++		{name: "chunked", program: profile.ProgramRuleProfileID, chunked: true, want: 400},
++		{name: "query before unavailable", path: "/hoopa/program-rules?refresh=1", want: 400},
++		{name: "auth before query", missing: true, path: "/hoopa/program-rules?refresh=1", want: 401},
++		{name: "post", program: profile.ProgramRuleProfileID, method: "POST", want: 409},
++		{name: "post disabled", method: "POST", want: 409},
++		{name: "legacy status enabled", program: profile.ProgramRuleProfileID, path: "/hoopa/status", want: 200},
++		{name: "legacy status disabled", path: "/hoopa/status", want: 200},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			r := &hoopaGuardRuntime{state: "running", generation: "fixed-generation", hash: "fixed-config-hash", secret: "fixed-test-token", programRules: tc.program, conns: map[net.Conn]bool{nil: true}}
++			if tc.method == "" {
++				tc.method = http.MethodGet
++			}
++			if tc.path == "" {
++				tc.path = "/hoopa/program-rules"
++			}
++			q := httptest.NewRequest(tc.method, tc.path, nil)
++			q.RemoteAddr = "127.0.0.1:1234"
++			if tc.remote != "" {
++				q.RemoteAddr = tc.remote
++			}
++			if !tc.missing {
++				q.Header.Set("Authorization", "Bearer fixed-test-token")
++			}
++			if tc.auth != "" {
++				q.Header.Set("Authorization", tc.auth)
++			}
++			if tc.duplicate {
++				q.Header.Add("Authorization", "Bearer fixed-test-token")
++			}
++			q.ContentLength = tc.length
++			if tc.body != "" {
++				q.Body = io.NopCloser(strings.NewReader(tc.body))
++			}
++			if tc.chunked {
++				q.TransferEncoding = []string{"chunked"}
++			}
++			w := httptest.NewRecorder()
++			r.ServeHTTP(w, q)
++			if w.Code != tc.want {
++				t.Fatalf("code=%d want=%d body=%s", w.Code, tc.want, w.Body.String())
++			}
++			if r.state != "running" || r.generation != "fixed-generation" || r.hash != "fixed-config-hash" || r.secret != "fixed-test-token" || r.identity != nil || r.programRules != tc.program || len(r.conns) != 1 || !r.conns[nil] {
++				t.Fatal("readonly endpoint changed runtime")
++			}
++			if tc.want == 200 {
++				if w.Header().Get("Content-Type") != "application/json" {
++					t.Fatal("missing JSON content type")
++				}
++				var got map[string]any
++				d := json.NewDecoder(w.Body)
++				if err := d.Decode(&got); err != nil {
++					t.Fatal(err)
++				}
++				if _, err := d.Token(); err != io.EOF {
++					t.Fatal("extra response data")
++				}
++				want := map[string]any{"schema_version": float64(1), "profile_id": profile.ProgramRuleProfileID, "source_schema_version": float64(5), "name": true, "path": true, "instance": false, "comm": false}
++				if tc.path == "/hoopa/status" {
++					want = map[string]any{"schema_version": float64(1), "config_generation": "fixed-generation", "config_sha256": "fixed-config-hash", "state": "running", "accepted_tcp_connections": float64(1), "identity_instance": false, "identity_name": false, "identity_path": false}
++				}
++				if !reflect.DeepEqual(got, want) {
++					t.Fatalf("exact response got=%#v want=%#v", got, want)
++				}
++			}
++		})
++	}
++}
+--- a/rules/common/process.go
++++ b/rules/common/process.go
+@@ -150,5 +150,8 @@
+ 	if flow == nil {
+ 		return -1, ps.adapter
+ 	}
++	if flow.ProgramRulesEnabled() {
++		return ps.matchHoopa(flow.MatchConnectorProgram)
++	}
+ 	return ps.matchHoopa(flow.MatchProcess)
+ }

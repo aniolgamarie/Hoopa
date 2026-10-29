@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "source": "Finite codec-only vectors independently canonicalized and SHA256-hashed by Node v24.14.0 (JSON.stringify / UTF16 Object.keys.sort / node:crypto). Checked oracle exit 0 and output equality recorded in private/p1-plan-preparation/oracle-checked-receipt.json; public tests require no private files or Node. Not a complete Intent compiler or apply fixture.",
+  "cases": [
+    {
+      "name": "blocked-draft-plan",
+      "raw": "{\n  \"schema_version\": 1,\n  \"base_revision\": \"r1\",\n  \"compiler_version\": \"fixture-compiler-v1\",\n  \"capabilities_digest\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n  \"intent\": {\n    \"schema_version\": 1,\n    \"core\": {\n      \"mihomo\": {\n        \"path\": \"/fixture/mihomo\",\n        \"version\": \"fixture-v1\",\n        \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n      }\n    },\n    \"subscriptions\": [],\n    \"selection\": {\n      \"active_subscription\": null\n    },\n    \"groups\": [],\n    \"apps\": [],\n    \"rules\": [],\n    \"default_target\": {\n      \"kind\": \"reject\"\n    }\n  },\n  \"inputs\": [\n    {\n      \"kind\": \"core_binary\",\n      \"id\": \"mihomo\",\n      \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n    },\n    {\n      \"kind\": \"capabilities\",\n      \"id\": \"basic\",\n      \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n    }\n  ],\n  \"impact\": {\n    \"requires_disruption\": true,\n    \"affected_apps\": [],\n    \"previous_generation\": null,\n    \"target_generation\": \"g2\",\n    \"connection_effect\": \"unknown\",\n    \"runtime_action\": \"start\"\n  },\n  \"blockers\": [\n    {\n      \"code\": \"NO_ACTIVE_SUBSCRIPTION\",\n      \"message\": \"待选择来源 <不可应用> 😀\"\n    }\n  ],\n  \"plan_digest\": \"0000000000000000000000000000000000000000000000000000000000000000\"\n}",
+      "sha256": "8d4746ed8077ba0c06007f1c0cc568072b18e23ddf0bf62c3147893609ad8247"
+    },
+    {
+      "name": "top-only-exclusion-primitive",
+      "raw": "{\"plan_digest\":\"ignored\",\"nested\":{\"plan_digest\":\"must-stay\",\"z\":-0,\"a\":1e-7},\"array\":[3,2,1]}",
+      "sha256": "2a5ba56cd513932dc88613eedb2dc2ec20d716cc37c8b61cb9a6d34178a21274"
+    },
+    {
+      "name": "utf16-and-string-primitive",
+      "raw": "{\"plan_digest\":\"ignored\",\"\\ue000\":1,\"\\ud800\\udc00\":2,\"s\":\"<>&\\u2028\\u2029\",\"numbers\":[333333333.33333329,1e-6,-0,9007199254740991]}",
+      "sha256": "1d8ce19a9763bf5f7865fd63566777a1f572bc40dbfb1719a6da46999a88df80"
+    }
+  ]
+}

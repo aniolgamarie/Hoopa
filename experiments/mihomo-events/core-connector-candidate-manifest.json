@@ -1,0 +1,351 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "scope": "T132 finite original accepted socket connector integration and metered TCP half-close repair; not T137",
+  "status": "clean fixed upstream plus 001-009; finite validation only",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-core-identity/artifact-halfclose/mihomo-identity",
+    "bytes": 51176590,
+    "sha256": "452effa120f0f0beea122169c9e442b6338389bc4768111c4ed7ffb8d5f44f9b"
+  },
+  "version_probe": {
+    "argv": [
+      "private/t132-core-identity/artifact-halfclose/mihomo-identity",
+      "-v"
+    ],
+    "exit_code": 0,
+    "stdout": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time\n",
+    "interpretation": "No ldflags were used for reproducible byte comparison. Printed 1.10.0 is the upstream source default, not the pinned source tag or a Hoopa release version."
+  },
+  "source": {
+    "reviewed_target": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/source-halfclose",
+    "fresh_applied": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/artifact-halfclose/source",
+    "tree_sha256": "a00b376e3965a736eac8db0fabbc8319b19fa7a3bc595920de606d8528f0d65f",
+    "tree_sha256_algorithm": "SHA256 of sorted relative path entries encoded as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; root/.git excluded; kind=file/dir/symlink; mode=S_IMODE",
+    "byte_and_mode_comparisons": {
+      "paths_types_modes_links_and_hashes_equal": true,
+      "all_file_bytes_equal": true,
+      "file_count": 961,
+      "entry_count": 1155
+    },
+    "evidence": {
+      "path": "private/t132-core-identity/artifact-halfclose/apply-build.json",
+      "bytes": 337302,
+      "sha256": "5e47d2193a3c89b559317848e16a05c15c86f80634e3d32255dd16530ca09a5a"
+    }
+  },
+  "previous_008_candidate": {
+    "binary": {
+      "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/artifact/mihomo-identity",
+      "bytes": 51175795,
+      "sha256": "7142085db940b9166828640156c7389472b07685f4c40b6ffcad6a0a42ce641c"
+    },
+    "apply_build": {
+      "path": "private/t132-core-identity/artifact/apply-build.json",
+      "bytes": 448943,
+      "sha256": "a33dac9197ec74c9b8b10294edb8e3840377459dcfcc2ed47e890c7ec5583d7b"
+    },
+    "tests": {
+      "top_level_pass": 63,
+      "including_subtests_pass": 203,
+      "skip": 0,
+      "package_pass": 5
+    }
+  },
+  "build_environment": {
+    "GOTOOLCHAIN": "local",
+    "GOPROXY": "off",
+    "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+    "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+    "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+    "GOFLAGS": "",
+    "GOWORK": "off"
+  },
+  "shared_files": [
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/abi.go",
+        "bytes": 6322,
+        "sha256": "cfb4444f3644074fd9fa4c0d2c1411a7fd3a8432cbc022e00e97c25f6f190565"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/abi.go",
+        "bytes": 6322,
+        "sha256": "cfb4444f3644074fd9fa4c0d2c1411a7fd3a8432cbc022e00e97c25f6f190565"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/handoff.go",
+        "bytes": 4655,
+        "sha256": "baf0ad1add5e631b038a466f3ecf4610fde93ad579faa86f375cb1e7e62a9b45"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/handoff.go",
+        "bytes": 4655,
+        "sha256": "baf0ad1add5e631b038a466f3ecf4610fde93ad579faa86f375cb1e7e62a9b45"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/native_linux_amd64.go",
+        "bytes": 9728,
+        "sha256": "4c86bc09f0ecacbfa844c8ecd6b034c9d4549c7fc582f4c0e9eca88184495cce"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/native_linux_amd64.go",
+        "bytes": 9728,
+        "sha256": "4c86bc09f0ecacbfa844c8ecd6b034c9d4549c7fc582f4c0e9eca88184495cce"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/native_linux_amd64_test.go",
+        "bytes": 3553,
+        "sha256": "6c1224df4e49622015bc6aa4e16fc16b4a8c7782dd5e6e8c3b809b9328b89814"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/native_linux_amd64_test.go",
+        "bytes": 3553,
+        "sha256": "6c1224df4e49622015bc6aa4e16fc16b4a8c7782dd5e6e8c3b809b9328b89814"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/native_other.go",
+        "bytes": 182,
+        "sha256": "a7fb26a279acf02ed1ea4c852db7ac209cf85eea91a12b855fbae22bba3a8184"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/native_other.go",
+        "bytes": 182,
+        "sha256": "a7fb26a279acf02ed1ea4c852db7ac209cf85eea91a12b855fbae22bba3a8184"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/owner.go",
+        "bytes": 10470,
+        "sha256": "0293f3ea7330d307eb6d2c5ae263377b334d5e736312847d9af67810402dbbba"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/owner.go",
+        "bytes": 10470,
+        "sha256": "0293f3ea7330d307eb6d2c5ae263377b334d5e736312847d9af67810402dbbba"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "experiments/sourceidentity/coreadmission/owner_test.go",
+        "bytes": 20860,
+        "sha256": "a7336b930dabc36669a00892c94f153845afaee537982409fec465eb30a5eacf"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopaid/owner_test.go",
+        "bytes": 20860,
+        "sha256": "a7336b930dabc36669a00892c94f153845afaee537982409fec465eb30a5eacf"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/connector_v3.go",
+        "bytes": 8817,
+        "sha256": "583e3245657dbbb1aab65ca6dc8e6bd476c7cb4400e1a251e0d9c1db806a0dd5"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/connector_v3.go",
+        "bytes": 8817,
+        "sha256": "583e3245657dbbb1aab65ca6dc8e6bd476c7cb4400e1a251e0d9c1db806a0dd5"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/counter_event.go",
+        "bytes": 4890,
+        "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/counter_event.go",
+        "bytes": 4890,
+        "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/manifest.go",
+        "bytes": 2966,
+        "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/manifest.go",
+        "bytes": 2966,
+        "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/quality_state.go",
+        "bytes": 3561,
+        "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/quality_state.go",
+        "bytes": 3561,
+        "sha256": "2ccd667068fb4d0617b03c2578af3992a2057acf6b3dad6120275aeee6ca7651"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/quality_v2.go",
+        "bytes": 9494,
+        "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/quality_v2.go",
+        "bytes": 9494,
+        "sha256": "9e4b52f8765a747807852ae21ae9f1e7f455c4fcd123df320646e3a425fce384"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/recovery.go",
+        "bytes": 5439,
+        "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/recovery.go",
+        "bytes": 5439,
+        "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/scalars.go",
+        "bytes": 1024,
+        "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/scalars.go",
+        "bytes": 1024,
+        "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/source_event.go",
+        "bytes": 12183,
+        "sha256": "b8be92994ccaf7214a71d75341b34ea306c3e72e1b5ceff71e5b7bb7cc0ecff9"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/source_event.go",
+        "bytes": 12183,
+        "sha256": "b8be92994ccaf7214a71d75341b34ea306c3e72e1b5ceff71e5b7bb7cc0ecff9"
+      },
+      "identical": true
+    },
+    {
+      "public": {
+        "path": "protocol/telemetrywire/state.go",
+        "bytes": 5892,
+        "sha256": "b37d53f33fbb421e04ec7a192d261db3a4486c54906b228f77b5a93af057409c"
+      },
+      "core": {
+        "path": "private/t132-core-identity/artifact-halfclose/source/component/hoopatrace/telemetrywire/state.go",
+        "bytes": 5892,
+        "sha256": "b37d53f33fbb421e04ec7a192d261db3a4486c54906b228f77b5a93af057409c"
+      },
+      "identical": true
+    }
+  ],
+  "source_boundaries": {
+    "connector": "connect_initiator_v1_initial_ns_ipv4_loopback_experimental",
+    "process_legacy": "unknown:connector_experiment_unverified",
+    "name": "unverified_nonatomic",
+    "path": "unknown",
+    "formal_identity_capabilities": false,
+    "process_rules": "rejected",
+    "recoverable_identity": "original opened raw only; recovery flow projection unchanged"
+  },
+  "task_state": {
+    "total": 139,
+    "completed": 21,
+    "T132": "in_progress",
+    "T137": "not_completed",
+    "P0": "not_released",
+    "P1": "not_released"
+  },
+  "formal_g01": {
+    "historical": "0/100 preserved",
+    "new_samples": 0
+  },
+  "runtime_validation": "../sourceidentity/core-validation.json",
+  "old_candidates_overwritten": false,
+  "binaries_committed_to_git": false
+}

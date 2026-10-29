@@ -1,0 +1,2066 @@
+diff --git a/adapter/outbound/base.go b/adapter/outbound/base.go
+--- a/adapter/outbound/base.go
++++ b/adapter/outbound/base.go
+@@ -227,6 +227,7 @@
+ 	chain       C.Chain
+ 	pdChain     C.Chain
+ 	adapterAddr string
++	hoopa       C.HoopaConnEvidence
+ }
+ 
+ func (c *conn) RemoteDestination() string {
+@@ -256,6 +257,9 @@
+ func (c *conn) AppendToChains(a C.ProxyAdapter) {
+ 	c.chain = append(c.chain, a.Name())
+ 	c.pdChain = append(c.pdChain, a.ProxyInfo().ProviderName)
++	if C.HoopaQualityEnabled {
++		c.hoopa.Hops = append(c.hoopa.Hops, C.HoopaHop{Name: a.Name(), AdapterType: a.Type().String(), ProviderName: a.ProxyInfo().ProviderName})
++	}
+ }
+ 
+ func (c *conn) Upstream() any {
+@@ -278,7 +282,10 @@
+ 	if _, ok := c.(syscall.Conn); !ok { // exclusion system conn like *net.TCPConn
+ 		c = N.NewDeadlineConn(c) // most conn from outbound can't handle readDeadline correctly
+ 	}
+-	cc := &conn{N.NewExtendedConn(c), nil, nil, a.Addr()}
++	cc := &conn{ExtendedConn: N.NewExtendedConn(c), adapterAddr: a.Addr()}
++	if C.HoopaQualityEnabled {
++		cc.hoopa = C.HoopaConnEvidence{Ref: "conn:" + utils.NewUUIDV4().String(), Kind: "ready_unproven", Protocol: "unknown"}
++	}
+ 	cc.AppendToChains(a)
+ 	return cc
+ }
+diff --git a/adapter/outbound/direct.go b/adapter/outbound/direct.go
+--- a/adapter/outbound/direct.go
++++ b/adapter/outbound/direct.go
+@@ -3,6 +3,7 @@
+ import (
+ 	"context"
+ 	"fmt"
++	"time"
+ 
+ 	"github.com/metacubex/mihomo/component/dialer"
+ 	"github.com/metacubex/mihomo/component/loopback"
+@@ -31,7 +32,8 @@
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return d.loopBack.NewConn(NewConn(c, d)), nil
++	ready := time.Now()
++	return d.loopBack.NewConn(hoopaReadyConn(c, d, "tcp_connected", "direct_tcp", ready, C.HoopaConnEvidence{}, !d.tfo)), nil
+ }
+ 
+ // ListenPacketContext implements C.ProxyAdapter
+diff --git a/adapter/outbound/hoopa_quality.go b/adapter/outbound/hoopa_quality.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/outbound/hoopa_quality.go
+@@ -0,0 +1,27 @@
++package outbound
++
++import (
++	C "github.com/metacubex/mihomo/constant"
++	"net"
++	"time"
++)
++
++func (c *conn) HoopaEvidence() C.HoopaConnEvidence {
++	e := c.hoopa
++	e.Hops = append([]C.HoopaHop(nil), e.Hops...)
++	return e
++}
++
++// Explicit protocol completion replaces, never inherits, an inner proof.
++// The inner actual route is retained independently of readiness.
++func hoopaReadyConn(c net.Conn, a C.ProxyAdapter, kind, protocol string, ready time.Time, inner C.HoopaConnEvidence, proven bool) C.Conn {
++	out := NewConn(c, a).(*conn)
++	if !C.HoopaQualityEnabled {
++		return out
++	}
++	out.hoopa.Hops = append(append([]C.HoopaHop{}, inner.Hops...), out.hoopa.Hops...)
++	if proven {
++		out.hoopa.ReadyAt, out.hoopa.Kind, out.hoopa.Protocol = ready, kind, protocol
++	}
++	return out
++}
+diff --git a/adapter/outbound/hoopa_quality_test.go b/adapter/outbound/hoopa_quality_test.go
+new file mode 100644
+--- /dev/null
++++ b/adapter/outbound/hoopa_quality_test.go
+@@ -0,0 +1,286 @@
++package outbound
++
++import (
++	"bufio"
++	"context"
++	"errors"
++	"github.com/metacubex/mihomo/common/callback"
++	N "github.com/metacubex/mihomo/common/net"
++	"github.com/metacubex/mihomo/component/resolver"
++	C "github.com/metacubex/mihomo/constant"
++	"io"
++	"net"
++	"net/netip"
++	"testing"
++	"time"
++)
++
++type qualityPipeDialer struct {
++	C.Dialer
++	conn net.Conn
++}
++
++func (d qualityPipeDialer) DialContext(context.Context, string, string) (net.Conn, error) {
++	return d.conn, nil
++}
++func qualityEnabled(t *testing.T) {
++	t.Helper()
++	old := C.HoopaQualityEnabled
++	C.HoopaQualityEnabled = true
++	t.Cleanup(func() { C.HoopaQualityEnabled = old })
++}
++
++func TestHoopaQualityHTTPCompletionAndCancellation(t *testing.T) {
++	qualityEnabled(t)
++	for _, tc := range []struct {
++		name, response string
++		cancel         bool
++	}{{"success", "HTTP/1.1 200 Established\r\n\r\npayload", false}, {"reject", "HTTP/1.1 403 Rejected\r\n\r\n", false}, {"truncated", "HTTP/1.1 200 Established\r\n", false}, {"cancelled", "", true}} {
++		t.Run(tc.name, func(t *testing.T) {
++			client, server := net.Pipe()
++			defer client.Close()
++			defer server.Close()
++			client.SetDeadline(time.Now().Add(2 * time.Second))
++			server.SetDeadline(time.Now().Add(2 * time.Second))
++			readRequest := make(chan struct{})
++			release := make(chan struct{})
++			done := make(chan struct{})
++			go func() {
++				defer close(done)
++				defer server.Close()
++				r := bufio.NewReader(server)
++				for {
++					s, err := r.ReadString('\n')
++					if err != nil {
++						return
++					}
++					if s == "\r\n" {
++						break
++					}
++				}
++				close(readRequest)
++				<-release
++				if tc.response != "" {
++					server.Write([]byte(tc.response))
++				}
++			}()
++			h, err := NewHttp(HttpOption{BasicOption: BasicOption{DialerForAPI: qualityPipeDialer{conn: client}}, Name: "node:a", Server: "127.0.0.1", Port: 80})
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++			defer cancel()
++			type result struct {
++				c   C.Conn
++				err error
++			}
++			resultCh := make(chan result, 1)
++			go func() {
++				c, err := h.DialContext(ctx, &C.Metadata{Host: "example.test", DstPort: 443})
++				resultCh <- result{c, err}
++			}()
++			<-readRequest
++			select {
++			case <-resultCh:
++				t.Fatal("ready before accepted response")
++			default:
++			}
++			beforeReply := time.Now()
++			if tc.cancel {
++				cancel()
++			}
++			close(release)
++			out := <-resultCh
++			<-done
++			if tc.name == "success" {
++				if out.err != nil {
++					t.Fatal(out.err)
++				}
++				defer out.c.Close()
++				p := C.HoopaEvidenceOf(out.c)
++				if p.Kind != "http_connect_accepted" || p.ReadyAt.Before(beforeReply) || p.ReadyAt.After(time.Now()) || p.Ref == "" {
++					t.Fatalf("bad proof %+v", p)
++				}
++				b, err := io.ReadAll(out.c)
++				if err != nil || string(b) != "payload" {
++					t.Fatal("read-ahead boundary", err)
++				}
++			} else if out.err == nil || out.c != nil {
++				t.Fatal("failed handshake returned proof/conn")
++			}
++			if tc.cancel && !errors.Is(out.err, context.Canceled) {
++				t.Fatalf("cancel=%v", out.err)
++			}
++		})
++	}
++}
++
++func TestHoopaQualitySOCKSFullReplyAndTimeout(t *testing.T) {
++	qualityEnabled(t)
++	for _, tc := range []struct {
++		name  string
++		reply []byte
++		stall bool
++	}{{"success", []byte{5, 0, 0, 1, 127, 0, 0, 1, 0, 80}, false}, {"bad_ver", []byte{4, 0, 0, 1, 127, 0, 0, 1, 0, 80}, false}, {"bad_rep", []byte{5, 5, 0, 1, 127, 0, 0, 1, 0, 80}, false}, {"bad_rsv", []byte{5, 0, 1, 1, 127, 0, 0, 1, 0, 80}, false}, {"truncated", []byte{5, 0, 0, 1, 127, 0}, false}, {"timeout", nil, true}} {
++		t.Run(tc.name, func(t *testing.T) {
++			client, server := net.Pipe()
++			defer client.Close()
++			defer server.Close()
++			client.SetDeadline(time.Now().Add(2 * time.Second))
++			server.SetDeadline(time.Now().Add(2 * time.Second))
++			release := make(chan struct{})
++			gotRequest := make(chan struct{})
++			done := make(chan struct{})
++			go func() {
++				defer close(done)
++				defer server.Close()
++				var head [2]byte
++				if _, err := io.ReadFull(server, head[:]); err != nil {
++					return
++				}
++				methods := make([]byte, int(head[1]))
++				if _, err := io.ReadFull(server, methods); err != nil {
++					return
++				}
++				if _, err := server.Write([]byte{5, 0}); err != nil {
++					return
++				}
++				var req [10]byte
++				if _, err := io.ReadFull(server, req[:]); err != nil {
++					return
++				}
++				close(gotRequest)
++				<-release
++				if !tc.stall {
++					server.Write(tc.reply)
++				}
++			}()
++			ss, err := NewSocks5(Socks5Option{BasicOption: BasicOption{DialerForAPI: qualityPipeDialer{conn: client}}, Name: "node:b", Server: "127.0.0.1", Port: 1080})
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
++			defer cancel()
++			type result struct {
++				c   C.Conn
++				err error
++			}
++			outCh := make(chan result, 1)
++			go func() {
++				c, err := ss.DialContext(ctx, &C.Metadata{DstIP: netip.MustParseAddr("127.0.0.1"), DstPort: 443})
++				outCh <- result{c, err}
++			}()
++			<-gotRequest
++			select {
++			case <-outCh:
++				t.Fatal("ready before complete BND")
++			default:
++			}
++			beforeReply := time.Now()
++			if !tc.stall {
++				close(release)
++			}
++			out := <-outCh
++			if tc.stall {
++				close(release)
++			}
++			<-done
++			if tc.name == "success" {
++				if out.err != nil {
++					t.Fatal(out.err)
++				}
++				defer out.c.Close()
++				p := C.HoopaEvidenceOf(out.c)
++				if p.Kind != "socks5_connect_accepted" || p.ReadyAt.Before(beforeReply) {
++					t.Fatal("missing proof")
++				}
++			} else if out.err == nil || out.c != nil {
++				t.Fatal("bad SOCKS reply accepted")
++			}
++			if tc.stall && !errors.Is(out.err, context.DeadlineExceeded) {
++				t.Fatalf("timeout=%v", out.err)
++			}
++		})
++	}
++}
++
++type qualityDelayedResolver struct {
++	resolver.Resolver
++	delay time.Duration
++}
++
++func (r qualityDelayedResolver) Invalid() bool { return true }
++func (r qualityDelayedResolver) LookupIPv4(ctx context.Context, _ string) ([]netip.Addr, error) {
++	select {
++	case <-time.After(r.delay):
++		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
++	case <-ctx.Done():
++		return nil, ctx.Err()
++	}
++}
++func (r qualityDelayedResolver) LookupIP(ctx context.Context, s string) ([]netip.Addr, error) {
++	return r.LookupIPv4(ctx, s)
++}
++func TestHoopaQualityDirectIncludesSlowDNS(t *testing.T) {
++	qualityEnabled(t)
++	old := resolver.DirectHostResolver
++	resolver.DirectHostResolver = qualityDelayedResolver{delay: 80 * time.Millisecond}
++	defer func() { resolver.DirectHostResolver = old }()
++	ln, err := net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ln.Close()
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		c, err := ln.Accept()
++		if err == nil {
++			c.Close()
++		}
++	}()
++	d := NewDirectWithOption(DirectOption{Name: "node:direct", BasicOption: BasicOption{IPVersion: C.IPv4Only}})
++	start := time.Now()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	c, err := d.DialContext(ctx, &C.Metadata{Host: "slow-quality.invalid", DstPort: uint16(ln.Addr().(*net.TCPAddr).Port)})
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	<-done
++	p := C.HoopaEvidenceOf(c)
++	elapsed := p.ReadyAt.Sub(start)
++	if p.Kind != "tcp_connected" || elapsed < 75*time.Millisecond || elapsed > 750*time.Millisecond {
++		t.Fatalf("DNS boundary elapsed=%s kind=%s", elapsed, p.Kind)
++	}
++}
++
++type qualityLazyConn struct {
++	net.Conn
++	written bool
++}
++
++func (c *qualityLazyConn) NeedHandshake() bool         { return !c.written }
++func (c *qualityLazyConn) Write(b []byte) (int, error) { c.written = true; return len(b), nil }
++func TestHoopaQualityUnknownOuterAndTransparentCallbacks(t *testing.T) {
++	qualityEnabled(t)
++	left, right := net.Pipe()
++	defer left.Close()
++	defer right.Close()
++	inner := hoopaReadyConn(left, NewBase(BaseOption{Name: "node:direct", Type: C.Direct}), "tcp_connected", "direct_tcp", time.Now(), C.HoopaConnEvidence{}, true)
++	wrapped := callback.NewFirstWriteCallBackConn(callback.NewCloseCallbackConn(inner, func() {}), func(error) {})
++	if C.HoopaEvidenceOf(wrapped).Ref != C.HoopaEvidenceOf(inner).Ref {
++		t.Fatal("transparent wrapper lost exact proof")
++	}
++	lazy := &qualityLazyConn{Conn: wrapped}
++	outer := NewConn(lazy, NewBase(BaseOption{Name: "node:unknown", Type: C.Vmess}))
++	if !N.NeedHandshake(outer) {
++		t.Fatal("fixture not lazy")
++	}
++	n, err := outer.Write([]byte("seven!!"))
++	p := C.HoopaEvidenceOf(outer)
++	if err != nil || n != 7 || N.NeedHandshake(outer) || p.Kind != "ready_unproven" || !p.ReadyAt.IsZero() {
++		t.Fatal("lazy/unknown outer borrowed inner proof")
++	}
++}
+diff --git a/adapter/outbound/http.go b/adapter/outbound/http.go
+--- a/adapter/outbound/http.go
++++ b/adapter/outbound/http.go
+@@ -8,6 +8,7 @@
+ 	"fmt"
+ 	"net"
+ 	"strconv"
++	"time"
+ 
+ 	N "github.com/metacubex/mihomo/common/net"
+ 	"github.com/metacubex/mihomo/component/ca"
+@@ -70,12 +71,14 @@
+ 		safeConnClose(c, err)
+ 	}(c)
+ 
++	innerEvidence := C.HoopaEvidenceOf(c)
+ 	c, err = h.StreamConnContext(ctx, c, metadata)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	return NewConn(c, h), nil
++	ready := time.Now()
++	return hoopaReadyConn(c, h, "http_connect_accepted", "http_connect", ready, innerEvidence, true), nil
+ }
+ 
+ // ProxyInfo implements C.ProxyAdapter
+diff --git a/adapter/outbound/socks5.go b/adapter/outbound/socks5.go
+--- a/adapter/outbound/socks5.go
++++ b/adapter/outbound/socks5.go
+@@ -8,6 +8,7 @@
+ 	"net"
+ 	"net/netip"
+ 	"strconv"
++	"time"
+ 
+ 	N "github.com/metacubex/mihomo/common/net"
+ 	"github.com/metacubex/mihomo/component/ca"
+@@ -77,12 +78,14 @@
+ 		safeConnClose(c, err)
+ 	}(c)
+ 
++	innerEvidence := C.HoopaEvidenceOf(c)
+ 	c, err = ss.StreamConnContext(ctx, c, metadata)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	return NewConn(c, ss), nil
++	ready := time.Now()
++	return hoopaReadyConn(c, ss, "socks5_connect_accepted", "socks5", ready, innerEvidence, true), nil
+ }
+ 
+ // ListenPacketContext implements C.ProxyAdapter
+diff --git a/common/callback/callback.go b/common/callback/callback.go
+--- a/common/callback/callback.go
++++ b/common/callback/callback.go
+@@ -53,3 +53,7 @@
+ 		written:  false,
+ 	}
+ }
++
++func (c *firstWriteCallBackConn) HoopaEvidence() C.HoopaConnEvidence {
++	return C.HoopaEvidenceOf(c.Conn)
++}
+diff --git a/common/callback/close_callback.go b/common/callback/close_callback.go
+--- a/common/callback/close_callback.go
++++ b/common/callback/close_callback.go
+@@ -59,3 +59,5 @@
+ func NewCloseCallbackPacketConn(conn C.PacketConn, callback func()) C.PacketConn {
+ 	return &closeCallbackPacketConn{PacketConn: conn, closeFunc: callback}
+ }
++
++func (w *closeCallbackConn) HoopaEvidence() C.HoopaConnEvidence { return C.HoopaEvidenceOf(w.Conn) }
+diff --git a/component/hoopatrace/lifecycle_linux.go b/component/hoopatrace/lifecycle_linux.go
+--- a/component/hoopatrace/lifecycle_linux.go
++++ b/component/hoopatrace/lifecycle_linux.go
+@@ -78,7 +78,7 @@
+ 		f.windowGap = true
+ 		return ErrSource
+ 	}
+-	if err := f.s.append(f, "bytes_checkpoint", f.attemptID(), map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}); err != nil {
++	if err := f.s.append(f, "bytes_checkpoint", f.attemptID(), f.counterExtra()); err != nil {
+ 		f.windowGap = true
+ 		return err
+ 	}
+diff --git a/component/hoopatrace/quality_linux.go b/component/hoopatrace/quality_linux.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/quality_linux.go
+@@ -0,0 +1,331 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"net"
++	"os"
++	"strconv"
++	"strings"
++	"time"
++
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	C "github.com/metacubex/mihomo/constant"
++)
++
++type routeMapping struct {
++	SchemaVersion    int          `json:"schema_version"`
++	ConfigGeneration string       `json:"config_generation"`
++	Entries          []routeEntry `json:"entries"`
++}
++type routeEntry struct {
++	InternalName string  `json:"internal_name"`
++	AdapterType  string  `json:"adapter_type"`
++	ProviderName string  `json:"provider_name"`
++	NodeID       *string `json:"node_id"`
++	ProviderID   *string `json:"provider_id"`
++	GroupID      *string `json:"group_id"`
++	DisplayAlias string  `json:"display_alias"`
++}
++
++// The opt-in mapping is immutable for this source's config generation. Missing
++// mappings leave actual raw hops unmapped. A supplied conflicting mapping fails.
++func loadRouteMapping(path, generation string) (map[string]routeEntry, error) {
++	out := map[string]routeEntry{}
++	if path == "" {
++		return out, nil
++	}
++	f, err := os.Open(path)
++	if err != nil {
++		return nil, ErrSource
++	}
++	defer f.Close()
++	fi, err := f.Stat()
++	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm() != 0600 || fi.Size() > 65536 {
++		return nil, ErrSource
++	}
++	raw, err := io.ReadAll(io.LimitReader(f, 65537))
++	if err != nil || len(raw) > 65536 {
++		return nil, ErrSource
++	}
++	// Reject duplicate keys recursively before typed parsing.
++	d := json.NewDecoder(strings.NewReader(string(raw)))
++	if !uniqueJSONValue(d) {
++		return nil, ErrSource
++	}
++	if _, err = d.Token(); err != io.EOF {
++		return nil, ErrSource
++	}
++	d = json.NewDecoder(strings.NewReader(string(raw)))
++	d.DisallowUnknownFields()
++	var m routeMapping
++	if d.Decode(&m) != nil || m.SchemaVersion != 1 || m.ConfigGeneration != generation || len(m.Entries) > 64 {
++		return nil, ErrSource
++	}
++	for _, e := range m.Entries {
++		if !token(e.InternalName) || e.AdapterType == "" || e.DisplayAlias == "" || len(e.DisplayAlias) > 256 {
++			return nil, ErrSource
++		}
++		if _, ok := out[e.InternalName]; ok {
++			return nil, ErrSource
++		}
++		if (e.NodeID == nil) == (e.GroupID == nil) {
++			return nil, ErrSource
++		}
++		if e.NodeID != nil && (*e.NodeID != e.InternalName || !strings.HasPrefix(*e.NodeID, "node:")) {
++			return nil, ErrSource
++		}
++		if e.GroupID != nil && (*e.GroupID != e.InternalName || !strings.HasPrefix(*e.GroupID, "group:") || e.ProviderID != nil || e.ProviderName != "") {
++			return nil, ErrSource
++		}
++		if e.ProviderName == "" && e.ProviderID != nil || e.ProviderName != "" && (e.ProviderID == nil || *e.ProviderID != e.ProviderName || !strings.HasPrefix(*e.ProviderID, "provider:")) {
++			return nil, ErrSource
++		}
++		out[e.InternalName] = e
++	}
++	return out, nil
++}
++func uniqueJSONValue(d *json.Decoder) bool {
++	t, err := d.Token()
++	if err != nil {
++		return false
++	}
++	switch t {
++	case json.Delim('{'):
++		keys := map[string]bool{}
++		for d.More() {
++			k, err := d.Token()
++			s, ok := k.(string)
++			if err != nil || !ok || keys[s] {
++				return false
++			}
++			keys[s] = true
++			if !uniqueJSONValue(d) {
++				return false
++			}
++		}
++		t, err = d.Token()
++		return err == nil && t == json.Delim('}')
++	case json.Delim('['):
++		for d.More() {
++			if !uniqueJSONValue(d) {
++				return false
++			}
++		}
++		t, err = d.Token()
++		return err == nil && t == json.Delim(']')
++	}
++	_, delim := t.(json.Delim)
++	return !delim
++}
++
++func (a *Attempt) Attach(c C.Conn) error {
++	if a == nil || a.f.s.profile != 2 || c == nil {
++		return nil
++	}
++	f := a.f
++	e := C.HoopaEvidenceOf(c)
++	// Unknown Conn implementations still get an actual reference, but no proof.
++	if e.Ref == "" {
++		var err error
++		e.Ref, err = randomID("conn:")
++		if err != nil {
++			return err
++		}
++		e.Kind = "ready_unproven"
++		e.Protocol = "unknown"
++	}
++	hops := []telemetrywire.RouteHop{}
++	for _, h := range e.Hops {
++		hop := telemetrywire.RouteHop{InternalName: h.Name, AdapterType: h.AdapterType, ProviderName: h.ProviderName}
++		if m, ok := f.s.routes[h.Name]; ok {
++			if m.AdapterType != h.AdapterType || m.ProviderName != h.ProviderName {
++				return ErrSource
++			}
++			hop.NodeID, hop.ProviderID, hop.GroupID = m.NodeID, m.ProviderID, m.GroupID
++		}
++		hops = append(hops, hop)
++	}
++	// If a wrapper has no explicit route evidence, raw Connection.Chains remains
++	// observed evidence but has no verified adapter type or stable ID.
++	if len(hops) == 0 {
++		for i, name := range c.Chains() {
++			provider := ""
++			if i < len(c.ProviderChains()) {
++				provider = c.ProviderChains()[i]
++			}
++			hops = append(hops, telemetrywire.RouteHop{InternalName: name, AdapterType: "unverified", ProviderName: provider})
++		}
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if f.terminal || len(f.segments) >= 10 || a.segment != nil {
++		return ErrSource
++	}
++	if err := f.s.append(f, "route_decided", a.id, map[string]any{"phase": "actual_connection", "actual_connection_ref": e.Ref, "ordered_chain": hops}); err != nil {
++		f.invalid = true
++		return err
++	}
++	a.proof = e
++	a.segment = &segmentCounter{ActualConnectionRef: e.Ref, AttemptID: a.id}
++	f.segments = append(f.segments, a.segment)
++	return nil
++}
++
++type segmentCounter struct {
++	ActualConnectionRef string `json:"actual_connection_ref"`
++	AttemptID           string `json:"attempt_id"`
++	UploadBytes         uint64 `json:"upload_bytes,string"`
++	DownloadBytes       uint64 `json:"download_bytes,string"`
++}
++
++// These adapters capture a particular attempt, so a retry cannot reassign old
++// bytes to the final connection. All cumulative updates share the flow lock.
++func (a *Attempt) AddUpload(n int) {
++	if a != nil {
++		a.f.addSegment(a.segment, n, true)
++	}
++}
++func (a *Attempt) AddDownload(n int) {
++	if a != nil {
++		a.f.addSegment(a.segment, n, false)
++	}
++}
++func (a *Attempt) Close() {
++	if a != nil {
++		a.f.Close()
++	}
++}
++func (a *Attempt) Bind(id string) {
++	if a != nil {
++		a.f.bindSegment(id, a)
++	}
++}
++func (f *Flow) addSegment(seg *segmentCounter, n int, upload bool) {
++	if f == nil || n <= 0 {
++		return
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	if f.terminal {
++		return
++	}
++	total, bucket := &f.down, &f.unallocatedDown
++	if upload {
++		total, bucket = &f.up, &f.unallocatedUp
++	}
++	if seg != nil {
++		if upload {
++			bucket = &seg.UploadBytes
++		} else {
++			bucket = &seg.DownloadBytes
++		}
++	}
++	if ^uint64(0)-*total < uint64(n) || ^uint64(0)-*bucket < uint64(n) {
++		f.invalid = true
++		f.counterInvalid = true
++		return
++	}
++	*total += uint64(n)
++	*bucket += uint64(n)
++}
++func (f *Flow) counterExtra() map[string]any {
++	m := map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}
++	if f.s.profile == 2 {
++		values := make([]segmentCounter, 0, len(f.segments))
++		for _, s := range f.segments {
++			values = append(values, *s)
++		}
++		m["segments"] = values
++		m["unallocated_upload_bytes"] = strconv.FormatUint(f.unallocatedUp, 10)
++		m["unallocated_download_bytes"] = strconv.FormatUint(f.unallocatedDown, 10)
++	}
++	return m
++}
++func (f *Flow) bindSegment(id string, a *Attempt) {
++	if f.s.profile != 2 {
++		f.Bind(id)
++		return
++	}
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.connection = id
++	if a.segment == nil {
++		f.invalid = true
++		return
++	}
++	if f.s.append(f, "route_decided", a.id, map[string]any{"phase": "connection_binding", "connection_id": id, "actual_connection_ref": a.segment.ActualConnectionRef}) != nil {
++		f.invalid = true
++	}
++}
++func numberNS(t time.Time) string { return strconv.FormatInt(C.HoopaMonotonicNS(t), 10) }
++func (a *Attempt) finishQuality(err error, stage string) {
++	// Capture before flow lock/Sync. The protocol point was captured on the Conn.
++	finish := time.Now()
++	f := a.f
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	p := a.proof
++	kind, protocol, reason := "ready_unproven", "unknown", "ready_unknown"
++	var ready, duration, flowDuration, ref any
++	if a.segment != nil {
++		ref = a.segment.ActualConnectionRef
++	}
++	if !p.ReadyAt.IsZero() && !p.ReadyAt.Before(a.started) && !p.ReadyAt.After(finish) && ref != nil {
++		kind, protocol, reason = p.Kind, p.Protocol, ""
++		ready = numberNS(p.ReadyAt)
++	}
++	outcome := "unknown"
++	if err != nil {
++		outcome = "failure"
++		if errors.Is(err, context.Canceled) {
++			outcome = "cancelled"
++		} else {
++			var ne net.Error
++			if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ne) && ne.Timeout() {
++				outcome = "timeout"
++			}
++		}
++	} else if ready != nil {
++		outcome = "success"
++		duration = strconv.FormatInt(p.ReadyAt.Sub(a.started).Milliseconds(), 10)
++		flowDuration = strconv.FormatInt(p.ReadyAt.Sub(f.started).Milliseconds(), 10)
++	}
++	if err == nil {
++		stage = ""
++	}
++	extra := map[string]any{"definition": "forward_setup_v2", "protocol": protocol, "ready_kind": kind, "outcome": outcome, "reason": reason, "failure_stage": stage, "flow_start_ns": numberNS(f.started), "attempt_start_ns": numberNS(a.started), "ready_ns": ready, "finish_ns": numberNS(finish), "duration_ms": duration, "flow_duration_ms": flowDuration, "observed_wait_ms": strconv.FormatInt(finish.Sub(a.started).Milliseconds(), 10), "flow_observed_wait_ms": strconv.FormatInt(finish.Sub(f.started).Milliseconds(), 10), "actual_connection_ref": ref}
++	if f.s.append(f, "setup_finished", a.id, extra) != nil {
++		f.invalid = true
++	}
++}
++
++func (a *Attempt) FinishConnection(err error, stage string, c C.Conn, legacyReady bool) {
++	if a == nil {
++		return
++	}
++	if a.f.s.profile == 2 {
++		a.once.Do(func() { a.finishQuality(err, stage) })
++		return
++	}
++	var chains, providers []string
++	if c != nil {
++		chains = append([]string{}, c.Chains()...)
++		providers = append([]string{}, c.ProviderChains()...)
++	}
++	a.Finish(err, chains, providers, legacyReady)
++}
++
++// Attempt zero is the pre-dial setup interval, starting at target_known. It only
++// emits a failure when metadata/routing actually aborts before a Dial attempt.
++func (f *Flow) FailBeforeDial(err error) {
++	if f == nil || f.s.profile != 2 || err == nil {
++		return
++	}
++	a := &Attempt{f: f, id: f.id + ":attempt:0", started: f.started}
++	a.FinishConnection(err, "pre_route", nil, false)
++}
+diff --git a/component/hoopatrace/quality_linux_test.go b/component/hoopatrace/quality_linux_test.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/quality_linux_test.go
+@@ -0,0 +1,227 @@
++//go:build linux && amd64
++
++package hoopatrace
++
++import (
++	"context"
++	"errors"
++	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	C "github.com/metacubex/mihomo/constant"
++	"io"
++	"os"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++)
++
++type qualityConn struct {
++	C.Conn
++	proof C.HoopaConnEvidence
++}
++
++func (c qualityConn) HoopaEvidence() C.HoopaConnEvidence { return c.proof }
++func newQualityFlow(t *testing.T) (*source, *Flow) {
++	t.Helper()
++	t.Setenv("HOOPA_TRACE_PROFILE", "2")
++	s := testSource(t, defaultLimit)
++	f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
++	if err != nil {
++		t.Fatal(err)
++	}
++	return s, f
++}
++func qualityAttach(t *testing.T, a *Attempt, ref string, ready bool) qualityConn {
++	t.Helper()
++	p := C.HoopaConnEvidence{Ref: ref, Kind: "ready_unproven", Protocol: "unknown", Hops: []C.HoopaHop{{Name: "node:a", AdapterType: "Http"}}}
++	if ready {
++		p.ReadyAt = time.Now()
++		p.Kind = "http_connect_accepted"
++		p.Protocol = "http_connect"
++	}
++	c := qualityConn{proof: p}
++	if err := a.Attach(c); err != nil {
++		t.Fatal(err)
++	}
++	return c
++}
++func TestQualitySegmentsRetryAndCheckpoint(t *testing.T) {
++	s, f := newQualityFlow(t)
++	first := f.NewAttempt()
++	c1 := qualityAttach(t, first, "conn:a", false)
++	first.AddUpload(3)
++	first.FinishConnection(io.ErrShortWrite, "initial_write", c1, false)
++	second := f.NewAttempt()
++	c2 := qualityAttach(t, second, "conn:b", true)
++	second.FinishConnection(nil, "", c2, false)
++	second.Bind("tracker:b")
++	var wg sync.WaitGroup
++	for k := 0; k < 2; k++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			for i := 0; i < 100; i++ {
++				second.AddUpload(1)
++				second.AddDownload(2)
++			}
++		}()
++	}
++	for i := 0; i < 10; i++ {
++		if err := f.Checkpoint(); err != nil {
++			t.Fatal(err)
++		}
++	}
++	wg.Wait()
++	f.AddUpload(7)
++	f.Close()
++	var final telemetrywire.SourceEvent
++	for _, raw := range frames(t, s) {
++		e, err := telemetrywire.DecodeSourceEvent(raw)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if e.Kind == "closed" {
++			final = e
++		}
++	}
++	if final.Counter == nil || final.Counter.UploadBytes != 210 || final.Counter.DownloadBytes != 400 || len(final.Segments) != 2 || final.Segments[0].UploadBytes != 3 || final.Segments[1].UploadBytes != 200 || final.UnallocatedUpload != 7 {
++		t.Fatalf("wrong segment totals: %+v", final)
++	}
++}
++func TestQualityReadySeparateFromFinishAndErrorOutcome(t *testing.T) {
++	for _, tc := range []struct {
++		name    string
++		err     error
++		proof   bool
++		outcome string
++	}{{"success", nil, true, "success"}, {"failure", io.ErrUnexpectedEOF, false, "failure"}, {"timeout", context.DeadlineExceeded, false, "timeout"}, {"cancelled", context.Canceled, false, "cancelled"}, {"lazy", nil, false, "unknown"}} {
++		t.Run(tc.name, func(t *testing.T) {
++			s, f := newQualityFlow(t)
++			a := f.NewAttempt()
++			c := qualityAttach(t, a, "conn:a", tc.proof)
++			ready := c.proof.ReadyAt
++			time.Sleep(25 * time.Millisecond)
++			a.FinishConnection(tc.err, "initial_write", c, true)
++			f.Close()
++			for _, raw := range frames(t, s) {
++				e, _ := telemetrywire.DecodeSourceEvent(raw)
++				if e.Quality == nil {
++					continue
++				}
++				q := e.Quality
++				if q.Outcome != tc.outcome {
++					t.Fatalf("outcome=%s", q.Outcome)
++				}
++				if tc.proof {
++					if q.ReadyNS == nil || *q.ReadyNS != uint64(C.HoopaMonotonicNS(ready)) || q.DurationMS == nil || q.ObservedWaitMS < *q.DurationMS+20 {
++						t.Fatal("finish replaced protocol point")
++					}
++				} else if q.ReadyNS != nil || q.DurationMS != nil || q.Reason != "ready_unknown" {
++					t.Fatal("unproved ready became success")
++				}
++			}
++		})
++	}
++}
++func TestQualityReopenRetainsV1AndV2Epochs(t *testing.T) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0700)
++	for _, profile := range []string{"1", "2"} {
++		t.Setenv("HOOPA_TRACE_PROFILE", profile)
++		s, err := openSource(dir, "generation", "", "", defaultLimit)
++		if err != nil {
++			t.Fatal(err)
++		}
++		f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now())
++		if err != nil {
++			t.Fatal(err)
++		}
++		if profile == "2" {
++			a := f.NewAttempt()
++			c := qualityAttach(t, a, "conn:a", true)
++			a.FinishConnection(nil, "", c, false)
++			a.AddUpload(11)
++		} else {
++			f.AddUpload(7)
++		}
++		f.Close()
++		if err = s.shutdown(); err != nil {
++			t.Fatal(err)
++		}
++		s.close()
++	}
++	before := map[string]string{}
++	entries, _ := os.ReadDir(dir)
++	for _, e := range entries {
++		if filepath.Ext(e.Name()) != ".lock" {
++			b, _ := os.ReadFile(filepath.Join(dir, e.Name()))
++			before[e.Name()] = string(b)
++		}
++	}
++	s, err := openSource(dir, "generation", "", "", defaultLimit)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer s.close()
++	if len(s.reports) != 2 {
++		t.Fatalf("reports=%d", len(s.reports))
++	}
++	for name, b := range before {
++		now, _ := os.ReadFile(filepath.Join(dir, name))
++		if string(now) != b {
++			t.Fatal("old epoch changed")
++		}
++	}
++}
++func TestQualityMappingMismatchFailsBeforeRegistration(t *testing.T) {
++	s, f := newQualityFlow(t)
++	name := "node:a"
++	s.routes = map[string]routeEntry{name: {InternalName: name, AdapterType: "Socks5", NodeID: &name, DisplayAlias: "alias"}}
++	a := f.NewAttempt()
++	err := a.Attach(qualityConn{proof: C.HoopaConnEvidence{Ref: "conn:a", Hops: []C.HoopaHop{{Name: name, AdapterType: "Http"}}}})
++	if !errors.Is(err, ErrSource) || len(f.segments) != 0 {
++		t.Fatal("mapping mismatch admitted")
++	}
++	a.FinishConnection(err, "dial_or_handshake", nil, false)
++	f.Close()
++}
++
++func TestQualityFlowPreDialWaitAndAbortedRoute(t *testing.T) {
++	for _, aborted := range []bool{false, true} {
++		name := "success"
++		if aborted {
++			name = "aborted"
++		}
++		t.Run(name, func(t *testing.T) {
++			s, f := newQualityFlow(t)
++			time.Sleep(70 * time.Millisecond)
++			if aborted {
++				f.FailBeforeDial(context.DeadlineExceeded)
++			} else {
++				a := f.NewAttempt()
++				c := qualityAttach(t, a, "conn:a", true)
++				a.FinishConnection(nil, "", c, false)
++			}
++			f.Close()
++			seen := false
++			for _, raw := range frames(t, s) {
++				e, _ := telemetrywire.DecodeSourceEvent(raw)
++				if e.Quality == nil {
++					continue
++				}
++				seen = true
++				q := e.Quality
++				if aborted {
++					if q.Outcome != "timeout" || q.FailureStage != "pre_route" || q.ActualConnectionRef != nil || q.DurationMS != nil || q.AttemptStartNS != q.FlowStartNS || q.ObservedWaitMS < 65 {
++						t.Fatal("pre-route failure lost")
++					}
++				} else if q.DurationMS == nil || q.FlowDurationMS == nil || *q.FlowDurationMS < *q.DurationMS+65 {
++					t.Fatal("pre-dial wait lost from flow")
++				}
++			}
++			if !seen {
++				t.Fatal("no setup sample")
++			}
++		})
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/quality_state.go b/component/hoopatrace/telemetrywire/quality_state.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/quality_state.go
+@@ -0,0 +1,105 @@
++package telemetrywire
++
++// This evidence is deliberately absent from Lifecycle and recovery: totals do
++// not imply that a recovered flow has route or quality evidence.
++type v2Flow struct {
++	preRouteAborted                        bool
++	start, lastAttemptStart                uint64
++	attempts                               map[string]SetupQuality
++	connections                            map[string]string
++	trackers                               map[string]string
++	counters                               map[string]SegmentCounter
++	unallocatedUpload, unallocatedDownload uint64
++}
++
++func (s *State) nextV2(e SourceEvent, old v2Flow) (v2Flow, bool) {
++	f := old
++	f.connections = make(map[string]string, len(old.connections))
++	for k, v := range old.connections {
++		f.connections[k] = v
++	}
++	f.trackers = make(map[string]string, len(old.trackers))
++	for k, v := range old.trackers {
++		f.trackers[k] = v
++	}
++	f.counters = make(map[string]SegmentCounter, len(old.counters))
++	for k, v := range old.counters {
++		f.counters[k] = v
++	}
++	f.attempts = make(map[string]SetupQuality, len(old.attempts))
++	for k, v := range old.attempts {
++		f.attempts[k] = v
++	}
++	bad := func() (v2Flow, bool) { return v2Flow{}, false }
++	if f.preRouteAborted && (e.Kind == "setup_finished" || e.Kind == "route_decided" && e.Phase != "") {
++		return bad()
++	}
++	switch e.Kind {
++	case "route_decided":
++		switch e.Phase {
++		case "actual_connection":
++			if len(f.connections) >= 10 || s.finished[e.AttemptID] {
++				return bad()
++			}
++			for _, attempt := range f.connections {
++				if attempt == e.AttemptID {
++					return bad()
++				}
++			}
++			for _, other := range s.flows {
++				if _, exists := other.quality.connections[e.ActualConnectionRef]; exists {
++					return bad()
++				}
++			}
++			f.connections[e.ActualConnectionRef] = e.AttemptID
++		case "connection_binding":
++			if f.connections[e.ActualConnectionRef] != e.AttemptID {
++				return bad()
++			}
++			for _, other := range s.flows {
++				for tracker, ref := range other.quality.trackers {
++					if tracker == e.ConnectionID || ref == e.ActualConnectionRef {
++						return bad()
++					}
++				}
++			}
++			f.trackers[e.ConnectionID] = e.ActualConnectionRef
++		}
++	case "setup_finished":
++		q := e.Quality
++		if q == nil || q.FlowStartNS != f.start || q.AttemptStartNS < f.lastAttemptStart {
++			return bad()
++		}
++		if q.FailureStage == "pre_route" && (q.ActualConnectionRef != nil || q.AttemptStartNS != f.start || len(f.connections) != 0 || len(f.attempts) != 0) {
++			return bad()
++		}
++		if q.ActualConnectionRef != nil && f.connections[*q.ActualConnectionRef] != e.AttemptID {
++			return bad()
++		}
++		// A registered returned Conn cannot subsequently be reported as absent.
++		for ref, attempt := range f.connections {
++			if attempt == e.AttemptID && (q.ActualConnectionRef == nil || ref != *q.ActualConnectionRef) {
++				return bad()
++			}
++		}
++		f.lastAttemptStart = q.AttemptStartNS
++		f.attempts[e.AttemptID] = *q
++		f.preRouteAborted = q.FailureStage == "pre_route"
++	case "bytes_checkpoint", "closed":
++		if len(e.Segments) != len(f.connections) || e.UnallocatedUpload < f.unallocatedUpload || e.UnallocatedDownload < f.unallocatedDownload {
++			return bad()
++		}
++		for _, c := range e.Segments {
++			if f.connections[c.ActualConnectionRef] != c.AttemptID {
++				return bad()
++			}
++			prior := f.counters[c.ActualConnectionRef]
++			if c.UploadBytes < prior.UploadBytes || c.DownloadBytes < prior.DownloadBytes {
++				return bad()
++			}
++			f.counters[c.ActualConnectionRef] = c
++		}
++		f.unallocatedUpload, f.unallocatedDownload = e.UnallocatedUpload, e.UnallocatedDownload
++	}
++	return f, true
++}
+diff --git a/component/hoopatrace/telemetrywire/quality_v2.go b/component/hoopatrace/telemetrywire/quality_v2.go
+new file mode 100644
+--- /dev/null
++++ b/component/hoopatrace/telemetrywire/quality_v2.go
+@@ -0,0 +1,291 @@
++package telemetrywire
++
++import (
++	"bytes"
++	"encoding/json"
++)
++
++// RouteHop is the identity frozen on an actual connection, in core chain order.
++type RouteHop struct {
++	InternalName string  `json:"internal_name"`
++	AdapterType  string  `json:"adapter_type"`
++	ProviderName string  `json:"provider_name"`
++	NodeID       *string `json:"node_id"`
++	ProviderID   *string `json:"provider_id"`
++	GroupID      *string `json:"group_id"`
++}
++
++type SegmentCounter struct {
++	ActualConnectionRef string `json:"actual_connection_ref"`
++	AttemptID           string `json:"attempt_id"`
++	UploadBytes         uint64 `json:"upload_bytes,string"`
++	DownloadBytes       uint64 `json:"download_bytes,string"`
++}
++
++type SetupQuality struct {
++	Definition          string  `json:"definition"`
++	Protocol            string  `json:"protocol"`
++	ReadyKind           string  `json:"ready_kind"`
++	Outcome             string  `json:"outcome"`
++	Reason              string  `json:"reason"`
++	FailureStage        string  `json:"failure_stage"`
++	FlowStartNS         uint64  `json:"flow_start_ns,string"`
++	AttemptStartNS      uint64  `json:"attempt_start_ns,string"`
++	ReadyNS             *uint64 `json:"ready_ns,string"`
++	FinishNS            uint64  `json:"finish_ns,string"`
++	DurationMS          *uint64 `json:"duration_ms,string"`
++	FlowDurationMS      *uint64 `json:"flow_duration_ms,string"`
++	ObservedWaitMS      uint64  `json:"observed_wait_ms,string"`
++	FlowObservedWaitMS  uint64  `json:"flow_observed_wait_ms,string"`
++	ActualConnectionRef *string `json:"actual_connection_ref"`
++}
++
++func nullableID(raw []byte) (*string, bool) {
++	if null(raw) {
++		return nil, true
++	}
++	v, ok := id(raw)
++	return &v, ok
++}
++func arrayObjects(raw []byte, max int) ([]wireFields, bool) {
++	raw = bytes.TrimSpace(raw)
++	var items []json.RawMessage
++	if len(raw) == 0 || raw[0] != '[' || json.Unmarshal(raw, &items) != nil || len(items) > max {
++		return nil, false
++	}
++	out := make([]wireFields, 0, len(items))
++	for _, r := range items {
++		f, ok := object(r)
++		if !ok {
++			return nil, false
++		}
++		out = append(out, f)
++	}
++	return out, true
++}
++func decodeChain(raw []byte) ([]RouteHop, bool) {
++	items, ok := arrayObjects(raw, 8)
++	if !ok || len(items) == 0 {
++		return nil, false
++	}
++	out := make([]RouteHop, 0, len(items))
++	for _, f := range items {
++		if !exactFields(f, "internal_name adapter_type provider_name node_id provider_id group_id") {
++			return nil, false
++		}
++		var h RouteHop
++		for _, p := range []struct {
++			k   string
++			dst *string
++		}{{"internal_name", &h.InternalName}, {"adapter_type", &h.AdapterType}, {"provider_name", &h.ProviderName}} {
++			v, ok := scalarText(f[p.k])
++			if !ok || p.k != "provider_name" && v == "" {
++				return nil, false
++			}
++			*p.dst = v
++		}
++		h.NodeID, ok = nullableID(f["node_id"])
++		if !ok {
++			return nil, false
++		}
++		h.ProviderID, ok = nullableID(f["provider_id"])
++		if !ok {
++			return nil, false
++		}
++		h.GroupID, ok = nullableID(f["group_id"])
++		if !ok {
++			return nil, false
++		}
++		if h.NodeID != nil && (h.GroupID != nil || *h.NodeID != h.InternalName) || h.GroupID != nil && *h.GroupID != h.InternalName || h.ProviderID != nil && (*h.ProviderID != h.ProviderName || h.ProviderName == "") {
++			return nil, false
++		}
++		out = append(out, h)
++	}
++	return out, true
++}
++
++const qualityFields = "definition protocol ready_kind outcome reason failure_stage flow_start_ns attempt_start_ns ready_ns finish_ns duration_ms flow_duration_ms observed_wait_ms flow_observed_wait_ms actual_connection_ref"
++
++func decodeQuality(f wireFields) (*SetupQuality, bool) {
++	if !exactFields(f, commonFields+" "+qualityFields) || !literal(f, "definition", "forward_setup_v2") {
++		return nil, false
++	}
++	q := &SetupQuality{Definition: "forward_setup_v2"}
++	for _, p := range []struct {
++		k   string
++		dst *string
++	}{{"protocol", &q.Protocol}, {"ready_kind", &q.ReadyKind}, {"outcome", &q.Outcome}, {"reason", &q.Reason}, {"failure_stage", &q.FailureStage}} {
++		v, ok := scalarText(f[p.k])
++		if !ok {
++			return nil, false
++		}
++		*p.dst = v
++	}
++	for _, p := range []struct {
++		k   string
++		dst *uint64
++	}{{"flow_start_ns", &q.FlowStartNS}, {"attempt_start_ns", &q.AttemptStartNS}, {"finish_ns", &q.FinishNS}, {"observed_wait_ms", &q.ObservedWaitMS}, {"flow_observed_wait_ms", &q.FlowObservedWaitMS}} {
++		v, ok := decimal(f[p.k], true, false)
++		if !ok {
++			return nil, false
++		}
++		*p.dst = v
++	}
++	for _, p := range []struct {
++		k   string
++		dst **uint64
++	}{{"ready_ns", &q.ReadyNS}, {"duration_ms", &q.DurationMS}, {"flow_duration_ms", &q.FlowDurationMS}} {
++		if !null(f[p.k]) {
++			v, ok := decimal(f[p.k], true, false)
++			if !ok {
++				return nil, false
++			}
++			*p.dst = &v
++		}
++	}
++	var ok bool
++	q.ActualConnectionRef, ok = nullableID(f["actual_connection_ref"])
++	if !ok {
++		return nil, false
++	}
++	ready := map[string]string{"direct_tcp": "tcp_connected", "http_connect": "http_connect_accepted", "socks5": "socks5_connect_accepted", "unknown": "ready_unproven"}
++	want, ok := ready[q.Protocol]
++	if !ok || q.ReadyKind != "ready_unproven" && q.ReadyKind != want {
++		return nil, false
++	}
++	if q.FlowStartNS > q.AttemptStartNS || q.AttemptStartNS > q.FinishNS || q.ObservedWaitMS != (q.FinishNS-q.AttemptStartNS)/1000000 || q.FlowObservedWaitMS != (q.FinishNS-q.FlowStartNS)/1000000 {
++		return nil, false
++	}
++	if q.ReadyKind == "ready_unproven" {
++		if q.ReadyNS != nil || q.Reason != "ready_unknown" {
++			return nil, false
++		}
++	} else {
++		if q.ReadyNS == nil || q.ActualConnectionRef == nil || *q.ReadyNS < q.AttemptStartNS || *q.ReadyNS > q.FinishNS || q.Reason != "" {
++			return nil, false
++		}
++	}
++	switch q.Outcome {
++	case "success":
++		if q.ReadyNS == nil || q.DurationMS == nil || q.FlowDurationMS == nil || *q.DurationMS != (*q.ReadyNS-q.AttemptStartNS)/1000000 || *q.FlowDurationMS != (*q.ReadyNS-q.FlowStartNS)/1000000 || q.FailureStage != "" {
++			return nil, false
++		}
++	case "unknown":
++		if q.ReadyNS != nil || q.ActualConnectionRef == nil || q.FailureStage != "" || q.DurationMS != nil || q.FlowDurationMS != nil {
++			return nil, false
++		}
++	case "failure", "timeout", "cancelled":
++		if q.DurationMS != nil || q.FlowDurationMS != nil || q.FailureStage != "dial_or_handshake" && q.FailureStage != "initial_write" && q.FailureStage != "pre_route" {
++			return nil, false
++		}
++	default:
++		return nil, false
++	}
++	return q, true
++}
++func decodeV2(f wireFields, e *SourceEvent) bool {
++	var ok bool
++	switch e.Kind {
++	case "opened":
++		e.FlowStartNS, ok = decimal(f["flow_start_ns"], true, false)
++		if !ok {
++			return false
++		}
++		copy := make(wireFields, len(f))
++		for k, v := range f {
++			if k != "flow_start_ns" {
++				copy[k] = v
++			}
++		}
++		return kindValid(copy, e.Kind)
++	case "route_decided":
++		if _, exists := f["phase"]; !exists {
++			return kindValid(f, e.Kind)
++		}
++		e.Phase, _ = scalarText(f["phase"])
++		e.ActualConnectionRef, ok = id(f["actual_connection_ref"])
++		if !ok {
++			return false
++		}
++		switch e.Phase {
++		case "actual_connection":
++			if !exactFields(f, commonFields+" phase actual_connection_ref ordered_chain") {
++				return false
++			}
++			e.OrderedChain, ok = decodeChain(f["ordered_chain"])
++			return ok
++		case "connection_binding":
++			e.ConnectionID, ok = id(f["connection_id"])
++			return ok && exactFields(f, commonFields+" phase connection_id actual_connection_ref")
++		}
++		return false
++	case "setup_finished":
++		e.Quality, ok = decodeQuality(f)
++		if ok && e.Quality.ActualConnectionRef != nil {
++			e.ActualConnectionRef = *e.Quality.ActualConnectionRef
++		}
++		return ok
++	case "bytes_checkpoint", "closed":
++		if !exactFields(f, commonFields+" upload_bytes download_bytes segments unallocated_upload_bytes unallocated_download_bytes") {
++			return false
++		}
++		up, ok := decimal(f["upload_bytes"], true, false)
++		if !ok {
++			return false
++		}
++		down, ok := decimal(f["download_bytes"], true, false)
++		if !ok {
++			return false
++		}
++		e.UnallocatedUpload, ok = decimal(f["unallocated_upload_bytes"], true, false)
++		if !ok {
++			return false
++		}
++		e.UnallocatedDownload, ok = decimal(f["unallocated_download_bytes"], true, false)
++		if !ok {
++			return false
++		}
++		items, ok := arrayObjects(f["segments"], 10)
++		if !ok {
++			return false
++		}
++		e.Segments = make([]SegmentCounter, 0, len(items))
++		seen := map[string]bool{}
++		u, d := e.UnallocatedUpload, e.UnallocatedDownload
++		for _, f := range items {
++			if !exactFields(f, "actual_connection_ref attempt_id upload_bytes download_bytes") {
++				return false
++			}
++			var c SegmentCounter
++			c.ActualConnectionRef, ok = id(f["actual_connection_ref"])
++			if !ok || seen[c.ActualConnectionRef] {
++				return false
++			}
++			seen[c.ActualConnectionRef] = true
++			c.AttemptID, ok = id(f["attempt_id"])
++			if !ok {
++				return false
++			}
++			c.UploadBytes, ok = decimal(f["upload_bytes"], true, false)
++			if !ok {
++				return false
++			}
++			c.DownloadBytes, ok = decimal(f["download_bytes"], true, false)
++			if !ok || ^uint64(0)-u < c.UploadBytes || ^uint64(0)-d < c.DownloadBytes {
++				return false
++			}
++			u += c.UploadBytes
++			d += c.DownloadBytes
++			e.Segments = append(e.Segments, c)
++		}
++		if u != up || d != down {
++			return false
++		}
++		observed, _ := scalarText(f["observed_at"])
++		t, _ := parseTimestamp(observed)
++		e.Counter = &CounterEvent{SchemaVersion: 2, SourceInstanceID: e.SourceInstanceID, SourceEpoch: e.SourceEpoch, EventID: e.EventID, SourceSeq: e.SourceSeq, FlowID: e.FlowID, AttemptID: e.AttemptID, ObservedAt: t, ConfigGeneration: e.ConfigGeneration, BoundaryRef: "mihomo_proxy_stream_v1", Kind: CounterKind(e.Kind), UploadBytes: up, DownloadBytes: down}
++		return true
++	default:
++		return kindValid(f, e.Kind)
++	}
++}
+diff --git a/component/hoopatrace/telemetrywire/source_event.go b/component/hoopatrace/telemetrywire/source_event.go
+--- a/component/hoopatrace/telemetrywire/source_event.go
++++ b/component/hoopatrace/telemetrywire/source_event.go
+@@ -14,24 +14,32 @@
+ 
+ var ErrInvalidSourceEvent = errors.New("invalid experimental source event")
+ 
+-// SourceEvent is the frozen experimental wire profile, not proof of identity,
++// SourceEvent represents the strict experimental v1/v2 profiles, not proof of identity,
+ // ready timing or a capability gate. Raw retains the original bytes for replay.
+ // Null flow/attempt are allowed only on the source-scoped epoch_closed marker.
+ type SourceEvent struct {
+-	SourceInstanceID  string
+-	SourceEpoch       string
+-	EventID           string
+-	SourceSeq         uint64
+-	FlowID, AttemptID string
+-	ConfigGeneration  string
+-	Kind              string
+-	Counter           *CounterEvent
+-	Raw               json.RawMessage
+-	Phase             string
+-	GapReason         string
+-	GapDimensions     []string
+-	UnfinishedFlows   uint64
+-	EpochFinality     string
++	SchemaVersion                          uint8
++	FlowStartNS                            uint64
++	ActualConnectionRef                    string
++	ConnectionID                           string
++	OrderedChain                           []RouteHop
++	Quality                                *SetupQuality
++	Segments                               []SegmentCounter
++	UnallocatedUpload, UnallocatedDownload uint64
++	SourceInstanceID                       string
++	SourceEpoch                            string
++	EventID                                string
++	SourceSeq                              uint64
++	FlowID, AttemptID                      string
++	ConfigGeneration                       string
++	Kind                                   string
++	Counter                                *CounterEvent
++	Raw                                    json.RawMessage
++	Phase                                  string
++	GapReason                              string
++	GapDimensions                          []string
++	UnfinishedFlows                        uint64
++	EpochFinality                          string
+ }
+ 
+ type wireFields map[string]json.RawMessage
+@@ -299,23 +307,29 @@
+ 	return false
+ }
+ 
+-// DecodeSourceEvent strictly validates the current candidate, including nested
++// DecodeSourceEvent strictly validates v1/v2 candidates, including nested
+ // ProcessEvidence. It preserves unknown counters as null and candidate timing as
+-// unverified. It does not infer source continuity from one well-shaped frame.
++// unverified for v1. It does not infer source continuity from one frame.
+ func DecodeSourceEvent(raw []byte) (SourceEvent, error) {
+ 	invalid := func() (SourceEvent, error) { return SourceEvent{}, ErrInvalidSourceEvent }
+ 	if len(raw) == 0 || len(raw) > SourceInputLimit || !utf8.Valid(raw) {
+ 		return invalid()
+ 	}
+ 	f, ok := object(raw)
+-	if !ok || !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) || !literal(f, "boundary_ref", "mihomo_proxy_stream_v1") {
++	if !ok || !literal(f, "boundary_ref", "mihomo_proxy_stream_v1") {
++		return invalid()
++	}
++	version := uint8(1)
++	if bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("2")) {
++		version = 2
++	} else if !bytes.Equal(bytes.TrimSpace(f["schema_version"]), []byte("1")) {
+ 		return invalid()
+ 	}
+ 	kind, ok := scalarText(f["kind"])
+ 	if !ok {
+ 		return invalid()
+ 	}
+-	e := SourceEvent{Kind: kind}
++	e := SourceEvent{Kind: kind, SchemaVersion: version}
+ 	var epoch, generation string
+ 	for _, item := range []struct {
+ 		key string
+@@ -349,7 +363,11 @@
+ 			return invalid()
+ 		}
+ 	}
+-	if kind == string(BytesCheckpoint) || kind == string(Closed) {
++	if version == 2 {
++		if !decodeV2(f, &e) {
++			return invalid()
++		}
++	} else if kind == string(BytesCheckpoint) || kind == string(Closed) {
+ 		counter, err := DecodeCounterEvent(raw)
+ 		if err != nil {
+ 			return invalid()
+diff --git a/component/hoopatrace/telemetrywire/state.go b/component/hoopatrace/telemetrywire/state.go
+--- a/component/hoopatrace/telemetrywire/state.go
++++ b/component/hoopatrace/telemetrywire/state.go
+@@ -8,7 +8,7 @@
+ // Terminal history remains available independently of the active-flow budget.
+ const MaxActiveFlows = 32
+ 
+-// Flow is a projection of confirmed v1 frames, not a network-end observation.
++// Flow projects confirmed v1/v2 cumulative frames, not a network-end observation.
+ type Flow struct {
+ 	SourceEpoch    string
+ 	FlowID         string
+@@ -33,6 +33,7 @@
+ type flowState struct {
+ 	Flow
+ 	terminal, shutdown, gapSeen bool
++	quality                     v2Flow
+ }
+ 
+ // State is a single-writer, pure epoch validator. Its zero value is ready for
+@@ -42,6 +43,7 @@
+ // deduplication belongs to the receiver and precedes validation.
+ type State struct {
+ 	epoch, instance, generation string
++	version                     uint8
+ 	last                        uint64
+ 	finality                    string
+ 	flows                       map[string]flowState
+@@ -57,7 +59,7 @@
+ 	if s.last == ^uint64(0) || e.SourceSeq != s.last+1 || s.finality != "" || s.events[e.EventID] {
+ 		return bad()
+ 	}
+-	if s.last != 0 && (s.epoch != e.SourceEpoch || s.instance != e.SourceInstanceID || s.generation != e.ConfigGeneration) {
++	if s.last != 0 && (s.epoch != e.SourceEpoch || s.instance != e.SourceInstanceID || s.generation != e.ConfigGeneration || s.version != e.SchemaVersion) {
+ 		return bad()
+ 	}
+ 	if e.Kind == "epoch_closed" {
+@@ -83,10 +85,17 @@
+ 		if exists || s.active >= MaxActiveFlows {
+ 			return bad()
+ 		}
+-		return flowState{Flow: Flow{SourceEpoch: e.SourceEpoch, FlowID: e.FlowID, OpenedEventID: e.EventID, State: "pending", Reason: "source_final_missing", GapDimensions: []string{}}}, nil
++		return flowState{quality: v2Flow{start: e.FlowStartNS}, Flow: Flow{SourceEpoch: e.SourceEpoch, FlowID: e.FlowID, OpenedEventID: e.EventID, State: "pending", Reason: "source_final_missing", GapDimensions: []string{}}}, nil
+ 	}
+ 	if !exists || f.terminal && e.Kind != "gap" {
+ 		return bad()
++	}
++	if e.SchemaVersion == 2 {
++		var ok bool
++		f.quality, ok = s.nextV2(e, f.quality)
++		if !ok {
++			return bad()
++		}
+ 	}
+ 	switch e.Kind {
+ 	case "route_decided":
+@@ -147,6 +156,7 @@
+ 	}
+ 	if s.last == 0 {
+ 		s.epoch, s.instance, s.generation = e.SourceEpoch, e.SourceInstanceID, e.ConfigGeneration
++		s.version = e.SchemaVersion
+ 	}
+ 	s.last = e.SourceSeq
+ 	s.events[e.EventID] = true
+diff --git a/component/hoopatrace/trace_linux.go b/component/hoopatrace/trace_linux.go
+--- a/component/hoopatrace/trace_linux.go
++++ b/component/hoopatrace/trace_linux.go
+@@ -15,6 +15,7 @@
+ 	"errors"
+ 	"fmt"
+ 	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	C "github.com/metacubex/mihomo/constant"
+ 	"hash"
+ 	"io"
+ 	"net"
+@@ -52,6 +53,8 @@
+ }
+ 
+ type source struct {
++	profile               int
++	routes                map[string]routeEntry
+ 	mu                    sync.Mutex
+ 	root                  *os.Root
+ 	lock, file            *os.File
+@@ -83,22 +86,26 @@
+ 	receiver, secret      string
+ }
+ type Flow struct {
+-	mu             sync.Mutex
+-	once           sync.Once
+-	s              *source
+-	id             string
+-	identity       ProcessEvidence
+-	started        time.Time
+-	attempt        int
+-	connection     string
+-	up, down       uint64
+-	invalid        bool
+-	counterInvalid bool
+-	terminal       bool
+-	windowGap      bool
+-	reserved       int64
++	segments                       []*segmentCounter
++	unallocatedUp, unallocatedDown uint64
++	mu                             sync.Mutex
++	once                           sync.Once
++	s                              *source
++	id                             string
++	identity                       ProcessEvidence
++	started                        time.Time
++	attempt                        int
++	connection                     string
++	up, down                       uint64
++	invalid                        bool
++	counterInvalid                 bool
++	terminal                       bool
++	windowGap                      bool
++	reserved                       int64
+ }
+ type Attempt struct {
++	segment *segmentCounter
++	proof   C.HoopaConnEvidence
+ 	once    sync.Once
+ 	f       *Flow
+ 	id      string
+@@ -207,6 +214,21 @@
+ 		return nil, ErrSource
+ 	}
+ 	s := &source{root: root, lock: lock, generation: generation, limit: limit, flows: map[string]*Flow{}, wake: make(chan struct{}, 1), done: make(chan struct{}), receiver: receiver, secret: secret, replay: map[string]replayEpoch{}, confirmedHasher: sha256.New()}
++	s.profile = 1
++	if v := os.Getenv("HOOPA_TRACE_PROFILE"); v != "" && v != "1" {
++		if v != "2" {
++			s.close()
++			return nil, ErrSource
++		}
++		s.profile = 2
++	}
++	if s.profile == 2 {
++		s.routes, err = loadRouteMapping(os.Getenv("HOOPA_TRACE_ROUTE_MAP"), generation)
++		if err != nil {
++			s.close()
++			return nil, err
++		}
++	}
+ 	ok = false
+ 	defer func() {
+ 		if !ok {
+@@ -413,7 +435,11 @@
+ 	if local != nil {
+ 		localText = local.String()
+ 	}
+-	err = s.append(f, "opened", f.attemptID(), map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"})
++	extra := map[string]any{"process": ident, "source_addr": peerText, "entry_addr": localText, "target_kind": targetKind, "target": target, "identity_scope": "same_uid_netns_ipv4_loopback_held_socket;fd_transfer_unverified"}
++	if s.profile == 2 {
++		extra["flow_start_ns"] = numberNS(started)
++	}
++	err = s.append(f, "opened", f.attemptID(), extra)
+ 	if err != nil {
+ 		s.mu.Lock()
+ 		if !s.poisoned {
+@@ -441,7 +467,7 @@
+ 	if f != nil {
+ 		flowID, attemptID = f.id, attempt
+ 	}
+-	obj := map[string]any{"schema_version": 1, "source_instance_id": "source:" + strings.TrimPrefix(s.epoch, "epoch:"), "source_epoch": s.epoch, "event_id": "event:" + strings.TrimPrefix(s.epoch, "epoch:") + ":" + strconv.FormatUint(seq, 10), "source_seq": strconv.FormatUint(seq, 10), "flow_id": flowID, "attempt_id": attemptID, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "config_generation": s.generation, "boundary_ref": "mihomo_proxy_stream_v1", "kind": kind}
++	obj := map[string]any{"schema_version": s.profile, "source_instance_id": "source:" + strings.TrimPrefix(s.epoch, "epoch:"), "source_epoch": s.epoch, "event_id": "event:" + strings.TrimPrefix(s.epoch, "epoch:") + ":" + strconv.FormatUint(seq, 10), "source_seq": strconv.FormatUint(seq, 10), "flow_id": flowID, "attempt_id": attemptID, "observed_at": time.Now().UTC().Format(time.RFC3339Nano), "config_generation": s.generation, "boundary_ref": "mihomo_proxy_stream_v1", "kind": kind}
+ 	for k, v := range extra {
+ 		obj[k] = v
+ 	}
+@@ -695,38 +721,8 @@
+ 	}
+ 	return nil
+ }
+-func (f *Flow) AddUpload(n int) {
+-	if f == nil || n <= 0 {
+-		return
+-	}
+-	f.mu.Lock()
+-	defer f.mu.Unlock()
+-	if f.terminal {
+-		return
+-	}
+-	if ^uint64(0)-f.up < uint64(n) {
+-		f.invalid = true
+-		f.counterInvalid = true
+-		return
+-	}
+-	f.up += uint64(n)
+-}
+-func (f *Flow) AddDownload(n int) {
+-	if f == nil || n <= 0 {
+-		return
+-	}
+-	f.mu.Lock()
+-	defer f.mu.Unlock()
+-	if f.terminal {
+-		return
+-	}
+-	if ^uint64(0)-f.down < uint64(n) {
+-		f.invalid = true
+-		f.counterInvalid = true
+-		return
+-	}
+-	f.down += uint64(n)
+-}
++func (f *Flow) AddUpload(n int)   { f.addSegment(nil, n, true) }
++func (f *Flow) AddDownload(n int) { f.addSegment(nil, n, false) }
+ func (f *Flow) Close() {
+ 	if f == nil {
+ 		return
+@@ -739,8 +735,8 @@
+ 		}
+ 		f.terminal = true
+ 		if !f.counterInvalid {
+-			// Counter frames deliberately have exactly the 13 frozen profile fields.
+-			if f.s.append(f, "closed", f.attemptID(), map[string]any{"upload_bytes": strconv.FormatUint(f.up, 10), "download_bytes": strconv.FormatUint(f.down, 10)}) != nil {
++			// v1 retains its flat counters; v2 snapshots the same cutoff with segments.
++			if f.s.append(f, "closed", f.attemptID(), f.counterExtra()) != nil {
+ 				f.invalid = true
+ 			}
+ 		}
+diff --git a/constant/hoopa_quality.go b/constant/hoopa_quality.go
+new file mode 100644
+--- /dev/null
++++ b/constant/hoopa_quality.go
+@@ -0,0 +1,32 @@
++package constant
++
++import (
++	"os"
++	"time"
++)
++
++// This opt-in experimental evidence is local to a concrete returned connection.
++// It is not a promise for arbitrary protocol wrappers or business requests.
++var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2"
++var hoopaMonotonicOrigin = time.Now()
++
++func HoopaMonotonicNS(t time.Time) int64 { return t.Sub(hoopaMonotonicOrigin).Nanoseconds() }
++
++type HoopaHop struct{ Name, AdapterType, ProviderName string }
++type HoopaConnEvidence struct {
++	Ref            string
++	ReadyAt        time.Time
++	Kind, Protocol string
++	Hops           []HoopaHop
++}
++
++type HoopaEvidenceConn interface{ HoopaEvidence() HoopaConnEvidence }
++
++// Only explicitly transparent wrappers forward this interface. Never search an
++// arbitrary Upstream chain: an unknown outer protocol must mask inner readiness.
++func HoopaEvidenceOf(c any) HoopaConnEvidence {
++	if p, ok := c.(HoopaEvidenceConn); ok {
++		return p.HoopaEvidence()
++	}
++	return HoopaConnEvidence{}
++}
+diff --git a/tunnel/hoopa_quality_dns_test.go b/tunnel/hoopa_quality_dns_test.go
+new file mode 100644
+--- /dev/null
++++ b/tunnel/hoopa_quality_dns_test.go
+@@ -0,0 +1,167 @@
++package tunnel
++
++import (
++	"context"
++	"encoding/binary"
++	"fmt"
++	N "github.com/metacubex/mihomo/common/net"
++	"github.com/metacubex/mihomo/component/hoopatrace"
++	W "github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
++	"github.com/metacubex/mihomo/component/resolver"
++	C "github.com/metacubex/mihomo/constant"
++	"github.com/metacubex/mihomo/rules/common"
++	"io"
++	"net"
++	"net/netip"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++)
++
++type qualityRuleDNS struct{ resolver.Resolver }
++
++func (qualityRuleDNS) Invalid() bool { return true }
++func (qualityRuleDNS) LookupIP(ctx context.Context, _ string) ([]netip.Addr, error) {
++	select {
++	case <-time.After(90 * time.Millisecond):
++		return []netip.Addr{netip.MustParseAddr("127.0.0.1")}, nil
++	case <-ctx.Done():
++		return nil, ctx.Err()
++	}
++}
++func (d qualityRuleDNS) LookupIPv4(ctx context.Context, h string) ([]netip.Addr, error) {
++	return d.LookupIP(ctx, h)
++}
++func TestHoopaQualityRuleDNSBelongsToFlow(t *testing.T) {
++	dir := t.TempDir()
++	os.Chmod(dir, 0700)
++	t.Setenv("HOOPA_TRACE_PROFILE", "2")
++	t.Setenv("HOOPA_TRACE_DIR", dir)
++	t.Setenv("HOOPA_TRACE_GENERATION", "dns-generation")
++	t.Setenv("HOOPA_TRACE_INBOUND", "dns-test")
++	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "")
++	t.Setenv("HOOPA_TRACE_RECEIVER", "")
++	oldEnabled, oldResolver, oldRules, oldProxies, oldMode := C.HoopaQualityEnabled, resolver.DefaultResolver, rules, proxies, mode
++	defer func() {
++		C.HoopaQualityEnabled, resolver.DefaultResolver, rules, proxies, mode = oldEnabled, oldResolver, oldRules, oldProxies, oldMode
++	}()
++	C.HoopaQualityEnabled = true
++	resolver.DefaultResolver = qualityRuleDNS{}
++	mode = Rule
++	direct := &qualityRuleDirect{}
++	ipRule, err := common.NewIPCIDR("127.0.0.0/8", "node:direct")
++	if err != nil {
++		t.Fatal(err)
++	}
++	rules = []C.Rule{ipRule}
++	proxies = map[string]C.Proxy{"DIRECT": direct, "node:direct": direct}
++	ln, err := net.Listen("tcp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer ln.Close()
++	done := make(chan struct{})
++	go func() {
++		defer close(done)
++		c, err := ln.Accept()
++		if err == nil {
++			c.Close()
++		}
++	}()
++	started := time.Now()
++	f, err := hoopatrace.Begin("dns-test", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32000}, &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 32001}, "rule-slow.invalid", "", started)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer hoopatrace.Shutdown()
++	metadata := &C.Metadata{Host: "rule-slow.invalid", DstPort: uint16(ln.Addr().(*net.TCPAddr).Port), HoopaFlowID: f.ID(), NetWork: C.TCP}
++	beforeDNS := time.Now()
++	proxy, rule, err := resolveMetadata(metadata)
++	afterDNS := time.Now()
++	if err != nil || rule != ipRule || proxy != direct || afterDNS.Sub(beforeDNS) < 85*time.Millisecond {
++		t.Fatal("rule DNS fixture did not resolve", err)
++	}
++	a := f.NewAttempt()
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
++	defer cancel()
++	c, err := proxy.DialContext(ctx, metadata.Pure())
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer c.Close()
++	<-done
++	if err = a.Attach(c); err != nil {
++		t.Fatal(err)
++	}
++	a.FinishConnection(nil, "", c, false)
++	f.Close()
++	hoopatrace.Shutdown()
++	paths, _ := filepath.Glob(filepath.Join(dir, "*.frames"))
++	if len(paths) != 1 {
++		t.Fatal("source file missing")
++	}
++	data, err := os.Open(paths[0])
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer data.Close()
++	var state W.State
++	found := false
++	for {
++		var h [4]byte
++		if _, err = io.ReadFull(data, h[:]); err == io.EOF {
++			break
++		} else if err != nil {
++			t.Fatal(err)
++		}
++		n := binary.BigEndian.Uint32(h[:])
++		b := make([]byte, n+32)
++		if _, err = io.ReadFull(data, b); err != nil {
++			t.Fatal(err)
++		}
++		e, err := W.DecodeSourceEvent(b[:n])
++		if err != nil || state.Commit(e) != nil {
++			t.Fatal("invalid source event", err)
++		}
++		if e.Quality == nil {
++			continue
++		}
++		found = true
++		q := e.Quality
++		if q.Outcome != "success" || q.FlowDurationMS == nil || q.DurationMS == nil || *q.FlowDurationMS < *q.DurationMS+85 || q.AttemptStartNS < uint64(C.HoopaMonotonicNS(afterDNS)) || q.FlowStartNS != uint64(C.HoopaMonotonicNS(started)) {
++			t.Fatalf("wrong DNS/attempt boundary: %+v", q)
++		}
++	}
++	if !found {
++		t.Fatal("no quality event")
++	}
++}
++
++// Test-only direct dialer isolates the actual rule DNS boundary from unrelated
++// outbound package imports (outbound imports dns, which imports tunnel).
++type qualityRuleDirect struct{ hoopaProxyFake }
++
++func (*qualityRuleDirect) DialContext(ctx context.Context, m *C.Metadata) (C.Conn, error) {
++	if !m.DstIP.IsLoopback() {
++		return nil, fmt.Errorf("fixture requires resolved loopback")
++	}
++	c, err := (&net.Dialer{}).DialContext(ctx, "tcp4", net.JoinHostPort(m.DstIP.String(), fmt.Sprint(m.DstPort)))
++	if err != nil {
++		return nil, err
++	}
++	return &qualityRuleConn{ExtendedConn: N.NewExtendedConn(c), ready: time.Now()}, nil
++}
++
++type qualityRuleConn struct {
++	N.ExtendedConn
++	ready time.Time
++}
++
++func (c *qualityRuleConn) Chains() C.Chain               { return C.Chain{"node:direct"} }
++func (c *qualityRuleConn) ProviderChains() C.Chain       { return C.Chain{""} }
++func (c *qualityRuleConn) AppendToChains(C.ProxyAdapter) {}
++func (c *qualityRuleConn) RemoteDestination() string     { return c.RemoteAddr().String() }
++func (c *qualityRuleConn) HoopaEvidence() C.HoopaConnEvidence {
++	return C.HoopaConnEvidence{Ref: "conn:rule-dns", ReadyAt: c.ready, Kind: "tcp_connected", Protocol: "direct_tcp", Hops: []C.HoopaHop{{Name: "node:direct", AdapterType: "Direct"}}}
++}
+diff --git a/tunnel/statistic/tracker.go b/tunnel/statistic/tracker.go
+--- a/tunnel/statistic/tracker.go
++++ b/tunnel/statistic/tracker.go
+@@ -267,3 +267,5 @@
+ 	manager.Join(ut)
+ 	return ut
+ }
++
++func (w *tcpTracker) HoopaEvidence() C.HoopaConnEvidence { return C.HoopaEvidenceOf(w.Conn) }
+diff --git a/tunnel/tunnel.go b/tunnel/tunnel.go
+--- a/tunnel/tunnel.go
++++ b/tunnel/tunnel.go
+@@ -527,13 +527,16 @@
+ 		}()
+ 	}
+ 	if !metadata.Valid() {
++		traceFlow.FailBeforeDial(errors.New("invalid_metadata"))
+ 		log.Warnln("[Metadata] not valid: %#v", metadata)
+ 		return
+ 	}
+ 	fixMetadata(metadata) // fix some metadata not set via metadata.SetRemoteAddr or metadata.SetRemoteAddress
+ 
+ 	preHandleFailed := false
++	var preHandleErr error
+ 	if err := preHandleMetadata(metadata); err != nil {
++		preHandleErr = err
+ 		log.Debugln("[Metadata PreHandle] error: %s", err)
+ 		preHandleFailed = true
+ 	}
+@@ -551,6 +554,7 @@
+ 
+ 	// If both trials have failed, we can do nothing but give up
+ 	if preHandleFailed {
++		traceFlow.FailBeforeDial(preHandleErr)
+ 		log.Debugln("[Metadata PreHandle] failed to sniff a domain for connection %s --> %s, give up",
+ 			metadata.SourceDetail(), metadata.RemoteAddress())
+ 		return
+@@ -569,6 +573,7 @@
+ 
+ 	proxy, rule, err := resolveMetadata(metadata)
+ 	if err != nil {
++		traceFlow.FailBeforeDial(err)
+ 		if traceFlow != nil {
+ 			_ = traceFlow.Decide("REJECT", "unknown_or_route_failure", "REJECT")
+ 			log.Warnln("[Hoopa] route rejected")
+@@ -609,20 +614,17 @@
+ 
+ 	ctx, cancel := context.WithTimeout(context.Background(), C.DefaultTCPTimeout)
+ 	defer cancel()
++	var relayAttempt *hoopatrace.Attempt
+ 	remoteConn, err := retry(ctx, func(ctx context.Context) (remoteConn C.Conn, err error) {
+ 		attempt := traceFlow.NewAttempt()
+ 		var attemptConn C.Conn
+ 		ready := false
++		stage := "dial_or_handshake"
+ 		defer func() {
+-			var chains, providers []string
+-			if attemptConn != nil {
+-				chains = append([]string(nil), attemptConn.Chains()...)
+-				providers = append([]string(nil), attemptConn.ProviderChains()...)
+-			}
+ 			if err != nil {
+ 				ready = false
+ 			}
+-			attempt.Finish(err, chains, providers, ready)
++			attempt.FinishConnection(err, stage, attemptConn, ready)
+ 		}()
+ 		remoteConn, err = proxy.DialContext(ctx, dialMetadata)
+ 		attemptConn = remoteConn
+@@ -634,6 +636,12 @@
+ 			err = errors.New("Hoopa dial returned no connection")
+ 			return
+ 		}
++		if err = attempt.Attach(remoteConn); err != nil {
++			_ = remoteConn.Close()
++			remoteConn = nil
++			return
++		}
++		relayAttempt = attempt
+ 		neededHandshake := N.NeedHandshake(remoteConn)
+ 		ready = !neededHandshake
+ 		if neededHandshake {
+@@ -654,7 +662,8 @@
+ 			peekBytes, _ = conn.Peek(conn.Buffered())
+ 			n := 0
+ 			if traceFlow != nil {
+-				n, err = hoopaWriteInitialPayload(remoteConn, peekBytes, traceFlow)
++				stage = "initial_write"
++				n, err = hoopaWriteInitialPayload(remoteConn, peekBytes, attempt)
+ 				ready = hoopaSetupReady(true, N.NeedHandshake(remoteConn), n, err)
+ 			} else {
+ 				n, err = remoteConn.Write(peekBytes)
+@@ -686,7 +695,7 @@
+ 	logMetadata(metadata, rule, remoteConn)
+ 
+ 	if traceFlow != nil {
+-		tracker := statistic.NewHoopaTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true, traceFlow)
++		tracker := statistic.NewHoopaTCPTracker(remoteConn, statistic.DefaultManager, metadata, rule, int64(peekLen), 0, true, relayAttempt)
+ 		remoteConn = tracker
+ 		traceTransferred = true
+ 		if err := traceFlow.Check(); err != nil {

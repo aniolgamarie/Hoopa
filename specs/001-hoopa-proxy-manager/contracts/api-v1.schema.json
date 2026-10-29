@@ -1,0 +1,2069 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hoopa machine API v1 request and response envelope",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Response"
+    }
+  ],
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "Filters": {
+      "type": "object",
+      "properties": {
+        "process_instance_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "process_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "app_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "launch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscription_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "entry_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "protocol": {
+          "enum": [
+            "tcp",
+            "udp",
+            "quic"
+          ]
+        },
+        "quality_state": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown",
+            "stale"
+          ]
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "pid": [
+          "process_instance_id"
+        ],
+        "node_id": [
+          "subscription_id"
+        ]
+      },
+      "$comment": "PID only narrows a process instance, never identifies one across reuse. Node identity is scoped to subscription. Unsupported protocol capability must fail explicitly, never produce synthetic zero totals."
+    },
+    "status_get_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "status.get"
+        },
+        "params": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "doctor_get_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "doctor.get"
+        },
+        "params": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "config_get_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "config.get"
+        },
+        "params": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "subscription_list_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "subscription.list"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "cursor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "group_list_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "group.list"
+        },
+        "params": {
+          "type": "object",
+          "properties": {},
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "operation_get_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "operation.get"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "operation_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "app_inspect_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "app.inspect"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "app_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "mode": {
+              "enum": [
+                "managed",
+                "inherit",
+                "direct"
+              ]
+            }
+          },
+          "required": [
+            "app_id"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "route_explain_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "route.explain"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "app_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "process_instance_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "domain": {
+              "type": "string",
+              "minLength": 1
+            },
+            "destination_ip": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "config_plan_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "config.plan"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "$ref": "intent-v1.schema.json"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "config_apply_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "config.apply"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "plan": {
+              "oneOf": [
+                {
+                  "$ref": "plan-v1.schema.json"
+                },
+                {
+                  "$ref": "plan-v2.schema.json"
+                }
+              ]
+            },
+            "confirmed_plan_digest": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "accept_disruption": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "plan",
+            "confirmed_plan_digest",
+            "accept_disruption"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "subscription_update_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "subscription.update"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "subscription_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "intent": {
+              "$ref": "intent-v1.schema.json"
+            },
+            "region_rules": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "prefix": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "region": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "prefix",
+                  "region"
+                ],
+                "additionalProperties": false
+              },
+              "$comment": "Runtime additionally checks UTF-8 byte bounds and Unicode control characters; empty array explicitly clears local policy."
+            }
+          },
+          "required": [
+            "subscription_id",
+            "expected_revision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "runtime_start_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "runtime.start"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "control_only": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "expected_revision",
+            "control_only"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "runtime_stop_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "runtime.stop"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "accept_disruption": {
+              "const": true
+            }
+          },
+          "required": [
+            "expected_revision",
+            "accept_disruption"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "service_stop_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "service.stop"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "expected_revision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "operation_recover_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "operation.recover"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "expected_revision": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "operation_id",
+            "expected_revision"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "probe_run_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "probe.run"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "node_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https?://"
+            },
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "subscription_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            }
+          },
+          "required": [
+            "subscription_id",
+            "node_id",
+            "url",
+            "timeout_ms"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "connections_query_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "connections.query"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "enum": [
+                "active",
+                "history"
+              ]
+            },
+            "from": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "to": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "filters": {
+              "$ref": "#/$defs/Filters"
+            },
+            "page_size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            },
+            "cursor": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "scope"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "usage_query_request": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "operation": {
+          "const": "usage.query"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "view": {
+              "enum": [
+                "process",
+                "name",
+                "domain",
+                "process_domain",
+                "launch_tree"
+              ]
+            },
+            "from": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "to": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "filters": {
+              "$ref": "#/$defs/Filters"
+            },
+            "sort": {
+              "enum": [
+                "total_bytes",
+                "upload_bytes",
+                "download_bytes",
+                "upload_rate_bytes_per_second",
+                "download_rate_bytes_per_second",
+                "connection_count",
+                "name",
+                "pid",
+                "last_active_at",
+                "latency_p50_ms",
+                "latency_p95_ms",
+                "failure_rate"
+              ],
+              "default": "total_bytes"
+            },
+            "direction": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "page_size": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            },
+            "top_n": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "window_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "cursor": {
+              "type": "string",
+              "minLength": 1
+            },
+            "quality_definition_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "quality_target_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "view",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "sort": {
+                    "enum": [
+                      "latency_p50_ms",
+                      "latency_p95_ms",
+                      "failure_rate"
+                    ]
+                  }
+                },
+                "required": [
+                  "sort"
+                ]
+              },
+              "then": {
+                "required": [
+                  "quality_definition_id",
+                  "quality_target_id"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "sort": {
+                    "enum": [
+                      "upload_rate_bytes_per_second",
+                      "download_rate_bytes_per_second"
+                    ]
+                  }
+                },
+                "required": [
+                  "sort"
+                ]
+              },
+              "then": {
+                "required": [
+                  "window_seconds"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "operation",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "Request": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/status_get_request"
+        },
+        {
+          "$ref": "#/$defs/doctor_get_request"
+        },
+        {
+          "$ref": "#/$defs/config_get_request"
+        },
+        {
+          "$ref": "#/$defs/subscription_list_request"
+        },
+        {
+          "$ref": "#/$defs/group_list_request"
+        },
+        {
+          "$ref": "#/$defs/operation_get_request"
+        },
+        {
+          "$ref": "#/$defs/app_inspect_request"
+        },
+        {
+          "$ref": "#/$defs/route_explain_request"
+        },
+        {
+          "$ref": "#/$defs/config_plan_request"
+        },
+        {
+          "$ref": "#/$defs/config_apply_request"
+        },
+        {
+          "$ref": "#/$defs/subscription_update_request"
+        },
+        {
+          "$ref": "#/$defs/runtime_start_request"
+        },
+        {
+          "$ref": "#/$defs/runtime_stop_request"
+        },
+        {
+          "$ref": "#/$defs/service_stop_request"
+        },
+        {
+          "$ref": "#/$defs/operation_recover_request"
+        },
+        {
+          "$ref": "#/$defs/probe_run_request"
+        },
+        {
+          "$ref": "#/$defs/connections_query_request"
+        },
+        {
+          "$ref": "#/$defs/usage_query_request"
+        }
+      ]
+    },
+    "Error": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "enum": [
+                "INVALID_ARGUMENT",
+                "UNSUPPORTED_VERSION",
+                "CAPABILITY_UNSUPPORTED",
+                "CONFLICT",
+                "REQUEST_ID_REUSED",
+                "NOT_RUNNING",
+                "DEPENDENCY_UNAVAILABLE",
+                "READ_UNAVAILABLE",
+                "SNAPSHOT_EXPIRED",
+                "OPERATION_NOT_FOUND",
+                "OPERATION_CAPACITY_EXHAUSTED",
+                "APPLY_FAILED",
+                "RECOVERY_REQUIRED",
+                "LEDGER_UNAVAILABLE",
+                "INTEGRITY_ERROR",
+                "AUTHORIZATION_DENIED",
+                "CANCELLED"
+              ]
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "details": {
+              "type": "object",
+              "properties": {
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "current_revision": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "expected_revision": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "operation_id": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+                },
+                "field": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "code",
+            "message",
+            "retryable"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/SourceUpdateFailure"
+        }
+      ]
+    },
+    "Warning": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "MutationReceipt": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "phase": {
+          "enum": [
+            "prepared",
+            "validated",
+            "applying",
+            "verifying",
+            "publishing",
+            "committed",
+            "rolling_back",
+            "rolled_back",
+            "degraded"
+          ]
+        },
+        "base_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "target_revision": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "pending",
+            "committed",
+            "rolled_back",
+            "degraded"
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "phase",
+        "base_revision",
+        "target_revision",
+        "outcome"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "committed"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "committed"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "rolled_back"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "rolled_back"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "const": "degraded"
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "degraded"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "not": {
+                  "enum": [
+                    "committed",
+                    "rolled_back",
+                    "degraded"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "pending"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "Response": {
+      "type": "object",
+      "properties": {
+        "api_version": {
+          "const": "v1"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Error"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Warning"
+          }
+        }
+      },
+      "required": [
+        "api_version",
+        "request_id",
+        "ok",
+        "data",
+        "error",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "request_id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "data": {
+                "type": "object"
+              },
+              "error": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "data": {
+                "type": "null"
+              },
+              "error": {
+                "$ref": "#/$defs/Error"
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "Strict envelope only. Arbitrary query data object is intentionally not complete business validation. Use specific response defs for config.plan, usage.query and mutations. T033 status/operation/control-only data use service-lifecycle-v1.schema.json. Other query data minimum fields are normative in cli.md. T139 minimal doctor data additionally use doctor-v1.schema.json / DoctorResponse."
+    },
+    "PlanResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "plan-v2.schema.json"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "UsageResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "usage-v1.schema.json"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "MutationResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/MutationReceipt"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SourceUpdateReceipt": {
+      "type": "object",
+      "properties": {
+        "operation_id": {
+          "type": "string",
+          "pattern": "^op-[a-f0-9]{64}$"
+        },
+        "phase": {
+          "enum": [
+            "prepared",
+            "validated",
+            "applying",
+            "verifying",
+            "publishing",
+            "committed",
+            "rolling_back",
+            "rolled_back"
+          ]
+        },
+        "base_revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "context_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "subscription_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "downloaded": {
+          "type": "boolean"
+        },
+        "validated": {
+          "type": "boolean"
+        },
+        "asset_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "snapshot_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "const": ""
+            }
+          ]
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "enum": [
+            "",
+            "download_failed",
+            "validation_failed",
+            "input_changed",
+            "cancelled",
+            "interrupted",
+            "storage_failed"
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "phase",
+        "base_revision",
+        "context_sha256",
+        "subscription_id",
+        "sequence",
+        "downloaded",
+        "validated",
+        "asset_sha256",
+        "snapshot_id",
+        "finished_at",
+        "reason"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "prepared",
+                  "validated",
+                  "applying"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "downloaded": {
+                "const": false
+              },
+              "validated": {
+                "const": false
+              },
+              "asset_sha256": {
+                "const": ""
+              },
+              "snapshot_id": {
+                "const": ""
+              },
+              "finished_at": {
+                "type": "null"
+              },
+              "reason": {
+                "const": ""
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "verifying"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "downloaded": {
+                "const": true
+              },
+              "validated": {
+                "const": false
+              },
+              "asset_sha256": {
+                "const": ""
+              },
+              "snapshot_id": {
+                "const": ""
+              },
+              "finished_at": {
+                "type": "null"
+              },
+              "reason": {
+                "const": ""
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "publishing",
+                  "committed"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "downloaded": {
+                "const": true
+              },
+              "asset_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "snapshot_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              "finished_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "Z$"
+              },
+              "reason": {
+                "const": ""
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "publishing"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "validated": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "committed"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "validated": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "phase": {
+                "enum": [
+                  "rolling_back",
+                  "rolled_back"
+                ]
+              }
+            },
+            "required": [
+              "phase"
+            ]
+          },
+          "then": {
+            "properties": {
+              "validated": {
+                "const": false
+              },
+              "asset_sha256": {
+                "const": ""
+              },
+              "snapshot_id": {
+                "const": ""
+              },
+              "finished_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "Z$"
+              },
+              "reason": {
+                "enum": [
+                  "download_failed",
+                  "validation_failed",
+                  "input_changed",
+                  "cancelled",
+                  "interrupted",
+                  "storage_failed"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "download_failed"
+                ]
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "downloaded": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "enum": [
+                  "validation_failed",
+                  "storage_failed"
+                ]
+              }
+            },
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "downloaded": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SourceUpdateFailure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "const": "SUBSCRIPTION_UPDATE_FAILED"
+        },
+        "message": {
+          "const": "Subscription update did not produce a usable candidate"
+        },
+        "retryable": {
+          "const": false
+        },
+        "details": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/SourceUpdateReceipt"
+            },
+            {
+              "properties": {
+                "phase": {
+                  "enum": [
+                    "rolling_back",
+                    "rolled_back"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable",
+        "details"
+      ],
+      "additionalProperties": false
+    },
+    "SourceUpdateResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/SourceUpdateReceipt"
+                  },
+                  {
+                    "properties": {
+                      "reason": {
+                        "const": ""
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "error": {
+                "$ref": "#/$defs/SourceUpdateFailure"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SourceState": {
+      "type": "object",
+      "properties": {
+        "subscription_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "state": {
+          "enum": [
+            "never",
+            "updating",
+            "interrupted",
+            "succeeded",
+            "failed"
+          ]
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "downloaded": {
+          "type": "boolean"
+        },
+        "validated": {
+          "type": "boolean"
+        },
+        "latest_snapshot": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applied_snapshot": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending": {
+          "type": "boolean"
+        },
+        "last_attempt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_success": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "next_due": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_code": {
+          "enum": [
+            null,
+            "download_failed",
+            "validation_failed",
+            "input_changed",
+            "cancelled",
+            "interrupted",
+            "storage_failed"
+          ]
+        },
+        "scheduled": {
+          "type": "boolean"
+        },
+        "update_hours": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2562047
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "effective_next_due": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "subscription_id",
+        "state",
+        "sequence",
+        "downloaded",
+        "validated",
+        "latest_snapshot",
+        "applied_snapshot",
+        "pending",
+        "last_attempt",
+        "last_success",
+        "next_due",
+        "error_code",
+        "scheduled",
+        "update_hours",
+        "effective_next_due"
+      ],
+      "additionalProperties": false,
+      "$comment": "scheduled describes committed Intent configuration, not independent proof of an active timer. Latest and applied each require verified original provenance; downloaded/validated refer to the latest attempt."
+    },
+    "SourcePage": {
+      "type": "object",
+      "properties": {
+        "revision": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "view_id": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sources": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/SourceState"
+          }
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "revision",
+        "view_id",
+        "observed_at",
+        "total",
+        "sources",
+        "next_cursor"
+      ],
+      "additionalProperties": false
+    },
+    "SourceListResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "ok"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "#/$defs/SourcePage"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DoctorResponse": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Response"
+        },
+        {
+          "if": {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "$ref": "doctor-v1.schema.json"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$comment": "Validate Request for stdin. Response covers envelope only; select PlanResponse/UsageResponse/MutationResponse for operation-specific data. T033 query data additionally use service-lifecycle-v1.schema.json; other query data is normative Markdown. Parser and semantic validation also required. subscription.update uses SourceUpdateResponse after admission (ordinary pre-admission errors still use Response), not the runtime MutationResponse."
+}

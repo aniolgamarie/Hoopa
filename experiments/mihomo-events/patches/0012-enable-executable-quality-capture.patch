@@ -1,0 +1,80 @@
+diff --git a/constant/hoopa_quality.go b/constant/hoopa_quality.go
+index 49eef67..e650206 100644
+--- a/constant/hoopa_quality.go
++++ b/constant/hoopa_quality.go
+@@ -7,7 +7,7 @@ import (
+ 
+ // This opt-in experimental evidence is local to a concrete returned connection.
+ // It is not a promise for arbitrary protocol wrappers or business requests.
+-var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2" || os.Getenv("HOOPA_TRACE_PROFILE") == "3"
++var HoopaQualityEnabled = os.Getenv("HOOPA_TRACE_PROFILE") == "2" || os.Getenv("HOOPA_TRACE_PROFILE") == "3" || os.Getenv("HOOPA_TRACE_PROFILE") == "4"
+ var hoopaMonotonicOrigin = time.Now()
+ 
+ func HoopaMonotonicNS(t time.Time) int64 { return t.Sub(hoopaMonotonicOrigin).Nanoseconds() }
+diff --git a/constant/hoopa_quality_profile_test.go b/constant/hoopa_quality_profile_test.go
+index c96248d..27ed128 100644
+--- a/constant/hoopa_quality_profile_test.go
++++ b/constant/hoopa_quality_profile_test.go
+@@ -1,31 +1,51 @@
+ package constant
+ 
+ import (
++	"context"
+ 	"os"
+ 	"os/exec"
+ 	"strings"
+ 	"testing"
++	"time"
+ )
+ 
+-// The capability is selected at package initialization, so each profile needs a
+-// fresh test process rather than mutating the exported flag after init.
++// The flag is cached at package initialization. Exercise each environment in
++// a new copy of this exact test binary rather than changing an initialized flag.
+ func TestHoopaQualityIdentityProfiles(t *testing.T) {
+-	if profile, child := os.LookupEnv("HOOPA_QUALITY_PROFILE_CHILD"); child {
+-		want := profile == "2" || profile == "3"
+-		if HoopaQualityEnabled != want {
+-			t.Fatalf("profile %q: quality=%v, want %v", profile, HoopaQualityEnabled, want)
++	if child, present := os.LookupEnv("HOOPA_QUALITY_PROFILE_CHILD"); present {
++		expected, ok := os.LookupEnv("HOOPA_QUALITY_PROFILE_EXPECTED")
++		if child != "1" || !ok || (expected != "0" && expected != "1") {
++			t.Fatal("invalid quality profile child registration")
++		}
++		if HoopaQualityEnabled != (expected == "1") {
++			t.Fatalf("profile %q: quality=%v, want %v", os.Getenv("HOOPA_TRACE_PROFILE"), HoopaQualityEnabled, expected == "1")
+ 		}
+ 		return
+ 	}
+-	for _, profile := range []string{"", "1", "2", "3", "03", "invalid"} {
+-		t.Run("profile="+profile, func(t *testing.T) {
+-			cmd := exec.Command(os.Args[0], "-test.run=^TestHoopaQualityIdentityProfiles$")
++	executable, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, tc := range []struct {
++		profile string
++		enabled bool
++	}{
++		{"", false}, {"1", false}, {"2", true}, {"3", true}, {"4", true}, {"03", false}, {"04", false}, {"invalid", false},
++	} {
++		t.Run("profile="+tc.profile, func(t *testing.T) {
++			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++			defer cancel()
++			cmd := exec.CommandContext(ctx, executable, "-test.run=^TestHoopaQualityIdentityProfiles$", "-test.count=1")
+ 			for _, kv := range os.Environ() {
+-				if !strings.HasPrefix(kv, "HOOPA_TRACE_PROFILE=") && !strings.HasPrefix(kv, "HOOPA_QUALITY_PROFILE_CHILD=") {
++				if !strings.HasPrefix(kv, "HOOPA_TRACE_PROFILE=") && !strings.HasPrefix(kv, "HOOPA_QUALITY_PROFILE_CHILD=") && !strings.HasPrefix(kv, "HOOPA_QUALITY_PROFILE_EXPECTED=") {
+ 					cmd.Env = append(cmd.Env, kv)
+ 				}
+ 			}
+-			cmd.Env = append(cmd.Env, "HOOPA_TRACE_PROFILE="+profile, "HOOPA_QUALITY_PROFILE_CHILD="+profile)
++			expected := "0"
++			if tc.enabled {
++				expected = "1"
++			}
++			cmd.Env = append(cmd.Env, "HOOPA_TRACE_PROFILE="+tc.profile, "HOOPA_QUALITY_PROFILE_CHILD=1", "HOOPA_QUALITY_PROFILE_EXPECTED="+expected)
+ 			if output, err := cmd.CombinedOutput(); err != nil {
+ 				t.Fatalf("fresh profile init: %v\n%s", err, output)
+ 			}

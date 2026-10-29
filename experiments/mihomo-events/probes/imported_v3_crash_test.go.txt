@@ -1,0 +1,179 @@
+//go:build linux && amd64
+
+// Test-only overlay for the fixed Mihomo source tree. This is not linked into
+// the candidate binary. Input is a copy of retained, completed VM evidence.
+package hoopatrace
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"syscall"
+	"testing"
+
+	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
+)
+
+func TestHoopaImportedV3CrashRecovery(t *testing.T) {
+	input := os.Getenv("HOOPA_V3_CRASH_SOURCE")
+	if input == "" {
+		t.Skip("explicit retained VM source evidence required")
+	}
+	t.Setenv("HOOPA_TRACE_PROFILE", "3")
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := filepath.Glob(filepath.Join(input, "epoch-*.frames"))
+	if err != nil || len(paths) != 2 {
+		t.Fatal("expected exactly two retained VM epochs", err)
+	}
+	originalFiles := map[string][]byte{}
+	originalFrames := map[string][][]byte{}
+	var pendingEpoch, closedEpoch string
+	var priorCheckpoint *telemetrywire.RecoveryCounter
+	for _, path := range paths {
+		name := filepath.Base(path)
+		metaName := strings.TrimSuffix(name, ".frames") + ".source.json"
+		for _, n := range []string{name, metaName} {
+			raw, err := os.ReadFile(filepath.Join(input, n))
+			if err != nil || len(raw) > int(defaultLimit) {
+				t.Fatal("bounded input", n, err)
+			}
+			originalFiles[n] = raw
+			if err = os.WriteFile(filepath.Join(dir, n), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		m, err := telemetrywire.DecodeManifest(originalFiles[metaName])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows [][]byte
+		life, err := boundFrames(originalFiles[name], m, func(raw []byte) error {
+			e, err := telemetrywire.DecodeSourceEvent(raw)
+			if err != nil {
+				return err
+			}
+			if e.SchemaVersion != 3 || e.Kind == "opened" && e.Connector == nil {
+				t.Fatal("expected original v3 connector frames")
+			}
+			rows = append(rows, append([]byte(nil), raw...))
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		originalFrames[name] = rows
+		sum := sha256.Sum256(originalFiles[name])
+		// This pure read supplies no writer-end evidence, even though the VM
+		// runner separately observed process death and a later core restart.
+		r, err := telemetrywire.ProjectRecovery(m, life, hex.EncodeToString(sum[:]), nil)
+		if err != nil || r.WriterEnd != nil || len(r.Flows) != 1 {
+			t.Fatal("readonly recovery", err)
+		}
+		f := r.Flows[0]
+		switch f.State {
+		case "pending":
+			if pendingEpoch != "" || f.LastCheckpoint == nil || f.LastCheckpoint.UploadBytes != 12 || f.LastCheckpoint.DownloadBytes != 12 || f.Final != nil || f.TailBytes != nil || f.ReconciliationID != "" {
+				t.Fatal("readonly missing-final evidence changed")
+			}
+			pendingEpoch, priorCheckpoint = m.SourceEpoch, f.LastCheckpoint
+		case "closed":
+			if closedEpoch != "" || f.Final == nil || f.Final.UploadBytes != 33 || f.Final.DownloadBytes != 33 || f.ReconciliationID != "" || f.FactSHA256 != "" || f.TailBytes == nil || *f.TailBytes != 0 || len(f.GapDimensions) != 0 || f.Reason != "" {
+				t.Fatal("readonly exact final changed")
+			}
+			closedEpoch = m.SourceEpoch
+		default:
+			t.Fatal("unexpected input flow state", f.State)
+		}
+	}
+	if pendingEpoch == "" || closedEpoch == "" || pendingEpoch == closedEpoch {
+		t.Fatal("missing original pending and closed epochs")
+	}
+	var factID, factHash string
+	for attempt := 0; attempt < 3; attempt++ {
+		func() {
+			// An explicit writer operation on our private copy takes the real
+			// source lock and scans/syncs originals. Never fabricate WriterEnd.
+			s, err := openSource(dir, "probe-generation", "", "", defaultLimit)
+			if err != nil {
+				t.Fatal("core writer reopen", err)
+			}
+			defer s.close()
+			if s.epoch == pendingEpoch || s.epoch == closedEpoch {
+				t.Fatal("reused source epoch")
+			}
+			lockProbe, err := os.OpenFile(filepath.Join(dir, "source.lock"), os.O_RDWR, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lockErr := syscall.Flock(int(lockProbe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+			closeErr := lockProbe.Close()
+			if !errors.Is(lockErr, syscall.EWOULDBLOCK) || closeErr != nil {
+				t.Fatal("source writer lock is not exclusively held", lockErr, closeErr)
+			}
+			other, err := openSource(dir, "conflicting-generation", "", "", defaultLimit)
+			if err == nil {
+				other.close()
+				t.Fatal("concurrent writer accepted")
+			}
+			found := map[string]bool{}
+			for _, r := range s.recoveryReports() {
+				if r.SourceEpoch != pendingEpoch && r.SourceEpoch != closedEpoch {
+					continue
+				}
+				found[r.SourceEpoch] = true
+				if r.RecordingStatus != "ready" || r.WriterEnd == nil || r.WriterEnd.Kind != "exclusive_writer_full_scan" || len(r.Flows) != 1 {
+					t.Fatal("core writer recovery evidence missing")
+				}
+				f := r.Flows[0]
+				if r.SourceEpoch == pendingEpoch {
+					if f.State != "gap" || f.Reason != "epoch_ended_without_final" || f.TailBytes != nil || f.Final != nil || !reflect.DeepEqual(f.LastCheckpoint, priorCheckpoint) || f.ReconciliationID == "" || f.FactSHA256 == "" {
+						t.Fatal("core recovery lost checkpoint or invented final")
+					}
+					if attempt == 0 {
+						factID, factHash = f.ReconciliationID, f.FactSHA256
+					} else if factID != f.ReconciliationID || factHash != f.FactSHA256 {
+						t.Fatal("repeated reopen changed stable gap fact")
+					}
+				} else if f.State != "closed" || f.Final == nil || f.Final.UploadBytes != 33 || f.Final.DownloadBytes != 33 || f.ReconciliationID != "" || f.FactSHA256 != "" || f.TailBytes == nil || *f.TailBytes != 0 || len(f.GapDimensions) != 0 || f.Reason != "" {
+					t.Fatal("exact final duplicated or turned into a gap")
+				}
+				raw, _ := json.Marshal(r)
+				t.Logf("reopen=%d report=%s", attempt, raw)
+			}
+			if len(found) != 2 {
+				t.Fatal("lost previous source reports")
+			}
+			snapshots, err := s.sendSnapshots()
+			if err != nil {
+				t.Fatal(err)
+			}
+			matched := 0
+			for _, snapshot := range snapshots {
+				if want, ok := originalFrames[snapshot.name]; ok {
+					matched++
+					if !reflect.DeepEqual(want, snapshot.frames) {
+						t.Fatal("replay changed original connector/ID/seq/bytes")
+					}
+				}
+			}
+			if matched != 2 {
+				t.Fatal("missing exact original replay")
+			}
+		}()
+		for name, before := range originalFiles {
+			after, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("recovery rewrote retained original evidence", name, err)
+			}
+		}
+	}
+}

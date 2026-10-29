@@ -1,0 +1,70 @@
+{
+  "base_candidate_sha256": "76e0e114ac9a669ec0eb131f35ead972d3e24b2dceeb270e72a3e879f5b9c32e",
+  "binary": {
+    "bytes": 50454174,
+    "path": "/tmp/hoopa-t133-4m34o312/mihomo-t133",
+    "sha256": "aad983b1e6597704fa5de84793da5869d9d6680b43b57c689a8be716292b5655",
+    "version": "Mihomo Meta hoopa-t133-lifecycle linux amd64 with go1.27.3 2026-10-23"
+  },
+  "build_options": [
+    "-p=2",
+    "-trimpath",
+    "-buildvcs=false",
+    "-ldflags=-X github.com/metacubex/mihomo/constant.Version=hoopa-t133-lifecycle -X github.com/metacubex/mihomo/constant.BuildTime=2026-10-23"
+  ],
+  "capability_gates": {
+    "G01": "not_passed_original_0_of_100_preserved",
+    "G02": "not_passed_partial_experiment",
+    "G03": "unverified",
+    "T133": "partial",
+    "T137": "not_started"
+  },
+  "changed_files_since_base": [
+    {
+      "file": "component/hoopatrace/trace_linux.go",
+      "sha256": "64d20727fa1b0a395655bb51aba4e67a0bbf4a0951cfd7abeed943e43e5b41e2"
+    },
+    {
+      "file": "component/hoopatrace/trace_linux_test.go",
+      "sha256": "351ebe793bdd74f5441a95949ee2b8a6e8250b9afc8e6acd589b9569a006d70d"
+    },
+    {
+      "file": "component/hoopatrace/lifecycle_linux.go",
+      "sha256": "e21d26626bc5a39b3c13c7922f33230b7e619c0da7f1965d43bfa9c37bdcfd76"
+    },
+    {
+      "file": "component/hoopatrace/lifecycle_linux_test.go",
+      "sha256": "321c8d1dc6bff3b6b9eae71cfa85e9fdd04d57170afa8d4957dd5fd2db6bbda0"
+    },
+    {
+      "file": "component/hoopatrace/replay_linux_test.go",
+      "sha256": "4c3d918cf9c59d92ac25e85693f40f29334bb1c52c6c9e46a99cf4af7da6fde2"
+    },
+    {
+      "file": "hub/executor/executor.go",
+      "sha256": "4958e09073614adb0e2a258c0f5f7e789fce38d9647edc1f1f9d961c6799139a"
+    }
+  ],
+  "dependencies": "unchanged upstream go.mod/go.sum; GOPROXY=off; GOSUMDB=sum.golang.org",
+  "go_toolchain": "1.27.3",
+  "immutable_config": "synthetic loopback-only generation; no controller/TUN/global proxy",
+  "not_yet_validated": [
+    "core_full_event_shape_validation_on_reopen",
+    "complete_source_fault_matrix",
+    "lazy_handshake_boundary",
+    "production_reclamation_and_SQL",
+    "identity_and_real_ready_two_routes"
+  ],
+  "notes": [
+    "test-only replay_linux_test.go added after binary build; runtime Go files unchanged",
+    "not a production or supported-platform release"
+  ],
+  "patch_order": [
+    "0001-native-observer.patch",
+    "0002-source-lifecycle.patch"
+  ],
+  "patch_sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c",
+  "schema_version": 1,
+  "scope": "T133_partial_lifecycle_experiment_not_T137_or_CapabilityRecord",
+  "upstream_commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041"
+}

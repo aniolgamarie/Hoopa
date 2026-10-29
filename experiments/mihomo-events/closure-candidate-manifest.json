@@ -1,0 +1,327 @@
+{
+  "schema_version": 1,
+  "scope": "T133_source_recovery_plus_T134_buffer_precondition_not_T137",
+  "status": "built_from_clean_upstream_plus_001_to_005; formal_gates_not_passed",
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "pristine_checkout": "/tmp/hoopa-mihomo-v1.19.26-audit/source",
+    "status_short": "",
+    "provenance": {
+      "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/upstream-provenance.json",
+      "bytes": 433,
+      "sha256": "182ae95264a569a4e79d07b007c7081ca34010115589040b8a992c57a7bb02db"
+    },
+    "source_lock_sha256": "d074c0c12f09a9e5e0780061f5bc20bb0b9ecaa59bff748f5555ce1886af37e7"
+  },
+  "base_for_004_005": {
+    "path": "/tmp/hoopa-socks5-reply-N2daun/source",
+    "description": "frozen T133 source plus 003 (including its synthetic reply tests)"
+  },
+  "source": {
+    "reviewed_target": "/tmp/hoopa-t133-closure-86xtehn1/source",
+    "fresh_applied": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/source",
+    "tree_sha256": "8e94f93b165057caa03f66579a226b0638c04c429fb52de74dfcbb0022842358",
+    "tree_sha256_algorithm": "SHA256 of sorted relative path entries encoded as ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] plus LF; root/.git excluded",
+    "full_file_contents_paths_symlinks_and_modes_equal": true
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3",
+      "mode": "0o644"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c",
+      "mode": "0o644"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce",
+      "mode": "0o644"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204",
+      "mode": "0o644"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5",
+      "mode": "0o644"
+    }
+  ],
+  "changed_files_since_003": [
+    {
+      "path": "component/hoopatrace/closure_linux_test.go",
+      "bytes": 18767,
+      "sha256": "2f705b123b8e29b3ba9a48648485c7ad0d9e3f13213496f6559805c766d67f96",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/lifecycle_linux_test.go",
+      "bytes": 6639,
+      "sha256": "756af77b49f8e0ac521c24daf72392f260dd55f23782c407bd706debf47e9ec9",
+      "mode": "0o644",
+      "base_sha256": "321c8d1dc6bff3b6b9eae71cfa85e9fdd04d57170afa8d4957dd5fd2db6bbda0",
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/recovery_linux.go",
+      "bytes": 7484,
+      "sha256": "458505e3b2bd6a401d65f3a37f12910a7fc1816b47d9747e562471b3dcc306e9",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/replay_linux_test.go",
+      "bytes": 3124,
+      "sha256": "711fb4030ff46aa7abe6d0b3a67e91d38899e7f84050fae90614f8ec57c9ef33",
+      "mode": "0o644",
+      "base_sha256": "4c3d918cf9c59d92ac25e85693f40f29334bb1c52c6c9e46a99cf4af7da6fde2",
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/counter_event.go",
+      "bytes": 4890,
+      "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/manifest.go",
+      "bytes": 2966,
+      "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/recovery.go",
+      "bytes": 5439,
+      "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/scalars.go",
+      "bytes": 1024,
+      "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/source_event.go",
+      "bytes": 11030,
+      "sha256": "475cf613bb74eb838513c996e52c6dc9370904471c383fce77d4ba0b631a5c16",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/telemetrywire/state.go",
+      "bytes": 5576,
+      "sha256": "acd7899f9420612f41df76f1c91facb4d51ccbde6f0b6671c8af00a7e90dcdd4",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/trace_linux.go",
+      "bytes": 22200,
+      "sha256": "fb66c2c3fc1f244fc0ae93d58f212a850398ad630932d37f2e9e1b11bccb6a5b",
+      "mode": "0o644",
+      "base_sha256": "64d20727fa1b0a395655bb51aba4e67a0bbf4a0951cfd7abeed943e43e5b41e2",
+      "patch": "0004"
+    },
+    {
+      "path": "component/hoopatrace/trace_linux_test.go",
+      "bytes": 10608,
+      "sha256": "87c1db9a6f0cdde0237551c5480d42d6d6965b9206ff7877b6f72fdcae42b7e0",
+      "mode": "0o644",
+      "base_sha256": "351ebe793bdd74f5441a95949ee2b8a6e8250b9afc8e6acd589b9569a006d70d",
+      "patch": "0004"
+    },
+    {
+      "path": "adapter/outbound/http.go",
+      "bytes": 4767,
+      "sha256": "a6958ecaf79a43ef29feec2a140fe0ea0ff4701dda215c4f69226e68896459a9",
+      "mode": "0o644",
+      "base_sha256": "3e780d5d4c6299e3205a0e9a86da590d650cf87ae8020a68e777c813d58b91fa",
+      "patch": "0005"
+    },
+    {
+      "path": "adapter/outbound/http_hoopa_buffer_test.go",
+      "bytes": 1821,
+      "sha256": "2e1a52f29be949435490a0e732d69bd5f49e553089dc085a6b4a7ceea0adb3a9",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0005"
+    },
+    {
+      "path": "tunnel/tunnel.go",
+      "bytes": 23141,
+      "sha256": "7904b8ffb982796d02d3b84b57d61f12fbc8ecf8725c3b4c4a8f5135632b4451",
+      "mode": "0o644",
+      "base_sha256": "21471e55b5f9c1f17f779c3e81be92e9f81b4b16f99076a2a32eccf747a325bd",
+      "patch": "0005"
+    },
+    {
+      "path": "tunnel/hoopa_initial_write.go",
+      "bytes": 500,
+      "sha256": "ed5868939ac8a29c14d4521d00cc29e4489252dd2c9bc98fc770c1ec1e4555f1",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0005"
+    },
+    {
+      "path": "tunnel/hoopa_initial_write_test.go",
+      "bytes": 2036,
+      "sha256": "5b125dac3b85f05710067a5745db855d0d8b8bfd5180de58332a93e92cb207e4",
+      "mode": "0o644",
+      "base_sha256": null,
+      "patch": "0005"
+    }
+  ],
+  "shared_pure_production_files": [
+    {
+      "hoopa_path": "protocol/telemetrywire/source_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/source_event.go",
+      "sha256": "475cf613bb74eb838513c996e52c6dc9370904471c383fce77d4ba0b631a5c16",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/counter_event.go",
+      "core_path": "component/hoopatrace/telemetrywire/counter_event.go",
+      "sha256": "0fad58fd86052669716f6b09513388e14fc59b9566fabd0ecdbe6c9da23d32fb",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/scalars.go",
+      "core_path": "component/hoopatrace/telemetrywire/scalars.go",
+      "sha256": "4f0bf152a830e99cf1047e06ff90eca4e0c05de42f89115d2d458fe534c0efaf",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/state.go",
+      "core_path": "component/hoopatrace/telemetrywire/state.go",
+      "sha256": "acd7899f9420612f41df76f1c91facb4d51ccbde6f0b6671c8af00a7e90dcdd4",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/manifest.go",
+      "core_path": "component/hoopatrace/telemetrywire/manifest.go",
+      "sha256": "1e9a09a7d58bf180d0fed7b22a8fe556641eb41bc15e9f8b68c91025085ca4cc",
+      "byte_identical": true
+    },
+    {
+      "hoopa_path": "protocol/telemetrywire/recovery.go",
+      "core_path": "component/hoopatrace/telemetrywire/recovery.go",
+      "sha256": "92db0ea43044c4d90deb8042e2d6dc65ddbe5c1108c56964ba457bd37da58da4",
+      "byte_identical": true
+    }
+  ],
+  "dependencies": {
+    "unchanged": true,
+    "comparison_roots": [
+      "/tmp/hoopa-mihomo-v1.19.26-audit/source",
+      "/tmp/hoopa-socks5-reply-N2daun/source",
+      "/tmp/hoopa-t133-closure-86xtehn1/source",
+      "/tmp/hoopa-t133-closure-artifact-l35s9_fn/source"
+    ],
+    "files": [
+      {
+        "path": "go.mod",
+        "bytes": 6961,
+        "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7",
+        "mode": "0o644"
+      },
+      {
+        "path": "go.sum",
+        "bytes": 29819,
+        "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302",
+        "mode": "0o644"
+      }
+    ],
+    "network_downloads": "none; GOPROXY=off"
+  },
+  "build": {
+    "toolchain": {
+      "path": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+      "bytes": 17164222,
+      "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b"
+    },
+    "go_version": "go version go1.27.3 linux/amd64",
+    "environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOSUMDB": "sum.golang.org",
+      "GOCACHE": "/tmp/hoopa-mihomo-events-buildcache",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache"
+    },
+    "cwd": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/source",
+    "arguments": [
+      "build",
+      "-p=2",
+      "-trimpath",
+      "-buildvcs=false",
+      "-ldflags=-X github.com/metacubex/mihomo/constant.Version=hoopa-t133-closure -X github.com/metacubex/mihomo/constant.BuildTime=2026-10-23",
+      "-o",
+      "/tmp/hoopa-t133-closure-artifact-l35s9_fn/mihomo-closure",
+      "."
+    ],
+    "exit_code": 0,
+    "log": {
+      "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "build_info": {
+      "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/build-info.log",
+      "bytes": 10482,
+      "sha256": "60de652e8cbdecc54340d7ef2f6b786c300cb00e4aff428cd61b558a9d93b37c"
+    },
+    "vcs_note": "archive build uses -buildvcs=false; source provenance is separately pinned, not native clean-VCS build proof"
+  },
+  "binary": {
+    "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/mihomo-closure",
+    "bytes": 50550333,
+    "sha256": "bfc1df3a99871f2b1257e4b28b58b64a97b6289840b6cd63a50c6b86ec75c6d2",
+    "version_output": "Mihomo Meta hoopa-t133-closure linux amd64 with go1.27.3 2026-10-23"
+  },
+  "fresh_apply_evidence": {
+    "path": "/tmp/hoopa-t133-closure-artifact-l35s9_fn/apply-evidence.json",
+    "bytes": 5443,
+    "sha256": "6ac9d2b39aaa262341fc2f598bbaf701362af38039ab6dbec01a381f2cfa0bb7"
+  },
+  "capability_gates": {
+    "G01": "not_run_on_new_candidate; original_0_of_100_failed_unchanged",
+    "G02": "formal_full_matrix_not_passed",
+    "G03": "unverified",
+    "T133": "partial_prerequisites; complete_task_not_claimed",
+    "T134": "SOCKS_reply_and_HTTP_buffer_preconditions_only; protocol_ready_and_two_routes_unverified",
+    "T137": "not_qualified",
+    "CapabilityRecord": "no_passed_record_created"
+  },
+  "validation_file": "closure-validation.json",
+  "limitations": [
+    "No old patch, manifest, binary or user core replaced",
+    "Candidate not a production/supported-platform release; upstream GPLv3/other dependency obligations remain",
+    "No automatic BPF attach or privilege change",
+    "Lifecycle echo source subexperiments include one first failure, diagnostics and corrected-forwarding-preflight pass; see closure-validation.json. No formal G01/G02, lazy-ready or two-route gate passed."
+  ],
+  "runtime_validation_note": "All runtime runs bound to this binary hash; first failure retained, later passes not transferred to earlier samples. T133/T134/T137 remain incomplete."
+}

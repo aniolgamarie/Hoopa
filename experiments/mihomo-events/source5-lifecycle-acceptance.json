@@ -1,0 +1,2795 @@
+{
+  "schema": "hoopa-source5-lifecycle-acceptance-v1",
+  "scope": "restricted_source5_lifecycle",
+  "core_sha256": "5693d4ac2bda5fcae7e5ac037d23db1b2a48049f681b8c825b8b4db12ac1b967",
+  "helper_sha256": "ad4a8069691e6668c658eb98c18c845bc3b2f5f903a08fe1db28560c2c92e13f",
+  "quality_acceptance": {
+    "path": "experiments/mihomo-events/source5-quality-acceptance.json",
+    "bytes": 5531,
+    "sha256": "ce1b0afdfe5622bae78b47fe0889c1547040a06efdb19de18d6f5344ead4464c"
+  },
+  "public_reports": {
+    "owner": {
+      "path": "experiments/mihomo-events/control-0017-controller-owner-calibration-validation.json",
+      "bytes": 41953,
+      "sha256": "5cde8e965d182d71deb3aa4ee026ece4f2dbfb8cdd7a93993c24dc7d7c12c2a2"
+    },
+    "f14": {
+      "path": "experiments/mihomo-events/control-0017-f14-calibration-validation.json",
+      "bytes": 26839,
+      "sha256": "3ba9a2035d01cac19a8c43f206ee1d7498697e58dcd17cb3358d3571ce6ad02d"
+    },
+    "collector": {
+      "path": "experiments/mihomo-events/control-0017-collector-calibration-validation.json",
+      "bytes": 19540,
+      "sha256": "133ac1b799a826002b616de1f9c70789afc7943a5036e2aa1e18643201a6ca39"
+    },
+    "g07": {
+      "path": "experiments/mihomo-events/control-0017-g07-calibration-validation.json",
+      "bytes": 31131,
+      "sha256": "8f9198e8fdb8cb3c8aa7531976daf32c8991f3049294693c2c8db8506e763597"
+    },
+    "logout": {
+      "path": "experiments/mihomo-events/control-0017-logout-calibration-validation.json",
+      "bytes": 20456,
+      "sha256": "0ef8237cad630dcbacd7fe74fa0328241e297af68e97a5ff9970ae496d3dcac4"
+    },
+    "ssh": {
+      "path": "experiments/mihomo-events/control-0017-ssh-newhelper-calibration-validation.json",
+      "bytes": 15821,
+      "sha256": "4d1caaf6b39f3ed685d52250663d5544115f3fd5682de0d5b4efa4b810dc4332"
+    },
+    "s3": {
+      "path": "experiments/mihomo-events/control-0017-suspend-newhelper-calibration-validation.json",
+      "bytes": 15758,
+      "sha256": "da639e4845de6bcbd9312203fb62b44b81e2974f426a45c738c9f96f610451e0"
+    }
+  },
+  "cases": {
+    "takeover": {
+      "mode": "takeover",
+      "run": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-owner-takeover-001",
+        "t015-owner-takeover-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/registration.json",
+        "bytes": 1590,
+        "sha256": "058ceeb982e8f976215b137a410a71f2876bc2e247085ebf6f926cdfb9a77628"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/claim-takeover.json",
+        "bytes": 594,
+        "sha256": "16f96ada1d57280e54481f460ec36545b0142ce9b0ff3a77ed84e66a5e794f07"
+      },
+      "launch": {
+        "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/launch.json",
+        "bytes": 11700,
+        "sha256": "1dc6f3c8d3a1746f22a463da097b7be7521189866fc7ca2ec42e890744813add"
+      },
+      "result": {
+        "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/result.json",
+        "bytes": 1431,
+        "sha256": "2f9efc3eac03dc916128ca0ef23c58ede3251d82b79350bbc3b3718460947e72"
+      },
+      "host_check": {
+        "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/host-check.json",
+        "bytes": 1573,
+        "sha256": "6040207cd1a6658d806103506f7042d09163832856870cf2c8a56670705fbbab"
+      },
+      "root_acceptance": {
+        "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/root-runtime-acceptance.json",
+        "bytes": 1011,
+        "sha256": "52d7243bff76625351bd90598116c403197a18e04028b5218826e28204e018e1"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/controller-owner-calibration-runtime-review.json",
+        "bytes": 4525,
+        "sha256": "c6fe8d4fd33a484d3551bf2bbe6fae966a87f23b5e6d99b142af93f29a3158c1"
+      },
+      "export": {
+        "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/export.json",
+        "bytes": 4815,
+        "sha256": "0e5afc1ed6e7649fd6e87ab2a948f269ab45468ea2caea8cba8ebd7d76f338f5"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/control.token",
+          "bytes": 65,
+          "sha256": "0b07686a55034ce022b97528b80f6bf91ddd06af39002ca38600798b4f49e0ac"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "b84ef99610aba84416d7887c26b619febe37df4e410e51ffa2ade8d5adcc4bf5"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/claim.json",
+          "bytes": 456,
+          "sha256": "accd188219fb7eaa314686f180c152b0d1046e52ddcda86e9ea0233c156d78e3"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/home/route-map.json",
+          "bytes": 285,
+          "sha256": "dbfc27b884697aab233b4e0cc00da33454ff17f0398bcbfb337f3b84361c4e7d"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/trace/epoch-d040a36a1a2d90a4458a4ae8b1112287d50a7178537cb96b9fdd226be6763441.frames",
+          "bytes": 17869,
+          "sha256": "def780e88c203a62e0fcd8274183df2a5c63f5bdb951b9d6b2b85995683f3865"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/trace/epoch-d040a36a1a2d90a4458a4ae8b1112287d50a7178537cb96b9fdd226be6763441.source.json",
+          "bytes": 678,
+          "sha256": "fd3cf050c83a79ca60cd125452994126c0dc5696152eb8b3b737427f0d1aab50"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583.json",
+          "bytes": 1867,
+          "sha256": "d9b0c347b614ee851fb1629a047fb083a39028bab467baa702b16e2f8d9df804"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "8dcb08b2d9b147c7232ee26bbddb780e999141171a40aef71e9e020b75e80100"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/operations/stop.json",
+          "bytes": 4091,
+          "sha256": "e786667515c234493e45bb433e562dafe02d0b91f3facc006f5dab704b029663"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/readiness.json",
+          "bytes": 2787,
+          "sha256": "360dd4950dec69eef4f707067348c76ab025a69c07f93ecea021c3c84ff5e43a"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/scenario.json",
+          "bytes": 38166,
+          "sha256": "1859e5d2057eb80387a20b8169f8a23254b9dc9503eebe0199419b162dababcb"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/trace/epoch-d040a36a1a2d90a4458a4ae8b1112287d50a7178537cb96b9fdd226be6763441.frames",
+            "bytes": 17869,
+            "sha256": "def780e88c203a62e0fcd8274183df2a5c63f5bdb951b9d6b2b85995683f3865"
+          },
+          "manifest": {
+            "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/evidence/instance/store/launches/e81f05c13e48fff5b13f99b343d8b583/trace/epoch-d040a36a1a2d90a4458a4ae8b1112287d50a7178537cb96b9fdd226be6763441.source.json",
+            "bytes": 678,
+            "sha256": "fd3cf050c83a79ca60cd125452994126c0dc5696152eb8b3b737427f0d1aab50"
+          },
+          "decoded": {
+            "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/source.decoded.json",
+            "bytes": 20287,
+            "sha256": "7eb7b8ce1ff16a3ab962244a794efb0629ac36f251761b79ffd161ae5267c789"
+          },
+          "recovery": {
+            "path": "private/t015-controller-owner-calibration/vm-takeover-b4vudxg3/source.recovery.json",
+            "bytes": 1582,
+            "sha256": "3adb4a697837a3f818b9228f5b40c6e055d93de37ad03b4d463a081255524ddd"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-controller-owner-calibration/calibration-v1/registration-claim.json",
+        "bytes": 271,
+        "sha256": "17e3bb64dbf3b31780e9024ed91310f56c5009f0b81f11146485ba07e1d16b55"
+      }
+    },
+    "spawn-window": {
+      "mode": "spawn-window",
+      "run": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-owner-spawn-window-001",
+        "t015-owner-spawn-window-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/registration.json",
+        "bytes": 1590,
+        "sha256": "058ceeb982e8f976215b137a410a71f2876bc2e247085ebf6f926cdfb9a77628"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/claim-spawn-window.json",
+        "bytes": 610,
+        "sha256": "f06a2a7879106018bf7a42af0e86bf40d7f86ce60d26b50d831ee41b7dfd8fd9"
+      },
+      "launch": {
+        "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/launch.json",
+        "bytes": 11740,
+        "sha256": "9b180fb569e834dee261aa002ad4e5c949d36eca77f4194fad8c4de6a119606b"
+      },
+      "result": {
+        "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/result.json",
+        "bytes": 1447,
+        "sha256": "ca56e76fb8cdaf76500f3d1b0b410e140cfe0749713e61a2c44f815a44560691"
+      },
+      "host_check": {
+        "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/host-check.json",
+        "bytes": 1577,
+        "sha256": "e9c1370a60fac8ea7fea653bad177a505bd636dced195cab45fa9ab0596ec0cc"
+      },
+      "root_acceptance": {
+        "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/root-runtime-acceptance.json",
+        "bytes": 1019,
+        "sha256": "f1ee472aa9c6d63f18139505d615a93f6a58487097a010bc6d3f61b2fc3af04d"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/controller-owner-calibration-runtime-review.json",
+        "bytes": 4525,
+        "sha256": "c6fe8d4fd33a484d3551bf2bbe6fae966a87f23b5e6d99b142af93f29a3158c1"
+      },
+      "export": {
+        "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/export.json",
+        "bytes": 4815,
+        "sha256": "b57a80401e0b1e734cb899eb05d7b3c2c7b1c4a0d1f47e2713656706af9f87d8"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/control.token",
+          "bytes": 65,
+          "sha256": "956d0a939d27bb6e751465def0c4d6f9956723fbba702e0e36cc8d98eab8b7e2"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "390d6ffdcc49ddc4ea17e049f28e64a0c6ab33aa5c53ae0abc656078ea61663b"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/claim.json",
+          "bytes": 456,
+          "sha256": "a894a98b466270d128fb8909594669d9fda3ddd6f73b7ba6d89d41ff6fa694cd"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/home/route-map.json",
+          "bytes": 285,
+          "sha256": "62b76e079f0f217cb0107fa7431c0f3de18d8d80e57abd7cef8563e876b22c9f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/trace/epoch-225eb69e450c9b22a718eda3dfdce972d00b2ba1153bb379aca911155691865a.frames",
+          "bytes": 16940,
+          "sha256": "e8e1b5fc4aa509aae17f5f66b8f7b3cf4fc25b17a9e0574e639316191f7b79f4"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/trace/epoch-225eb69e450c9b22a718eda3dfdce972d00b2ba1153bb379aca911155691865a.source.json",
+          "bytes": 678,
+          "sha256": "8f0292dbc98ee32d7b6d062424726e6ff3c686e4d77e54ec5bf97a3e301477a1"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc.json",
+          "bytes": 1867,
+          "sha256": "c4d33a1587743972ca89a979ac1646a98dc7e8fc55fcb430840e50d37b5b7354"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "db36c377e429f3c03493f54eb455ff70f8955d36560ff33bbf198cd2f70de55d"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/operations/stop.json",
+          "bytes": 4091,
+          "sha256": "6a0caa313d159dfb3f1da249bc054b307b64ffc8550c3814a36e939beb926274"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/readiness.json",
+          "bytes": 2795,
+          "sha256": "c43d20bbeae1a34d836a5a578d1b5208413424490cbef6b70382ce7cd7044db6"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/scenario.json",
+          "bytes": 43141,
+          "sha256": "758d150716e96df28293e7d61b0e9baac0475de8d71221a86373c58cc5b05300"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/trace/epoch-225eb69e450c9b22a718eda3dfdce972d00b2ba1153bb379aca911155691865a.frames",
+            "bytes": 16940,
+            "sha256": "e8e1b5fc4aa509aae17f5f66b8f7b3cf4fc25b17a9e0574e639316191f7b79f4"
+          },
+          "manifest": {
+            "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/evidence/instance/store/launches/adce90e36b3939c635e6c0bc38dcf5cc/trace/epoch-225eb69e450c9b22a718eda3dfdce972d00b2ba1153bb379aca911155691865a.source.json",
+            "bytes": 678,
+            "sha256": "8f0292dbc98ee32d7b6d062424726e6ff3c686e4d77e54ec5bf97a3e301477a1"
+          },
+          "decoded": {
+            "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/source.decoded.json",
+            "bytes": 18754,
+            "sha256": "a66847b702703460b09dcf94cb0fa6acc13e03275ae82dbaf1270477760565dd"
+          },
+          "recovery": {
+            "path": "private/t015-controller-owner-calibration/vm-spawn-window-ztnjidz6/source.recovery.json",
+            "bytes": 1438,
+            "sha256": "4f6233cc20c5b1adf6b44767bc1a94d5c4617a7409f50dacf37ac292648a225f"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-controller-owner-calibration/calibration-v1/registration-claim.json",
+        "bytes": 271,
+        "sha256": "17e3bb64dbf3b31780e9024ed91310f56c5009f0b81f11146485ba07e1d16b55"
+      }
+    },
+    "foreign-controller": {
+      "mode": "foreign-controller",
+      "run": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7",
+      "registered": 0,
+      "attempted": 0,
+      "executed": 0,
+      "passed": 0,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 0,
+      "control_probes": 1,
+      "filesystem_probes": 0,
+      "slot_ids": [],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/registration.json",
+        "bytes": 1590,
+        "sha256": "058ceeb982e8f976215b137a410a71f2876bc2e247085ebf6f926cdfb9a77628"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-controller-owner-calibration/calibration-v1/claim-foreign-controller.json",
+        "bytes": 480,
+        "sha256": "48eda5d1c409c389767585615ba6ded1c02b8e489f24aca680bf6fdd4a0df056"
+      },
+      "launch": {
+        "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/launch.json",
+        "bytes": 11460,
+        "sha256": "7584e55f8f37da034ba4de870cb4debb9d6faac95f70f950b92ccf1211580d1d"
+      },
+      "result": {
+        "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/result.json",
+        "bytes": 1471,
+        "sha256": "c611a2925770ebf1558459a61e3b93f1c7cbacb0beab02bd38031a4bb56d1d12"
+      },
+      "host_check": {
+        "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/host-check.json",
+        "bytes": 1550,
+        "sha256": "a4ae8959efee501cfe57ea8a450b8eb77c22cf9959c6935b62a1b0d6879914cc"
+      },
+      "root_acceptance": {
+        "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/root-runtime-acceptance.json",
+        "bytes": 1031,
+        "sha256": "e54cee4e6267e6b961ce60283c0d697f522326296f5c893aeadb8a2055e41605"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/controller-owner-calibration-runtime-review.json",
+        "bytes": 4525,
+        "sha256": "c6fe8d4fd33a484d3551bf2bbe6fae966a87f23b5e6d99b142af93f29a3158c1"
+      },
+      "export": {
+        "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/export.json",
+        "bytes": 4359,
+        "sha256": "d5a64738eed111411277f0536c32d4a7d7b11477dd09fcd2f09893e1dbba4bbc"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/foreign-listener.json",
+          "bytes": 1547,
+          "sha256": "23a2cb24f6c455f5295bfd0aa06a156c31501b54bd974680755aa773db171dfd"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/foreign.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/control.token",
+          "bytes": 65,
+          "sha256": "7edffadf89b7edf605893e15eb4d1540a27f67e863eaefdc9ffe02f6cf5bcfa6"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "88e54fc17dc3466ddefc8f0def98c734667e77b0fea78408a06efe9cf7b285f1"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/bootstrap/exec-intent.json",
+          "bytes": 4209,
+          "sha256": "a2d41bf9fe29acd0cd14b4165e08c9da57f97670893a1fb476846b5d4b7541c3"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/claim.json",
+          "bytes": 456,
+          "sha256": "d97667ef1997f3cd92a1c45dcf322360a2b5fc0d77bcc76d7d3a4ad7ba7e1ed7"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/home/route-map.json",
+          "bytes": 285,
+          "sha256": "cdc7deedca521b967a717b2fd97712d1b9277f0987232e53ccf87a0a046c333a"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/launcher.stderr",
+          "bytes": 39,
+          "sha256": "9ab13f5f05baad5704231eba611bbbeac58db9808843e24ffc41bd1124acf1e6"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/trace/epoch-8044a952c43c0d4890969bd3048063a47d4d582ef2a5c8e95664ce2f87cc8c38.frames",
+          "bytes": 621,
+          "sha256": "780dedb17e247163f6b3376d7c5e4a56af1c4736db39b92f6186f0827ee7c28f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/trace/epoch-8044a952c43c0d4890969bd3048063a47d4d582ef2a5c8e95664ce2f87cc8c38.source.json",
+          "bytes": 678,
+          "sha256": "36bf2633a9de19771a70d9c2f82d785d200dce720f01aa9659262a26eb502739"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6.json",
+          "bytes": 1867,
+          "sha256": "4923a6ca658278fb79b085a377ab408f3e83a0f0dbe6930121baa95855da37fd"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/operations/first.json",
+          "bytes": 3821,
+          "sha256": "180b540f0b07ee84c450dbe583987954b5f2ad287f711029b744a18a7f8a5949"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/readiness.json",
+          "bytes": 2807,
+          "sha256": "852ab97781eee36ec4b685d0967ecb10611063f5221d1a87340ce278cc82c6a8"
+        },
+        {
+          "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/scenario.json",
+          "bytes": 54489,
+          "sha256": "0d40471c5a15eaa7db8ed310d38c59cf3f8db28cf7c33a81ed4acafd9e9326ad"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/trace/epoch-8044a952c43c0d4890969bd3048063a47d4d582ef2a5c8e95664ce2f87cc8c38.frames",
+            "bytes": 621,
+            "sha256": "780dedb17e247163f6b3376d7c5e4a56af1c4736db39b92f6186f0827ee7c28f"
+          },
+          "manifest": {
+            "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/evidence/instance/store/launches/821f6b452330720b8008db08164c71c6/trace/epoch-8044a952c43c0d4890969bd3048063a47d4d582ef2a5c8e95664ce2f87cc8c38.source.json",
+            "bytes": 678,
+            "sha256": "36bf2633a9de19771a70d9c2f82d785d200dce720f01aa9659262a26eb502739"
+          },
+          "decoded": {
+            "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/foreign-source.decoded.json",
+            "bytes": 947,
+            "sha256": "80a3e859691feac773f6a190c922995ca441d760374a0a55172370e1f3172300"
+          },
+          "recovery": {
+            "path": "private/t015-controller-owner-calibration/vm-foreign-controller-ekx3rxj7/foreign-source.recovery.json",
+            "bytes": 646,
+            "sha256": "5c2287d047c2994e8cf6dadf7667b0a2f95cc46e0186a41f746c4a3099dd92e0"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-controller-owner-calibration/calibration-v1/registration-claim.json",
+        "bytes": 271,
+        "sha256": "17e3bb64dbf3b31780e9024ed91310f56c5009f0b81f11146485ba07e1d16b55"
+      }
+    },
+    "missing-claim": {
+      "mode": "missing-claim",
+      "run": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 1,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-f14-missing-claim-001",
+        "t015-f14-missing-claim-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-f14-v2-vm/calibration-v1/registration.json",
+        "bytes": 1889,
+        "sha256": "3bc2eadbbc88565ae6c417113dad41287a2daffbdd9b55274129d42bdaf25f61"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-f14-v2-vm/calibration-v1/claim-missing-claim.json",
+        "bytes": 791,
+        "sha256": "0a7e39998e74173393f5263b6a3d44c0b49a603723e1ace292da5e915b074a39"
+      },
+      "launch": {
+        "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/launch.json",
+        "bytes": 11724,
+        "sha256": "f1cf046f13fc4b710f04e96606aae662e645b304ba72a800b02f7de7c3e0b955"
+      },
+      "result": {
+        "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/result.json",
+        "bytes": 1361,
+        "sha256": "f243099e0f9225233d3120da8c6f50ef15f5b2e9d696e5ff4e29fc3ca33814bf"
+      },
+      "host_check": {
+        "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/host-check.json",
+        "bytes": 941,
+        "sha256": "c0dedb761176ac16ca45bfd2c8bfdf399957c000e65a0b8e83fba017990da96d"
+      },
+      "root_acceptance": {
+        "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/root-runtime-acceptance.json",
+        "bytes": 1235,
+        "sha256": "a6fcf8d696b8855608b40b63ac04b6e63daab4a46144529a75f6b63bf788cfd2"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/f14-v2-runtime-review.json",
+        "bytes": 6469,
+        "sha256": "19c9e433fd13ff72605b7faf63e3e5dbacd70188bce80082d3befb37a4ecb7ac"
+      },
+      "export": {
+        "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/export.json",
+        "bytes": 4680,
+        "sha256": "c4e2afac2911ddcd81ab9131f2c58511a7aefdc3ab6654b810e127f5b5ae4455"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/control.token",
+          "bytes": 65,
+          "sha256": "ea4e85ac9a4fd6db67e71bf1a6b21bc38fe197bfa301db719c454a4d549049b7"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "aeb27921f54db566d06ab15464ad2cc7e6b1b2449813c0848d537a1540a1d54e"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/claim.json",
+          "bytes": 456,
+          "sha256": "bdf9e452d3f5705cef7f42d29c8e99dabf78a8efdb3e6bdecf2d2aa557a0ed69"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/home/route-map.json",
+          "bytes": 285,
+          "sha256": "cf80deb1f33f4064c8ea9fc07a5c899e9c7c48041da97f8a0fced475c0320f33"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/trace/epoch-556550afcea6533756e156782f65313c70c6d11001a334878c974b9f6f9249f1.frames",
+          "bytes": 17867,
+          "sha256": "1ab620d57435ae3040cd12177d08dbb3e55efecddfcd9f8fa2be76b7c5490e87"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/trace/epoch-556550afcea6533756e156782f65313c70c6d11001a334878c974b9f6f9249f1.source.json",
+          "bytes": 678,
+          "sha256": "0a2df3d9b583ef5d64fb244b4c91bcf12745ec67825f8227a64433a02addd0ae"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c.json",
+          "bytes": 1867,
+          "sha256": "ad6f87f63200b8d27835a1d5b3736088528b1bacaebf43ccba53f880d96d775f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/operations/f14-stop.json",
+          "bytes": 4163,
+          "sha256": "fbb6d03fd9df903934dddc23d538d2b675fc016277a97c8e3fb85e67736ca17f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "764ac32e14031218a376a0d46ae22558a91f806567b8f16dab9f10e515d5edf6"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/original-active.json",
+          "bytes": 3798,
+          "sha256": "8fae74922eed5fbdad668460afe1cd68d97fe12db042d4bb121de923b5e0fc07"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/readiness.json",
+          "bytes": 2669,
+          "sha256": "e2ca8066fea32791615d32600788695ac380c3bc8b14a0b4ae6bc63718bb119f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/scenario.json",
+          "bytes": 120682,
+          "sha256": "d0d5744667df8b5f0afe29b897c35433d70d1ee070f8d2c1121398ad48b81501"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/trace/epoch-556550afcea6533756e156782f65313c70c6d11001a334878c974b9f6f9249f1.frames",
+            "bytes": 17867,
+            "sha256": "1ab620d57435ae3040cd12177d08dbb3e55efecddfcd9f8fa2be76b7c5490e87"
+          },
+          "manifest": {
+            "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/evidence/instance/store/launches/47fbb66a0abba1d1943cf232a86ebc0c/trace/epoch-556550afcea6533756e156782f65313c70c6d11001a334878c974b9f6f9249f1.source.json",
+            "bytes": 678,
+            "sha256": "0a2df3d9b583ef5d64fb244b4c91bcf12745ec67825f8227a64433a02addd0ae"
+          },
+          "decoded": {
+            "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/source.decoded.json",
+            "bytes": 20282,
+            "sha256": "ea2b2c0cbcc863ad8401ecc041d4f1d373fbc6d74993d446da367d48d954cdd5"
+          },
+          "recovery": {
+            "path": "private/t015-f14-v2-vm/vm-missing-claim-up5i3ux3/source.recovery.json",
+            "bytes": 1580,
+            "sha256": "6281726996730b1e692ddd3742709985128080f3485853f96ac0140711bd340f"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-f14-v2-vm/calibration-v1/registration-claim.json",
+        "bytes": 252,
+        "sha256": "e69ec4ae0880c79aaf35deda7c21ba4d82dfdb9e030c71591c648b53d251279d"
+      }
+    },
+    "core-pid-reuse": {
+      "mode": "core-pid-reuse",
+      "run": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan",
+      "registered": 1,
+      "attempted": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 1,
+      "control_probes": 1,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-f14-core-pid-reuse-001"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-f14-v2-vm/calibration-v1/registration.json",
+        "bytes": 1889,
+        "sha256": "3bc2eadbbc88565ae6c417113dad41287a2daffbdd9b55274129d42bdaf25f61"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-f14-v2-vm/calibration-v1/claim-core-pid-reuse.json",
+        "bytes": 724,
+        "sha256": "16802ce826a50bd9aa64c6370994bdf8b3f360c6bc6c12f88633579160ac9e58"
+      },
+      "launch": {
+        "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/launch.json",
+        "bytes": 11619,
+        "sha256": "9f42b9112bea267389ad6985b66c6774e83c79fa0e13f5d98f4122b77251d04a"
+      },
+      "result": {
+        "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/result.json",
+        "bytes": 1366,
+        "sha256": "8465177191857fcd2ea87d5e3f2ec0937967af44c75494569a90282154756c85"
+      },
+      "host_check": {
+        "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/host-check.json",
+        "bytes": 797,
+        "sha256": "22d1f250a34b04c725e15f00efd6e5fd04d51e18b65ab0d0b7de67a8f66386d4"
+      },
+      "root_acceptance": {
+        "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/root-runtime-acceptance.json",
+        "bytes": 1237,
+        "sha256": "d63640da4007594988e1bcb0797cfd780e96aa05fa3425fa4e8885bc20f26609"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/f14-v2-runtime-review.json",
+        "bytes": 6469,
+        "sha256": "19c9e433fd13ff72605b7faf63e3e5dbacd70188bce80082d3befb37a4ecb7ac"
+      },
+      "export": {
+        "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/export.json",
+        "bytes": 4976,
+        "sha256": "9274d2ddcb8c7b594d56c29dc2033d64e3607cbc3ad361e28525f43ca6f8524f"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/foreign.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/control.token",
+          "bytes": 65,
+          "sha256": "84cf76faf6181cae1681fc6f16258c6f1a131765c5126c9bb7300cdf9f89a844"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/active.json",
+          "bytes": 3798,
+          "sha256": "03c1768ebd2489988fcedcddaabb876dddd2cdaa39234c6f9eb698f08c02d1cf"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/bootstrap/exec-intent.json",
+          "bytes": 4209,
+          "sha256": "9b90a0dbb1b22aec73ba5347f1c9d29ec123504b92dca5bdf4aa859eb02be51d"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/claim.json",
+          "bytes": 456,
+          "sha256": "90ad6f326178444b7e66fa16b724184e43fc7807931cc27da4f51f5271ce08b9"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/home/route-map.json",
+          "bytes": 285,
+          "sha256": "6f9b3adb6c7a3c7efbba53218e005f2ba9ff1f780f45e6fa592325f5ddf5a6d5"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/trace/epoch-930e30c1f41a574f30b7c4e62ca213517f7a558e3f724bb270a915c5160547ad.frames",
+          "bytes": 8766,
+          "sha256": "932d1fe499897e15309e19de0484d1b581c77a9cf3950fde4d41c5b6217c968e"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/trace/epoch-930e30c1f41a574f30b7c4e62ca213517f7a558e3f724bb270a915c5160547ad.source.json",
+          "bytes": 678,
+          "sha256": "60e8c0efd76e07f480d97795f88fa728b358ca7d736d8b93f1c76697b8ff159d"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c.json",
+          "bytes": 1867,
+          "sha256": "da69e618c842d15d17e20c62105692a29703e6085b44ded274b94000b565c007"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/operations/f14-stop.json",
+          "bytes": 4161,
+          "sha256": "0fe66a67ca5ee961a165c53eb8d6c9bff53f64620b9aaf45ccede2fc0323dcf6"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "dfee8ef224325384610b854bbb15a6a99bf178924f691322b792e135c91bcfdf"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/original-active.json",
+          "bytes": 3798,
+          "sha256": "03c1768ebd2489988fcedcddaabb876dddd2cdaa39234c6f9eb698f08c02d1cf"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/readiness.json",
+          "bytes": 2671,
+          "sha256": "beff8bbdb902c07f890f3ce0aa2d150752704b8ba67c030fd029bce3dd622c98"
+        },
+        {
+          "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/scenario.json",
+          "bytes": 153572,
+          "sha256": "9a41bafecefad8d0fc0b5c9d8159abdf0222bcb9a7223a6a1ff54c401404ff60"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/trace/epoch-930e30c1f41a574f30b7c4e62ca213517f7a558e3f724bb270a915c5160547ad.frames",
+            "bytes": 8766,
+            "sha256": "932d1fe499897e15309e19de0484d1b581c77a9cf3950fde4d41c5b6217c968e"
+          },
+          "manifest": {
+            "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/evidence/instance/store/launches/695487ecfae2430da8e0146a57cd908c/trace/epoch-930e30c1f41a574f30b7c4e62ca213517f7a558e3f724bb270a915c5160547ad.source.json",
+            "bytes": 678,
+            "sha256": "60e8c0efd76e07f480d97795f88fa728b358ca7d736d8b93f1c76697b8ff159d"
+          },
+          "decoded": {
+            "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/source.decoded.json",
+            "bytes": 9831,
+            "sha256": "52e05e4a3aa3e7293455c41e83a46207bb44bf07be60a038208b194da33ff072"
+          },
+          "recovery": {
+            "path": "private/t015-f14-v2-vm/vm-core-pid-reuse-37bt9jan/source.recovery.json",
+            "bytes": 1038,
+            "sha256": "819b7a39baf88b21304f355dfe48b00165a55b200c0f24aa4abfa380f36546b0"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-f14-v2-vm/calibration-v1/registration-claim.json",
+        "bytes": 252,
+        "sha256": "e69ec4ae0880c79aaf35deda7c21ba4d82dfdb9e030c71591c648b53d251279d"
+      }
+    },
+    "collector-reopen": {
+      "mode": "collector-reopen",
+      "run": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-collector-reopen-001",
+        "t015-collector-reopen-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-collector-control-v2-vm/calibration-v1/registration.json",
+        "bytes": 1589,
+        "sha256": "e8fa9f3607efb8ec4f8f671868e928f65be6f716a2a364c1b12803b58c5300f1"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-collector-control-v2-vm/calibration-v1/claim-collector-reopen.json",
+        "bytes": 778,
+        "sha256": "199b7f60fd1a355fd16f4ced14d188908f6e7a62f773bc1fdb3b94e0adf285d2"
+      },
+      "launch": {
+        "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/launch.json",
+        "bytes": 12346,
+        "sha256": "a1114dc435059ed7f35c53c5cdd9c1ece4cad27a81e6b3c5737bfde5aaf51902"
+      },
+      "result": {
+        "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/result.json",
+        "bytes": 1337,
+        "sha256": "42335f9cf196d904bbe3eba6bd1c78034e5df53dbd367355889c34bea536da0f"
+      },
+      "host_check": {
+        "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/host-check.json",
+        "bytes": 1055,
+        "sha256": "c14402dd5d8fe925c48314c9d2fb5954eef83aeebb1af7dc606e5d8d40ffdc91"
+      },
+      "root_acceptance": {
+        "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/root-runtime-acceptance.json",
+        "bytes": 958,
+        "sha256": "221b9e6e4978fb8bcb80a91b4ba26f67959f94cee1eb534ffb5e0bda93547fbe"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/collector-control-v2-runtime-review.json",
+        "bytes": 7167,
+        "sha256": "888a3f3c8769d628349044288e70c81846c2327381a11aae08bb3eca0140b0cc"
+      },
+      "export": {
+        "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/export.json",
+        "bytes": 5321,
+        "sha256": "f722d421b4de5dd30aca35bd2111e826f0bacd22a2b1a926b83a88e21d4cd452"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/applications.jsonl",
+          "bytes": 4960,
+          "sha256": "9bf3b78a6388a739c72408d8ee7caee20aa988cbb85af26486bc8371a07e1716"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/bootstrap/exec-intent.json",
+          "bytes": 4185,
+          "sha256": "6079ee91afded0407686e0bf43dde978e5afb37f785e5f2b1bd415ed7e5e6d18"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-0/evidence.jsonl",
+          "bytes": 1238,
+          "sha256": "a3cb5f4bda3801d5456bc98f838c7fa0b5f317af58110d6e8c9298e93f54d15c"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-0/stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-0/stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-1/evidence.jsonl",
+          "bytes": 6334,
+          "sha256": "087c52ba581f8a4e41c913a8528fbd8e4f37da5db75503adac36a6b566e23093"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-1/stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/collector-1/stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core-fds-at-ready.json",
+          "bytes": 5781,
+          "sha256": "1b29c8907c7b5d90df763d00829f40572015b041567f4e342e51f995a0af1f9c"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core-home/config.json",
+          "bytes": 909,
+          "sha256": "34610b5077dfadafd44e813015862d5cdeab9d1726528b4e77152bc7eb1d2b1e"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core-home/route-map.json",
+          "bytes": 290,
+          "sha256": "9debb64928698fe1079979a9d2586e6196b82d42d06d6e548ac5ee5aa3fb44c7"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core-parent.json",
+          "bytes": 1415,
+          "sha256": "a9eab5fb4c69ef4397511464ed4a47f8003d46d336d849fbe3b4af4688c86a77"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/core.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/fixture-executable.json",
+          "bytes": 370,
+          "sha256": "56778baf3b8109bc9a10a5218f85df862f42da4a0f6ca1ca84ad2b0225553d3a"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/journal-after-kill.frames",
+          "bytes": 5178,
+          "sha256": "ed477d24cb5b9768b756215b7ccc4f6cb9e6480d128693833135363ceae81cb4"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/journal-before-kill.frames",
+          "bytes": 5178,
+          "sha256": "ed477d24cb5b9768b756215b7ccc4f6cb9e6480d128693833135363ceae81cb4"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/journal-offline.frames",
+          "bytes": 5178,
+          "sha256": "ed477d24cb5b9768b756215b7ccc4f6cb9e6480d128693833135363ceae81cb4"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/offline-source.frames",
+          "bytes": 16226,
+          "sha256": "272f9a4d3e022ba373580003cb772b7b5cfd53c2f870d575da0a9bd47ccf6d5f"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/readiness.json",
+          "bytes": 3721,
+          "sha256": "507f94745e90334f4366580b023696967832473189a7c0174897a1dd71bc3b7c"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/receiver-journal/events.frames",
+          "bytes": 26338,
+          "sha256": "a42232e58ab8b968898d4b80021187bfda14d35ffcf3dcc8dc504e5bf768cadb"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/receiver-journal/journal.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/scenario.json",
+          "bytes": 43622,
+          "sha256": "5ec6d8ff5994892012c29742e105254e8e42ac52868e2505c5d9b4f542433a82"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/scope-after-stop.json",
+          "bytes": 93,
+          "sha256": "3200f45c2ce8eaf2c105206fd48fa7e3fda9769bf3f03a64a6a3695c6cd71d5e"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/source-before-kill.frames",
+          "bytes": 7201,
+          "sha256": "42750807e5d7910d5534a49bfeb6b5b247807244517ce93d90de06577d511494"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/source-registration.json",
+          "bytes": 1361,
+          "sha256": "e6c9ffd40e3cc156980c332e93cc412608a503551aed8970ff226d9795966695"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/terminal-cutoff.frames",
+          "bytes": 17132,
+          "sha256": "34bcdf65d5f99ac44aa191e4b81dd5722169fe972168be0cd859847e8e375d0e"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/trace/epoch-9599be85e7b11be06c04034ac843816bb9b50dd7bd634c87af59521902fe757c.frames",
+          "bytes": 17740,
+          "sha256": "83564aa781c1018a97dba8e57eeb876945447e09aa52e82bf0f38e6efd3d5dc8"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/trace/epoch-9599be85e7b11be06c04034ac843816bb9b50dd7bd634c87af59521902fe757c.source.json",
+          "bytes": 663,
+          "sha256": "387448c2ba87796d3eaef10c2a00f4b300ea493ace065d78cff449db20d2bd2f"
+        },
+        {
+          "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/trace/epoch-9599be85e7b11be06c04034ac843816bb9b50dd7bd634c87af59521902fe757c.frames",
+            "bytes": 17740,
+            "sha256": "83564aa781c1018a97dba8e57eeb876945447e09aa52e82bf0f38e6efd3d5dc8"
+          },
+          "manifest": {
+            "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/evidence/trace/epoch-9599be85e7b11be06c04034ac843816bb9b50dd7bd634c87af59521902fe757c.source.json",
+            "bytes": 663,
+            "sha256": "387448c2ba87796d3eaef10c2a00f4b300ea493ace065d78cff449db20d2bd2f"
+          },
+          "decoded": {
+            "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/source.decoded.json",
+            "bytes": 20095,
+            "sha256": "ceb843e833dbd410f9131466ed84549940a2382ce6f5a8b74af796fe8e1b5d1a"
+          },
+          "recovery": {
+            "path": "private/t015-collector-control-v2-vm/vm-collector-reopen-ypmmpbv6/source.recovery.json",
+            "bytes": 1565,
+            "sha256": "db5b72a2d2e4122ac23350264481cc60515b059916f320664c5b3531b41f0a07"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-collector-control-v2-vm/calibration-v1/registration-claim.json",
+        "bytes": 266,
+        "sha256": "632d4b1782ab1557bba28cbcaec376f79468269b7b5e94ea64ca8aaeea681104"
+      }
+    },
+    "management-data-auth": {
+      "mode": "management-data-auth",
+      "run": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu",
+      "registered": 6,
+      "attempted": 6,
+      "executed": 6,
+      "passed": 6,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 11,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-g07-a-001",
+        "t015-g07-a-002",
+        "t015-g07-a-003",
+        "t015-g07-a-004",
+        "t015-g07-a-005",
+        "t015-g07-a-006"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-g07-vm/calibration-v1/registration.json",
+        "bytes": 5576,
+        "sha256": "1bced0a074e4f0ae7ef20336edb88af77669c7d966013b08194fe758f09645b9"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-g07-vm/calibration-v1/claim-management-data-auth.json",
+        "bytes": 2823,
+        "sha256": "4ea6ec3cf25ecece1c99c2c5f26f43db7630082a5f0b94e682d47e768e75a576"
+      },
+      "launch": {
+        "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/launch.json",
+        "bytes": 19352,
+        "sha256": "99fcd20d4a7307942f6195a0c924e19325e15ead21d53dca4fd2e90997b5bb18"
+      },
+      "result": {
+        "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/result.json",
+        "bytes": 2813,
+        "sha256": "b225bb2fadc1a7e15873bd7c4c62173bb4d0d00115454408799e177cc1b47bef"
+      },
+      "host_check": {
+        "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/host-check.json",
+        "bytes": 601,
+        "sha256": "66304ce3bebeab44258fcae0f655acae04991a8829fc9e6561103a28df5c63bf"
+      },
+      "root_acceptance": {
+        "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/root-runtime-acceptance.json",
+        "bytes": 1081,
+        "sha256": "8d54f950146a348654ceeaa8fff4354d59c19dd6bca47784d5def52f9a37de04"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/g07-runtime-review.json",
+        "bytes": 6694,
+        "sha256": "9f1d4d8f3b3f1ac1db72c9f678efc9c9f8d11e77ec422f6a4de563c02e101e30"
+      },
+      "export": {
+        "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/export.json",
+        "bytes": 6087,
+        "sha256": "fbb597ae56d9d7b403f5cfafc16ed3e28165a9aac273a54cf215185d3e9743f1"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/applications.jsonl",
+          "bytes": 30644,
+          "sha256": "f247aebcce24532250a1ec3a6812e9fa78b6bf80a242d1a320b23a52e9b4b059"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/data-ledger.json",
+          "bytes": 386357,
+          "sha256": "a939ce0a20d1ef0dfc0edf3877b197a347de3cc4e6e1bb1ed480236fff17c11f"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/fixture-executable.json",
+          "bytes": 370,
+          "sha256": "dcc59d0a7b8e2479779310329e5970cbbe91f8530d54475a8636b128b43d22f8"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/bundles/62793a7b5670e6db3256b497e62462f0168030eed051d4adaf4afeed3d78ad77.json",
+          "bytes": 1829,
+          "sha256": "8c6847194c3b103d07bb39aaad887eb0dec6bb2d877bbe430fafd55b7cd58058"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "faf08e62b9f15130b69f0581345dd3b5626df1269445ce3fc01c7ecb755918f6"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/claim.json",
+          "bytes": 456,
+          "sha256": "23e8bf04ad68be0e075f9ece49802c87f1fc51e3f909ee10fdb9abc5fd1de2b9"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/home/config.json",
+          "bytes": 956,
+          "sha256": "25e3b353f40b370560124a632d2ac15bb9bade5542f316d49cea2c054edd38dd"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/home/route-map.json",
+          "bytes": 285,
+          "sha256": "3a3d07ada8e93bb8a2277ea84e80f9a5e5acd1b30751ef59667ce0ee2c506899"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/trace/epoch-1d81924c740208ab8181332ef819ac721e87316ad3eadd417ad6c45ea1a0fdf0.frames",
+          "bytes": 16974,
+          "sha256": "f049299f7d86ebdbcaa6fc5300e932dcfa429228d6038ac9758dd045f2072f87"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/trace/epoch-1d81924c740208ab8181332ef819ac721e87316ad3eadd417ad6c45ea1a0fdf0.source.json",
+          "bytes": 678,
+          "sha256": "0b8c25215ab1b0a5dcdf3f3fb52e7d69c5053891d774b2bbada1ae8da331da56"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7.json",
+          "bytes": 2107,
+          "sha256": "05a21d2dba19bf6675eb32dd38a01397827e96c2af153071161976932465a37c"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/operations/first.json",
+          "bytes": 4574,
+          "sha256": "aa3798560f8cfc609ce00545aa19fc027ee1b401a441acbc5313040651e22333"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/operations/stop.json",
+          "bytes": 4571,
+          "sha256": "d9cfeb662b0dda491df5e67a74b2708f20d81ccca47a03b19aadbbae25df9134"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/ipc-uid-peercred.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/ipc-uid-socket-connect.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/ipc-uid-token-read.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/readiness.json",
+          "bytes": 4105,
+          "sha256": "403efdb39cd18f37cffb720f11ef8649f3e2a89c32c4e1229c3ecfc33bdd072c"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/scenario.json",
+          "bytes": 647181,
+          "sha256": "4d76256e7d7a3bd0ff89b42e8f8a1da7f39edbb4e874d0fd8c1f0ae79c3fc7f0"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/source-registration.json",
+          "bytes": 336,
+          "sha256": "ba17455bcacb10235a7202202feba9ddcb955d147211b23c7ec1446566d66e30"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-001.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-002.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-003.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-004.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-005.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/t015-g07-a-006.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/trace/epoch-1d81924c740208ab8181332ef819ac721e87316ad3eadd417ad6c45ea1a0fdf0.frames",
+            "bytes": 16974,
+            "sha256": "f049299f7d86ebdbcaa6fc5300e932dcfa429228d6038ac9758dd045f2072f87"
+          },
+          "manifest": {
+            "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/evidence/instance/store/launches/97853c80c17b7ed739e02034da7212a7/trace/epoch-1d81924c740208ab8181332ef819ac721e87316ad3eadd417ad6c45ea1a0fdf0.source.json",
+            "bytes": 678,
+            "sha256": "0b8c25215ab1b0a5dcdf3f3fb52e7d69c5053891d774b2bbada1ae8da331da56"
+          },
+          "decoded": {
+            "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/source.decoded.json",
+            "bytes": 18784,
+            "sha256": "73bf878efc39641cfbec933f7016282be2217c7771066023519031d9760a5668"
+          },
+          "recovery": {
+            "path": "private/t015-g07-vm/vm-management-data-auth-9ljaabzu/source.recovery.json",
+            "bytes": 1434,
+            "sha256": "5f6872f240e276593b94ddfa5ba6bb4a0e3437af20b6dacba7c315fdfea0588e"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-g07-vm/calibration-v1/registration-claim.json",
+        "bytes": 261,
+        "sha256": "6e53318d0027843f25e8c2ac307a6d72dadbc710fe59bba2d1d386769c14418d"
+      }
+    },
+    "spool-permissions": {
+      "mode": "spool-permissions",
+      "run": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa",
+      "registered": 1,
+      "attempted": 1,
+      "executed": 1,
+      "passed": 1,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 1,
+      "control_probes": 0,
+      "filesystem_probes": 14,
+      "slot_ids": [
+        "t015-g07-b-001"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-g07-vm/calibration-v1/registration.json",
+        "bytes": 5576,
+        "sha256": "1bced0a074e4f0ae7ef20336edb88af77669c7d966013b08194fe758f09645b9"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-g07-vm/calibration-v1/claim-spool-permissions.json",
+        "bytes": 2249,
+        "sha256": "114311782484fe969fe0d1cba9c212aa5648ea701a7f49defab4bc0f7cbc9930"
+      },
+      "launch": {
+        "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/launch.json",
+        "bytes": 17767,
+        "sha256": "e98b48eb1cfb707a4bac50c1c46b92d87faad5dd0d32de4d5efc9813113aee16"
+      },
+      "result": {
+        "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/result.json",
+        "bytes": 3494,
+        "sha256": "5d7a916ca4c55816c2098b537daec17d06e043cacd69b273eb2a518656b3413d"
+      },
+      "host_check": {
+        "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/host-check.json",
+        "bytes": 776,
+        "sha256": "9fe315c73395906602f30843a3b9f9e29259a9dd87677ae2705c2dc97f1df86b"
+      },
+      "root_acceptance": {
+        "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/root-runtime-acceptance.json",
+        "bytes": 1075,
+        "sha256": "3e98098906c9086b78a0cdb7b67f01fe070403c6952d3f53e5d6727a8f8fd920"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/g07-runtime-review.json",
+        "bytes": 6694,
+        "sha256": "9f1d4d8f3b3f1ac1db72c9f678efc9c9f8d11e77ec422f6a4de563c02e101e30"
+      },
+      "export": {
+        "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/export.json",
+        "bytes": 6472,
+        "sha256": "d8e1f2540e7adc9a8853d9d089be19213724fc5ebec725c5cbc192a0b0e23e73"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/applications.jsonl",
+          "bytes": 5070,
+          "sha256": "393c017ae21109e0ff131182447451bc26b8d24287e46fd73c5f2d391aec6a2b"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/bootstrap/exec-intent.json",
+          "bytes": 4169,
+          "sha256": "112dfee393feed580cbe5c8fad54135828213bb513421972edda97eca4c52c98"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/collector/evidence.jsonl",
+          "bytes": 3395,
+          "sha256": "09532ebf01b1b972296cebae32fd9815fb21719b7d35cdd9fb8cf9ea37df868d"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/collector/stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/collector/stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core-fds-at-ready.json",
+          "bytes": 5739,
+          "sha256": "98a4f92cebc901acf39904fe41473885a85888f51c76773c84867f2b95ba9fcf"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core-home/config.json",
+          "bytes": 786,
+          "sha256": "2dbcf8b1c9b0d28c33496c0ff4ea8f0696223fa525ef59e4c031a5af3d7d91ec"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core-home/route-map.json",
+          "bytes": 282,
+          "sha256": "c6e1ae929eed23e659dea51047cace46a77d8a4c84296ac80e90a67a31fb63b5"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core-parent.json",
+          "bytes": 1407,
+          "sha256": "0b9d38403783b976ca8109c8dfc49fb496d1efb10c1eb9f17e235eabbe90e1cd"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/core.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/data-ledger.json",
+          "bytes": 37121,
+          "sha256": "96da487ba40de529c31b3feb30206b9b35156af5ab52c22fa03c281e1c0f5fdd"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/fixture-executable.json",
+          "bytes": 370,
+          "sha256": "c6148868be3115a5c7192733503faa939d69aae1195d738339775cedeffbabbd"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/journal-before-access.frames",
+          "bytes": 12810,
+          "sha256": "05ad7572e512720faaf0f0a2e10004add124196cba47415a39683456d89e7261"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/readiness.json",
+          "bytes": 4099,
+          "sha256": "7186dc22c038b28efe2b54beded639cac184dc5711996c83bdb3365b9a2bb0cf"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/receiver-journal/events.frames",
+          "bytes": 12810,
+          "sha256": "05ad7572e512720faaf0f0a2e10004add124196cba47415a39683456d89e7261"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/receiver-journal/journal.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/scenario.json",
+          "bytes": 195281,
+          "sha256": "383b7c06d04beee41d41670cc6c5c90ab7b3ec040516a8e515effadf7b14ca6a"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/source-before-access.frames",
+          "bytes": 8598,
+          "sha256": "dcbe0c1963c7c0e906d5a6d705e6dd402a935544c97c153d261ff6d06655212e"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/source-cutoff.frames",
+          "bytes": 8000,
+          "sha256": "a05bb5413450560b5b7c6931445e69520e85a3d2e77966781c03aeedbcb5f262"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/source-cutoff.json",
+          "bytes": 136,
+          "sha256": "a01b5b2c6a8305ee3b11a639a7ed676e0217edfcdc6c4bff39f496839acd01ba"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/source-registration.json",
+          "bytes": 1337,
+          "sha256": "432507271830995d794bd383190f18fd3b9fefe53874ed469c34551a57542762"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/t015-g07-b-001.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/trace/epoch-3f41372205b4ea56ce0f52b86c581608b2798a5355e6e3042aa9f00824ec6e67.frames",
+          "bytes": 8598,
+          "sha256": "dcbe0c1963c7c0e906d5a6d705e6dd402a935544c97c153d261ff6d06655212e"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/trace/epoch-3f41372205b4ea56ce0f52b86c581608b2798a5355e6e3042aa9f00824ec6e67.source.json",
+          "bytes": 655,
+          "sha256": "18bb670d00ef34ea86d941c61c9111dba0040f2b844961d852e00d04b0e5389f"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-append.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-create.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-read.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-rename.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-truncate.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-receiver-journal-unlink.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-append.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-create.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-read.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-rename.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-truncate.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/uid-trace-unlink.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/trace/epoch-3f41372205b4ea56ce0f52b86c581608b2798a5355e6e3042aa9f00824ec6e67.frames",
+            "bytes": 8598,
+            "sha256": "dcbe0c1963c7c0e906d5a6d705e6dd402a935544c97c153d261ff6d06655212e"
+          },
+          "manifest": {
+            "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/evidence/trace/epoch-3f41372205b4ea56ce0f52b86c581608b2798a5355e6e3042aa9f00824ec6e67.source.json",
+            "bytes": 655,
+            "sha256": "18bb670d00ef34ea86d941c61c9111dba0040f2b844961d852e00d04b0e5389f"
+          },
+          "decoded": {
+            "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/source.decoded.json",
+            "bytes": 9618,
+            "sha256": "01a6b70cf6600e181dfa19e3bd7ee13cbfee76d8c40bbd32cf3744b8b4ab9fb7"
+          },
+          "recovery": {
+            "path": "private/t015-g07-vm/vm-spool-permissions-gsfrqoqa/source.recovery.json",
+            "bytes": 1015,
+            "sha256": "be98149b604235b35e86c1c6c68dbdb5f9c6d1b7c8a01442eda6ea4fa1f53630"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-g07-vm/calibration-v1/registration-claim.json",
+        "bytes": 261,
+        "sha256": "6e53318d0027843f25e8c2ac307a6d72dadbc710fe59bba2d1d386769c14418d"
+      }
+    },
+    "frontend-quit-login-logout": {
+      "mode": "frontend-quit-login-logout",
+      "run": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-logout-001",
+        "t015-logout-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-logout-vm/calibration-v1/registration.json",
+        "bytes": 1320,
+        "sha256": "43263626b4b401c1b83891e512c283b303b6b770ac65aed0f864da665c4f24b2"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-logout-vm/calibration-v1/claim-frontend-quit-login-logout.json",
+        "bytes": 630,
+        "sha256": "d7f67669d775003f44904ee2b4fadf4f4586b22e87250d7c490e0fabca0be9bb"
+      },
+      "launch": {
+        "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/launch.json",
+        "bytes": 12818,
+        "sha256": "a28c181870397891a5cc37b69ae35b745ada6d503bfe31ae314b4ba30143325f"
+      },
+      "result": {
+        "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/result.json",
+        "bytes": 1456,
+        "sha256": "8c185391810a3261f0c73d09f90cda6d6c60b2cd517e4abd375fdc17f9dfe5c0"
+      },
+      "host_check": {
+        "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/host-check.json",
+        "bytes": 2897,
+        "sha256": "60e8e4bd9aa67661f1a348e80bd1ff6af63f0b6c15545ebfa1c15bcbb6152ba4"
+      },
+      "root_acceptance": {
+        "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/root-runtime-acceptance.json",
+        "bytes": 1467,
+        "sha256": "86e6397870abe6335f5eb6255af6e49b74bc91088f39fd9657edbbd107038611"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/logout-runtime-review.json",
+        "bytes": 6963,
+        "sha256": "84082767640b3ff2249a5a5a9956e9b7cbcea3c91e94b6f783bc48076ffdd6e3"
+      },
+      "export": {
+        "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/export.json",
+        "bytes": 8007,
+        "sha256": "9b7e84f49a33ed957e38d3894440f5ddb6dac47d04dfce4b505af8a17c61620f"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/frontend-exit.json",
+          "bytes": 16,
+          "sha256": "d24219f6de94b955cf36d25bd2aca88e2d35eef45b9317b7083f55ec8fe9653c"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/frontend.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/frontend.stdout",
+          "bytes": 1672,
+          "sha256": "22ae7f7f9d92e01b4ddf043536d61a41b05503429acdd23c20b53f1338066831"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/bootstrap/exec-intent.json",
+          "bytes": 4209,
+          "sha256": "632c31c6d19e5c0c6b9eae60fa3dcb0cc81e9a9bb190445a5cab9f4b35357e58"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/claim.json",
+          "bytes": 456,
+          "sha256": "a527e816fc7401d474dee6a5bff737d4d9518fcad6de01195db4eba66da0402a"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/home/route-map.json",
+          "bytes": 285,
+          "sha256": "abe6f9f8ff84f0f94be9a7075061a63eb12361fa4109c0e124ff3371ee40c722"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/trace/epoch-011d69fc7ea3dbc81a5b69f4cbe864fdb0e44c4d179f4b8c849791ee194fb6fc.frames",
+          "bytes": 16940,
+          "sha256": "4bf429577e585d061e4123ad5cc27a5da1d58a9c0f6d84227e678dc5b275d9cf"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/trace/epoch-011d69fc7ea3dbc81a5b69f4cbe864fdb0e44c4d179f4b8c849791ee194fb6fc.source.json",
+          "bytes": 678,
+          "sha256": "778b967b544be2c336ea743b9e98b738dcde6e3fc8c49e945077fa37f95a4745"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d.json",
+          "bytes": 1867,
+          "sha256": "1cc37ccf79e87c8998eaa7a915ae7f0122091c54d34508969b5137d7f5e5ce24"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "e36bea13591e7560d0ca10c923f76a10065fcc2043f89992bda47662899b7f9a"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/operations/stop.json",
+          "bytes": 4091,
+          "sha256": "89794ddacbbc8974714fd56503b78b5f141087b0d9b17624adea1f060536736d"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/login-shell.json",
+          "bytes": 4564,
+          "sha256": "81645d5f34710e4f710052f8898762e3fb6f20192744052ff1f274b84125f1b6"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-core_before_triggers.frames",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-core_before_triggers.json",
+          "bytes": 5389,
+          "sha256": "240b69bcbb7ae8fbdc853e16832d4f84c7b145c4e8df14065e89f847efe218f9"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-frontend_active_old11.frames",
+          "bytes": 7239,
+          "sha256": "f0e6af4cf22b3770c3db188360a9a1bdc0d33296064bccbec842cff1b94a606c"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-frontend_active_old11.json",
+          "bytes": 7707,
+          "sha256": "6ee2ca909c6e8dc41bdf3f7d5e7018f6471034b315bec044ddaa6be8977bd01b"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-frontend_exited_old24.frames",
+          "bytes": 7239,
+          "sha256": "f0e6af4cf22b3770c3db188360a9a1bdc0d33296064bccbec842cff1b94a606c"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-frontend_exited_old24.json",
+          "bytes": 5448,
+          "sha256": "6317b09ab5fd935320a5ef0119171930162e8ec2f8e7fa6bcb5579085f76ae9e"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-logout_survival_traffic.frames",
+          "bytes": 16317,
+          "sha256": "aae1cb91f922eafc7d9ab88feb59cdb63cfe505c228dac82abc753e7902564ae"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-logout_survival_traffic.json",
+          "bytes": 5384,
+          "sha256": "58bb34fa25877d6cd1c49f6f83753cabf66444ca3432766e36bd03adb639660f"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-same_core_takeover.frames",
+          "bytes": 16317,
+          "sha256": "aae1cb91f922eafc7d9ab88feb59cdb63cfe505c228dac82abc753e7902564ae"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/phase-same_core_takeover.json",
+          "bytes": 9442,
+          "sha256": "e4b932fc6ea69c64f7e88991678371c9fba03fa9ed43f6804aedb264e525ae77"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/readiness.json",
+          "bytes": 3816,
+          "sha256": "2bd6c3edd06dd00f0e7086d7c6722e3839f32b66ef0d7c5b3b9a9b389be862f4"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/remote-manager-before-exec.json",
+          "bytes": 4544,
+          "sha256": "0aa9f48341747a5567ca5160b35bf908677ba9c2ec0f20b93d6f95733787c1ef"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/remote-manager.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/remote-manager.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/scenario.json",
+          "bytes": 118316,
+          "sha256": "dbb05f4ae42213789e46d3f7afa63da1881b229bda2ed50cb9cdc6332591db91"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/shell-settings.txt",
+          "bytes": 557,
+          "sha256": "c2957fa4e91e4db3728f5711c5e98cad17fb9c36275834cb9be38cc9777c383d"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/ssh-client.stderr",
+          "bytes": 33,
+          "sha256": "00eebb0300b558db0adf043aa8fce39909608ba8382e9741b086f0a11456f480"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/ssh-client.stdout",
+          "bytes": 537,
+          "sha256": "d1e9528f55ce990f82c66455aee9ecd282e519feb9879ecbeb17aba14c93e995"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/sshd.stderr",
+          "bytes": 876,
+          "sha256": "492e337ee406de4ad8647b5bb2d29b2d3e8de389199a5f41a468dd797943ebde"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/sshd.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/token-metadata.json",
+          "bytes": 434,
+          "sha256": "09238a84939a3751162f2f161c83b4683cef7d7942a75804b771567833520408"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/trace/epoch-011d69fc7ea3dbc81a5b69f4cbe864fdb0e44c4d179f4b8c849791ee194fb6fc.frames",
+            "bytes": 16940,
+            "sha256": "4bf429577e585d061e4123ad5cc27a5da1d58a9c0f6d84227e678dc5b275d9cf"
+          },
+          "manifest": {
+            "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/evidence/instance/store/launches/7e0f7d6c84f26c0aabdfdbebba28627d/trace/epoch-011d69fc7ea3dbc81a5b69f4cbe864fdb0e44c4d179f4b8c849791ee194fb6fc.source.json",
+            "bytes": 678,
+            "sha256": "778b967b544be2c336ea743b9e98b738dcde6e3fc8c49e945077fa37f95a4745"
+          },
+          "decoded": {
+            "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/source.decoded.json",
+            "bytes": 18751,
+            "sha256": "6ede7ef3145b6cbca7f70f0463825bfd725b2f7d71b7b9e11d788ba0d69a3907"
+          },
+          "recovery": {
+            "path": "private/t015-logout-vm/vm-frontend-quit-login-logout-m3514fr1/source.recovery.json",
+            "bytes": 1436,
+            "sha256": "ccd4ecf778412871d5be66500b69b67a0c2af9187a133f1c20464a8150974bed"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-logout-vm/calibration-v1/registration-claim.json",
+        "bytes": 252,
+        "sha256": "c5166ec4f28f841ed761b3a80f242440c8511bc40a6e9002c17914eced513f02"
+      }
+    },
+    "ssh-disconnect": {
+      "mode": "ssh-disconnect-takeover",
+      "run": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-ssh-disconnect-takeover-001",
+        "t015-ssh-disconnect-takeover-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-ssh-newhelper-vm/calibration-v1/registration.json",
+        "bytes": 1304,
+        "sha256": "0b9473fc109438b84208e2d8888efff565a4b2cb0c80ad592c10b20485eac538"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-ssh-newhelper-vm/calibration-v1/claim-ssh-disconnect-takeover.json",
+        "bytes": 590,
+        "sha256": "0ba326beb81610a8fa782b305823372eb54ca98129b638bc152ddcead5d9d464"
+      },
+      "launch": {
+        "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/launch.json",
+        "bytes": 12594,
+        "sha256": "8c0f8e3cff674a2afb8a61eca284cceab7feaa7a08c9c0f591af27c178f2a4ef"
+      },
+      "result": {
+        "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/result.json",
+        "bytes": 1356,
+        "sha256": "a3db2b6e907ff1f543f41e45ee4e726dd0212b26d8242ce2652c32d7949fc0d6"
+      },
+      "host_check": {
+        "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/host-check.json",
+        "bytes": 3120,
+        "sha256": "818c7496f8fcd7f1b67d12acebac513aae72efda6b1f0bfb0189370ef1f5485f"
+      },
+      "root_acceptance": {
+        "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/root-runtime-acceptance.json",
+        "bytes": 1219,
+        "sha256": "1aa80f24d0d97c876f08f6599a1a325e545ad82c44f4ca6e541edfc356ca2e90"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/ssh-newhelper-runtime-review.json",
+        "bytes": 6340,
+        "sha256": "913c491e39cb1bb6c8227acc632c92924e71cf32e5188d07cedc350e93d5719b"
+      },
+      "export": {
+        "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/export.json",
+        "bytes": 5272,
+        "sha256": "7a421231a4a696f6fb12619db4e93cf2ecb3ad107088f66e554ee5b03f40ba2f"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "96fc2d2b073209ac791ba8966698bce00b7e828d1013a49d8917204ec966f493"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/claim.json",
+          "bytes": 456,
+          "sha256": "ed50da3a435c36405df81ae7c75046e5d8191551a026a49f52a7de9b016b5d9a"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/home/route-map.json",
+          "bytes": 285,
+          "sha256": "4c3a0f9d4a00d77217305c522a87a289745b4cb6c4fe79ad17530b1cdb3ce555"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/trace/epoch-73bde45328c003a2875077067976c04b94a50ba7b20ab2a86f73288934b46262.frames",
+          "bytes": 17872,
+          "sha256": "5f1fecade891b5ca7323611b6ebdbf3ddce3b17c409f7f4e3f6d6725569254c0"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/trace/epoch-73bde45328c003a2875077067976c04b94a50ba7b20ab2a86f73288934b46262.source.json",
+          "bytes": 678,
+          "sha256": "98395539e967c54f445bd3d1aa479c17d32d3a98ef74cfb7f1f24bce6c4128df"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea.json",
+          "bytes": 1867,
+          "sha256": "3b355747c252b14aefbdd261e640f734e31413d6874809d55d2fe11f772ace86"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "146c2f4f33535221dd62a47bb1dc838ea0e981f537fd93fe3959a3e0362ab7c7"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/operations/stop.json",
+          "bytes": 4091,
+          "sha256": "0b54a4ff046be25317642090f2f4845e1cfac807fa4529eb72f344aa629e862c"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/readiness.json",
+          "bytes": 3650,
+          "sha256": "16308baed292625f2ab0c4b173fccd5f4202f746ffea73dc9c1b41dac21e2bf1"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/remote-manager-before-exec.json",
+          "bytes": 4395,
+          "sha256": "7902588f937bbbb01c7e48d28a65b16573543bdbb353174ecbeedbe285601419"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/scenario.json",
+          "bytes": 66743,
+          "sha256": "e7587f7e285801b385ccf642318d38245d94bd693df450b60d2e54e115483ff8"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/ssh-client.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/ssh-client.stdout",
+          "bytes": 21,
+          "sha256": "555469764f5cb5d085281cfb84adb76a01cae598b7905b0a844c9fba1f1f6b69"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/sshd.stderr",
+          "bytes": 945,
+          "sha256": "6a067914a76cabd5afa590e9f0cb916640129206b77b16982176e20666891c5d"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/sshd.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/token-metadata.jsonl",
+          "bytes": 399,
+          "sha256": "8f79a3267f356d938cde93f767d91f5e6d5e46120a232ca4dd922b28e2433db8"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/trace/epoch-73bde45328c003a2875077067976c04b94a50ba7b20ab2a86f73288934b46262.frames",
+            "bytes": 17872,
+            "sha256": "5f1fecade891b5ca7323611b6ebdbf3ddce3b17c409f7f4e3f6d6725569254c0"
+          },
+          "manifest": {
+            "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/evidence/instance/store/launches/813dc5ab415f2090f6744d9d7045efea/trace/epoch-73bde45328c003a2875077067976c04b94a50ba7b20ab2a86f73288934b46262.source.json",
+            "bytes": 678,
+            "sha256": "98395539e967c54f445bd3d1aa479c17d32d3a98ef74cfb7f1f24bce6c4128df"
+          },
+          "decoded": {
+            "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/source.decoded.json",
+            "bytes": 20285,
+            "sha256": "7f1e0a9b24ee5394adafab82ba8ec2192a177bdedaed27f3af4741d027408ced"
+          },
+          "recovery": {
+            "path": "private/t015-ssh-newhelper-vm/vm-ssh-disconnect-takeover-t14v0y8o/source.recovery.json",
+            "bytes": 1580,
+            "sha256": "c6fc0ddefad4b632604596fd1da732042935084c49840f557dabda0ade1415a0"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-ssh-newhelper-vm/calibration-v1/registration-claim.json",
+        "bytes": 259,
+        "sha256": "483453d0cd679ee145a802eaf8fd5f17cfaf37413cb94fd3dd6bb9baf18e8257"
+      }
+    },
+    "guest-s3": {
+      "mode": "takeover",
+      "run": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq",
+      "registered": 2,
+      "attempted": 2,
+      "executed": 2,
+      "passed": 2,
+      "failed_or_pending": 0,
+      "unobserved": 0,
+      "vm_started": true,
+      "forwarded_flows": 2,
+      "control_probes": 0,
+      "filesystem_probes": 0,
+      "slot_ids": [
+        "t015-s3-takeover-001",
+        "t015-s3-takeover-002"
+      ],
+      "registration": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-suspend-newhelper-vm/calibration-v1/registration.json",
+        "bytes": 1285,
+        "sha256": "e27c879f77c085bdbb802f748ac0fe955b218165b29415b158bf7d45a8900bb3"
+      },
+      "claim": {
+        "path": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t015-suspend-newhelper-vm/calibration-v1/claim-takeover.json",
+        "bytes": 544,
+        "sha256": "903be315bff2ed154f48da9bfa2d979676dd0f1b51f057141c7d78162471d8a5"
+      },
+      "launch": {
+        "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/launch.json",
+        "bytes": 11839,
+        "sha256": "7979bc8d7787d3a98cf8615c37bd1bbae70baa516d1c4cf451fb5dccb1a4dc59"
+      },
+      "result": {
+        "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/result.json",
+        "bytes": 2289,
+        "sha256": "ac5881791415cdc9027e37090350a712377c9a01c32c85cf79b1ee3b89d1f2fd"
+      },
+      "host_check": {
+        "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/host-check.json",
+        "bytes": 1717,
+        "sha256": "9b6c369483f6c1fb83a8948a6f48b0dcea91692fe4b19eaf9dda39931721c00d"
+      },
+      "root_acceptance": {
+        "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/root-runtime-acceptance.json",
+        "bytes": 1209,
+        "sha256": "d49cbd96a1c188d43f81a5291c14abbb477271df895e7762fd602fd7005e0d48"
+      },
+      "independent_review": {
+        "path": "private/t130-followup/suspend-newhelper-runtime-review.json",
+        "bytes": 6834,
+        "sha256": "82b2c8a97a7f245719449fb8471b533b52dfb628a616c1f4785b8864cfebe3c9"
+      },
+      "export": {
+        "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/export.json",
+        "bytes": 5432,
+        "sha256": "05d9b09a5273e381ba0bf344bc85bf94dc542f6860226fb05ba61befab13566b"
+      },
+      "export_files": [
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/after-suspend.frames",
+          "bytes": 7233,
+          "sha256": "41c9af802c2767a15c73d14de5de6c7074de8236718363b1a7ea553dd911c299"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/after-suspend.json",
+          "bytes": 3426,
+          "sha256": "943731f11519d45412a06c5d2822894800fbd6bb13fc7355de9258a239eaf36d"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/assets/assets.json",
+          "bytes": 1328,
+          "sha256": "5229bd57a405f7d6354248b773ec262f34975147dd348c5b502c9892ae1d64de"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/before-suspend.frames",
+          "bytes": 7233,
+          "sha256": "41c9af802c2767a15c73d14de5de6c7074de8236718363b1a7ea553dd911c299"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/before-suspend.json",
+          "bytes": 3426,
+          "sha256": "99538ccdc39c95462ca1a88201da7d24658489c6043eff5c3ddf71dcf51f5d7e"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/client1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/client2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/active.json",
+          "bytes": 47,
+          "sha256": "c41ef0005aeea28af9d9465d24cfc090287e192169f0b6aa3dce17ddad0b5a0e"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/bundles/ac05d83513a180b96e54f9c22959bdec905750ccb994d743141ab93200e66fc2.json",
+          "bytes": 1589,
+          "sha256": "6c3d6d11ab514720856be06a0cf021c5b18951386beec8eae5c7b86fd58fad62"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/bootstrap/exec-intent.json",
+          "bytes": 4211,
+          "sha256": "e74dc14643998430aedd8bac0750d83804b072519524ec486dfcec6616cbe874"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/claim.json",
+          "bytes": 456,
+          "sha256": "8a981f27215bd7cba32d694ac4a1515bd1a2d2e568470bd0e56c7b5392b22200"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/home/config.json",
+          "bytes": 777,
+          "sha256": "b2d5773deae744f3bb92c3b6a49a44fbdf1d1216bf1ec190fe7e0b84a0483352"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/home/route-map.json",
+          "bytes": 285,
+          "sha256": "397617b7b0b14bd52e6f7e43bf4cf1bcc8c7da45723a2040984845f4df447086"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/launcher.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/launcher.stdout",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/trace/epoch-81768732158f1a057308a124beadfcb3142cf20da641ba0e418167b52e590d5d.frames",
+          "bytes": 17874,
+          "sha256": "0a126a1f049b441819aaec3918272e1e41fe09df60e350dd4845bc87235b599c"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/trace/epoch-81768732158f1a057308a124beadfcb3142cf20da641ba0e418167b52e590d5d.source.json",
+          "bytes": 678,
+          "sha256": "dc894d8436dc23a7c4e3c2192f131c95be73fe9df3a2820e3a6f5f4c64093725"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/trace/source.lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9.json",
+          "bytes": 1867,
+          "sha256": "10fe85244ac26d7f98cbc7346bfeda272e87457db4aca9e2766f433572b0bbb3"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/lock",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/operations/first.json",
+          "bytes": 4094,
+          "sha256": "61c59485a2755afb3f194512c82e1724afbe4f303a781983bf141374949de9c3"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/operations/stop.json",
+          "bytes": 4091,
+          "sha256": "b577e8e60aec6811f92c7097b68e5f730249cd214cdb0184908c23566be5015d"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/kernel.btf",
+          "bytes": 6018902,
+          "sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/manager1.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/manager1.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/manager2.stderr",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/manager2.stdout",
+          "bytes": 20,
+          "sha256": "7ac60a0699e97a46ac6141df8946092bf1fc548d42401f0e396bc7a91d0dc22f"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/readiness.json",
+          "bytes": 2773,
+          "sha256": "eb29183d8af54f0b9819988a1b053b9e4db82e01230a487ec1b150ecf087ec27"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/scenario.json",
+          "bytes": 46595,
+          "sha256": "f5c950d7a78f5bd06a6ce9dc2060f6279166c7bd2854c3be9c452f239b56bec2"
+        },
+        {
+          "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/token-metadata.jsonl",
+          "bytes": 399,
+          "sha256": "d2f074a0ad9537ca7886b0e620e1496e31c9432068692f3cca7660db848ce9be"
+        }
+      ],
+      "sources": [
+        {
+          "frames": {
+            "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/trace/epoch-81768732158f1a057308a124beadfcb3142cf20da641ba0e418167b52e590d5d.frames",
+            "bytes": 17874,
+            "sha256": "0a126a1f049b441819aaec3918272e1e41fe09df60e350dd4845bc87235b599c"
+          },
+          "manifest": {
+            "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/evidence/instance/store/launches/e0905bbf47c0d9f32ee10a48b654b1f9/trace/epoch-81768732158f1a057308a124beadfcb3142cf20da641ba0e418167b52e590d5d.source.json",
+            "bytes": 678,
+            "sha256": "dc894d8436dc23a7c4e3c2192f131c95be73fe9df3a2820e3a6f5f4c64093725"
+          },
+          "decoded": {
+            "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/source.decoded.json",
+            "bytes": 20292,
+            "sha256": "2c4aadf0efad29e7b2eb7420c434f7cbcf222afebe7930e32aafdaec352ff0f9"
+          },
+          "recovery": {
+            "path": "private/t015-suspend-newhelper-vm/vm-takeover-049d0giq/source.recovery.json",
+            "bytes": 1582,
+            "sha256": "61651dff9c4849a453dd86acc32f5d5f304b3f4e8095d1bdc8d61e2511924aac"
+          }
+        }
+      ],
+      "registration_claim": {
+        "path": "private/t015-suspend-newhelper-vm/calibration-v1/registration-claim.json",
+        "bytes": 263,
+        "sha256": "d05ad86b0cf8f12f22d42c91303a37b4a60163f19458f08d5581dbbbe2cdc136"
+      }
+    }
+  },
+  "vms": 11,
+  "slots": 22,
+  "forwarded_flows": 18,
+  "control_probes": 14,
+  "filesystem_probes": 14,
+  "new_runtime_samples": 0,
+  "task_T015_complete": true,
+  "P0_released": false,
+  "P1_released": false,
+  "source_fsync_proven": false,
+  "SQL_tested": false,
+  "root_decision": {
+    "path": "private/t015-final-gate-preparation/root-runtime-matrix-acceptance.json",
+    "bytes": 7212,
+    "sha256": "5ede4fa0e3c71b4807a4495e589ae12353243346a88bd5583fc7a1104892dfac"
+  },
+  "export_hygiene_decision": {
+    "path": "private/t015-final-gate-preparation/root-export-hygiene-scope.json",
+    "bytes": 4571,
+    "sha256": "b573d7b13ca81e01728a243eb56e2616537a72bdb41c72a2761df830067c4542"
+  },
+  "f14_limits": {
+    "foreign_handled_signal_scope": [
+      1,
+      2,
+      15,
+      10,
+      12
+    ],
+    "missing_claim_core_wait_status": "unobserved",
+    "credential_export_protection_passed": false
+  },
+  "historical_failures": [
+    {
+      "path": "docs/validation/native-candidate.summary.json",
+      "bytes": 6381,
+      "sha256": "a903bd0f0455be761e8d9a6a8f934b22876bbb0479f6b1038c2e6e6ab9394008"
+    },
+    {
+      "path": "experiments/mihomo-events/source5-identity-first-formal-validation.json",
+      "bytes": 80898,
+      "sha256": "b6a68df332016f7befe47580db3155c8403808675dc718300028f87dee30de82"
+    },
+    {
+      "path": "private/t015-f14-preparation/root-preboot-rejection-v1.json",
+      "bytes": 1985,
+      "sha256": "cc29c52637de84d9dad47c87bddd6a4816f6aa0edc812b8762079716cd0bab99"
+    },
+    {
+      "path": "private/t015-suspend-control-v2-vm/vm-takeover-9xtfleaa/result.json",
+      "bytes": 1603,
+      "sha256": "b455f31c45388e47c69584a255f9d1bb5ef1676c9eca3cb5d33b28c2314e20cd"
+    },
+    {
+      "path": "private/t015-session-environment-vm/vm-ssh-84cab352/result.json",
+      "bytes": 1267,
+      "sha256": "59fb5a1b01972474860f0fe9788efc9d179f7b5adaf90d19e2766233d67fee22"
+    }
+  ],
+  "limits": [
+    "Fixed0017 core and ad4a helper in the registered Linux amd646.18 guest; collector/spool directly launch the same protected core without helper.",
+    "Eleven distinct actual VM cases with22 app attempts,18 forwarded flows,4 correctly rejected app attempts,14 control probes and14 filesystem probes. This read-only gate adds no runtime sample.",
+    "Each case preserves its own once registration, original wrapper zero-score/unverified result, separate canonical assessment and independent root acceptance; historical failures are not rescored.",
+    "Source recording_status remains unverified and writer_end_evidence null; visible complete source and durable receiver receipt are distinct from source fsync or SQL commit.",
+    "The first three new-helper owner calibrations and two F14 cases retain generated IPC tokens in private archives of terminated guests; only metadata is public. No credential-export protection pass is claimed for those five historical archives.",
+    "G07 managed auth, frontend/logout and the new SSH/S3 cases separately omit token plaintext with metadata/hash evidence; collector/spool have no IPC producer.",
+    "Missing-claim numeric core wait and login-shell numeric wait remain unobserved. Foreign child signal ledger covers only HUP/INT/TERM/USR1/USR2 plus independent liveness/responses.",
+    "Normal logout preserved the background manager; later original-pidfd TERM is separately labelled. SSH-disconnect manager SIGHUP/reap is its own observation, not inferred from logout.",
+    "Guest deep S3 is actual but host sleep, guest clock accuracy, external-peer timeout, subscription catch-up and normal guest OS shutdown are unverified. QMP quit followed guest cleanup/export.",
+    "Minimum experiment frontend is not product CLI/TUI; no PAM/logind cleanup, production supervisor, cross-platform release or performance claim.",
+    "T015 scoped evidence acceptance does not release P0/P1; T016 routing, T017 source review and T018 overall decision remain required."
+  ]
+}

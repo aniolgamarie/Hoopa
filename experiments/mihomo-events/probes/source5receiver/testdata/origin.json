@@ -1,0 +1,16 @@
+{
+  "description": "Byte-exact first complete source5 flow extracted from existing T127 ordinary formal run; test fixture, no new runtime claim.",
+  "original_frames": "private/t127-source5-checkpoints-vm/vm-ordinary-z6tglukj/evidence/trace/epoch-ae7d49ae19c0ceca89f129ed8de55bfe3df2085560fa629301f813588dae0b55.frames",
+  "original_sha256": "2d78f8d6a3ab6fa3ba0abd2689e7966f0625b807461dabf8fbc650f267d413bd",
+  "events": 6,
+  "fixtures": {
+    "source5-manifest.json": {
+      "bytes": 654,
+      "sha256": "26991302ea249b386af522f3dff0fe0d53ea6215f0e81a50bb11c7c379697f47"
+    },
+    "source5-first-flow.jsonl": {
+      "bytes": 7831,
+      "sha256": "671a8d4e0b27e750a729582b536e59be7488afc753cf17b84ab8fae0be6308cc"
+    }
+  }
+}

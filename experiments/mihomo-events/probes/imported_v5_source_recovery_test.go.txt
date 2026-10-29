@@ -1,0 +1,524 @@
+//go:build linux && amd64
+
+// Test-only overlay for the fixed Mihomo source tree. This is not linked into
+// the candidate binary. External input provenance is bound by the root VM registration/export review.
+// Synthetic-only tests below do not represent actual crash evidence.
+package hoopatrace
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/metacubex/mihomo/component/hoopatrace/telemetrywire"
+	"github.com/metacubex/mihomo/component/identityprofile"
+)
+
+func TestHoopaImportedV5SourceRecovery(t *testing.T) {
+	input := os.Getenv("HOOPA_SOURCE5_RECOVERY_INPUT")
+	if input == "" {
+		t.Skip("unverified: explicit hash-bound source5 VM recovery input required; synthetic tests are separate")
+	}
+	v5ExerciseRecovery(t, input, "external_input_root_provenance_required")
+}
+
+func v5ExerciseRecovery(t *testing.T, input, label string) {
+	t.Helper()
+	t.Setenv("HOOPA_TRACE_PROFILE", "5")
+	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "")
+	originalFiles, err := v5InputFiles(input)
+	if err != nil {
+		t.Fatal("invalid source5 recovery input", err)
+	}
+	t.Logf("input_class=%s; no new runtime sampling", label)
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for name := range originalFiles {
+		if strings.HasSuffix(name, ".frames") {
+			paths = append(paths, filepath.Join(input, name))
+		}
+	}
+	sort.Strings(paths)
+	originalFrames := map[string][][]byte{}
+	var pendingEpoch, closedEpoch string
+	var priorCheckpoint *telemetrywire.RecoveryCounter
+	for _, path := range paths {
+		name := filepath.Base(path)
+		metaName := strings.TrimSuffix(name, ".frames") + ".source.json"
+		for _, n := range []string{name, metaName} {
+			raw := originalFiles[n]
+			if err = os.WriteFile(filepath.Join(dir, n), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		m, err := telemetrywire.DecodeManifest(originalFiles[metaName])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rows [][]byte
+		life, err := boundFrames(originalFiles[name], m, func(raw []byte) error {
+			e, err := telemetrywire.DecodeSourceEvent(raw)
+			if err != nil {
+				return err
+			}
+			if !v5Event(e) {
+				t.Fatal("expected complete original source5 connector/executable/field-profile frames")
+			}
+			rows = append(rows, append([]byte(nil), raw...))
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		originalFrames[name] = rows
+		sum := sha256.Sum256(originalFiles[name])
+		// This pure read supplies no writer-end evidence, even though the VM
+		// runner separately observed process death and a later core restart.
+		r, err := telemetrywire.ProjectRecovery(m, life, hex.EncodeToString(sum[:]), nil)
+		if err != nil || r.WriterEnd != nil || len(r.Flows) != 1 {
+			t.Fatal("readonly recovery", err)
+		}
+		f := r.Flows[0]
+		switch f.State {
+		case "pending":
+			if pendingEpoch != "" || f.LastCheckpoint == nil || f.LastCheckpoint.UploadBytes != 12 || f.LastCheckpoint.DownloadBytes != 12 || f.Final != nil || f.TailBytes != nil || f.ReconciliationID != "" || f.Reason != "source_final_missing" {
+				t.Fatal("readonly missing-final evidence changed")
+			}
+			pendingEpoch, priorCheckpoint = m.SourceEpoch, f.LastCheckpoint
+		case "closed":
+			if closedEpoch != "" || f.Final == nil || f.Final.UploadBytes != 33 || f.Final.DownloadBytes != 33 || f.ReconciliationID != "" || f.FactSHA256 != "" || f.TailBytes == nil || *f.TailBytes != 0 || len(f.GapDimensions) != 0 || f.Reason != "" {
+				t.Fatal("readonly exact final changed")
+			}
+			closedEpoch = m.SourceEpoch
+		default:
+			t.Fatal("unexpected input flow state", f.State)
+		}
+	}
+	if pendingEpoch == "" || closedEpoch == "" || pendingEpoch == closedEpoch {
+		t.Fatal("missing original pending and closed epochs")
+	}
+	var factID, factHash string
+	for attempt := 0; attempt < 3; attempt++ {
+		func() {
+			// An explicit writer operation on our private copy takes the real
+			// source lock and scans/syncs originals. Never fabricate WriterEnd.
+			s, err := openSource(dir, "probe-generation", "", "", defaultLimit)
+			if err != nil {
+				t.Fatal("core writer reopen", err)
+			}
+			defer s.close()
+			if s.profile != 5 || s.file == nil || s.manifest.SchemaVersion != 2 || s.manifest.SourceSchemaVersion != 5 || s.epoch == "" {
+				t.Fatal("new source5 writer epoch missing")
+			}
+			if s.epoch == pendingEpoch || s.epoch == closedEpoch {
+				t.Fatal("reused source epoch")
+			}
+			lockProbe, err := os.OpenFile(filepath.Join(dir, "source.lock"), os.O_RDWR, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lockErr := syscall.Flock(int(lockProbe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+			closeErr := lockProbe.Close()
+			if !errors.Is(lockErr, syscall.EWOULDBLOCK) || closeErr != nil {
+				t.Fatal("source writer lock is not exclusively held", lockErr, closeErr)
+			}
+			other, err := openSource(dir, "probe-generation", "", "", defaultLimit)
+			if err == nil {
+				other.close()
+				t.Fatal("concurrent writer accepted")
+			}
+			if !errors.Is(err, ErrSource) {
+				t.Fatal("unexpected conflict failure", err)
+			}
+			found := map[string]bool{}
+			for _, r := range s.recoveryReports() {
+				if r.SourceEpoch != pendingEpoch && r.SourceEpoch != closedEpoch {
+					continue
+				}
+				found[r.SourceEpoch] = true
+				if r.RecordingStatus != "ready" || r.WriterEnd == nil || r.WriterEnd.Kind != "exclusive_writer_full_scan" || len(r.Flows) != 1 {
+					t.Fatal("core writer recovery evidence missing")
+				}
+				f := r.Flows[0]
+				if r.SourceEpoch == pendingEpoch {
+					if f.State != "gap" || f.Reason != "epoch_ended_without_final" || f.TailBytes != nil || f.Final != nil || !reflect.DeepEqual(f.LastCheckpoint, priorCheckpoint) || f.ReconciliationID == "" || f.FactSHA256 == "" || !reflect.DeepEqual(f.GapDimensions, []string{"bytes", "route_or_setup", "window_checkpoints"}) {
+						t.Fatal("core recovery lost checkpoint or invented final")
+					}
+					if attempt == 0 {
+						factID, factHash = f.ReconciliationID, f.FactSHA256
+					} else if factID != f.ReconciliationID || factHash != f.FactSHA256 {
+						t.Fatal("repeated reopen changed stable gap fact")
+					}
+				} else if f.State != "closed" || f.Final == nil || f.Final.UploadBytes != 33 || f.Final.DownloadBytes != 33 || f.ReconciliationID != "" || f.FactSHA256 != "" || f.TailBytes == nil || *f.TailBytes != 0 || len(f.GapDimensions) != 0 || f.Reason != "" {
+					t.Fatal("exact final duplicated or turned into a gap")
+				}
+				raw, _ := json.Marshal(r)
+				t.Logf("reopen=%d report=%s", attempt, raw)
+			}
+			if len(found) != 2 {
+				t.Fatal("lost previous source reports")
+			}
+			snapshots, err := s.sendSnapshots()
+			if err != nil {
+				t.Fatal(err)
+			}
+			matched := 0
+			for _, snapshot := range snapshots {
+				if want, ok := originalFrames[snapshot.name]; ok {
+					matched++
+					if !reflect.DeepEqual(want, snapshot.frames) {
+						t.Fatal("replay changed original connector/ID/seq/bytes")
+					}
+				}
+			}
+			if matched != 2 {
+				t.Fatal("missing exact original replay")
+			}
+		}()
+		again, err := v5InputFiles(input)
+		if err != nil || !reflect.DeepEqual(originalFiles, again) {
+			t.Fatal("original input changed", err)
+		}
+		for name, before := range originalFiles {
+			after, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("recovery rewrote retained original evidence", name, err)
+			}
+		}
+	}
+}
+
+// v5ReadInput only reads regular original files. It never calls Sync, takes a
+// writer lock, follows a final symlink, repairs a frame or changes input modes.
+func v5ReadInput(path string, limit int64) ([]byte, error) {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Size() > limit {
+		return nil, ErrSource
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, ErrSource
+	}
+	defer f.Close()
+	opened, err := f.Stat()
+	if err != nil || !os.SameFile(before, opened) {
+		return nil, ErrSource
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil || int64(len(raw)) != before.Size() {
+		return nil, ErrSource
+	}
+	after, err := f.Stat()
+	if err != nil || after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+		return nil, ErrSource
+	}
+	named, err := os.Lstat(path)
+	if err != nil || !named.Mode().IsRegular() || !os.SameFile(after, named) || named.Size() != after.Size() || !named.ModTime().Equal(after.ModTime()) {
+		return nil, ErrSource
+	}
+	return raw, nil
+}
+func v5Event(e telemetrywire.SourceEvent) bool {
+	if e.SchemaVersion != 5 {
+		return false
+	}
+	if e.Kind != "opened" {
+		return true
+	}
+	return e.Connector != nil && e.Executable != nil && e.FieldProfile != nil &&
+		e.Connector.Schema == "sourceidentity-core-admission-v3" && e.Connector.IdentityCapability == "" && e.Connector.ProcessPath == "" &&
+		e.Executable.Schema == "sourceidentity-executable-call-v2" && e.Executable.Status == "available" && len(e.Executable.RawRecord) == 296*2 &&
+		e.FieldProfile.ID == identityprofile.ID
+}
+
+// Strict input validation is pure with respect to the retained evidence. This
+// rejects malformed, wrong-profile and wrong-lifecycle synthetic inputs. Valid
+// synthetic byte shapes cannot prove their own provenance; root binds actual
+// external inputs to the retained VM registration/export before invocation.
+func v5InputFiles(input string) (map[string][]byte, error) {
+	info, err := os.Lstat(input)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, ErrSource
+	}
+	entries, err := os.ReadDir(input)
+	if err != nil || len(entries) < 4 || len(entries) > 5 {
+		return nil, ErrSource
+	}
+	files := map[string][]byte{}
+	var framesNames []string
+	total := int64(0)
+	for _, entry := range entries {
+		name := entry.Name()
+		limit := int64(maxFrame)
+		if strings.HasSuffix(name, ".frames") && strings.HasPrefix(name, "epoch-") {
+			limit = defaultLimit
+			framesNames = append(framesNames, name)
+		} else if name != "source.lock" && !(strings.HasPrefix(name, "epoch-") && strings.HasSuffix(name, ".source.json")) {
+			return nil, ErrSource
+		}
+		raw, err := v5ReadInput(filepath.Join(input, name), limit)
+		if err != nil {
+			return nil, err
+		}
+		if name == "source.lock" && len(raw) != 0 {
+			return nil, ErrSource
+		}
+		total += int64(len(raw))
+		if total > defaultLimit {
+			return nil, ErrSource
+		}
+		files[name] = raw
+	}
+	expectedFiles := 4
+	if _, ok := files["source.lock"]; ok {
+		expectedFiles++
+	}
+	if len(files) != expectedFiles {
+		return nil, ErrSource
+	}
+	if len(framesNames) != 2 {
+		return nil, ErrSource
+	}
+	pending, closed := 0, 0
+	for _, name := range framesNames {
+		metadataName := strings.TrimSuffix(name, ".frames") + ".source.json"
+		meta, ok := files[metadataName]
+		if !ok {
+			return nil, ErrSource
+		}
+		m, err := telemetrywire.DecodeManifest(meta)
+		if err != nil || m.SchemaVersion != 2 || m.SourceSchemaVersion != 5 || m.IdentityProfile != identityprofile.ID || name != "epoch-"+strings.TrimPrefix(m.SourceEpoch, "epoch:")+".frames" {
+			return nil, ErrSource
+		}
+		opened := 0
+		life, err := boundFrames(files[name], m, func(raw []byte) error {
+			e, err := telemetrywire.DecodeSourceEvent(raw)
+			if err != nil || !v5Event(e) {
+				return ErrSource
+			}
+			if e.Kind == "opened" {
+				opened++
+			}
+			return nil
+		})
+		if err != nil || opened != 1 {
+			return nil, ErrSource
+		}
+		sum := sha256.Sum256(files[name])
+		r, err := telemetrywire.ProjectRecovery(m, life, hex.EncodeToString(sum[:]), nil)
+		if err != nil || r.WriterEnd != nil || len(r.Flows) != 1 {
+			return nil, ErrSource
+		}
+		f := r.Flows[0]
+		if f.ReconciliationID != "" || f.FactSHA256 != "" || len(f.GapDimensions) != 0 {
+			return nil, ErrSource
+		}
+		switch f.State {
+		case "pending":
+			if f.Reason != "source_final_missing" {
+				return nil, ErrSource
+			}
+			if f.LastCheckpoint == nil || f.LastCheckpoint.UploadBytes != 12 || f.LastCheckpoint.DownloadBytes != 12 || f.Final != nil || f.TailBytes != nil {
+				return nil, ErrSource
+			}
+			pending++
+		case "closed":
+			if f.Reason != "" {
+				return nil, ErrSource
+			}
+			if f.Final == nil || f.Final.UploadBytes != 33 || f.Final.DownloadBytes != 33 || f.TailBytes == nil || *f.TailBytes != 0 {
+				return nil, ErrSource
+			}
+			closed++
+		default:
+			return nil, ErrSource
+		}
+	}
+	if pending != 1 || closed != 1 {
+		return nil, ErrSource
+	}
+	return files, nil
+}
+
+func v5SyntheticInput(t *testing.T, profile string) string {
+	t.Helper()
+	t.Setenv("HOOPA_TRACE_PROFILE", profile)
+	t.Setenv("HOOPA_TRACE_ROUTE_MAP", "")
+	input := t.TempDir()
+	if err := os.Chmod(input, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, pending := range []bool{true, false} {
+		dir := t.TempDir()
+		if err := os.Chmod(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		s, err := openSource(dir, "test-generation", "", "", defaultLimit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		proof := fieldIdentity(t)
+		if profile == "4" {
+			proof = executableIdentityFixture()
+		}
+		f, err := s.begin(testPeer(), testEntry(), "example.test", "", time.Now(), &proof)
+		if err != nil {
+			s.close()
+			t.Fatal(err)
+		}
+		if err = f.Decide("MATCH", "", "DIRECT"); err != nil {
+			s.close()
+			t.Fatal(err)
+		}
+		a := f.NewAttempt()
+		conn := qualityAttach(t, a, "synthetic:source5-recovery", true)
+		a.FinishConnection(nil, "", conn, false)
+		a.Bind("synthetic:tracker")
+		count := 33
+		if pending {
+			count = 12
+		}
+		a.AddUpload(count)
+		a.AddDownload(count)
+		if err = f.Checkpoint(); err != nil {
+			s.close()
+			t.Fatal(err)
+		}
+		if !pending {
+			f.Close()
+			if err = s.shutdown(); err != nil {
+				s.close()
+				t.Fatal(err)
+			}
+		}
+		name := filepath.Base(s.file.Name())
+		s.close()
+		for _, filename := range []string{name, strings.TrimSuffix(name, ".frames") + ".source.json"} {
+			raw, err := v5ReadInput(filepath.Join(dir, filename), defaultLimit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(filepath.Join(input, filename), raw, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	return input
+}
+func TestHoopaImportedV5SourceRecoverySyntheticOnly(t *testing.T) {
+	t.Log("SYNTHETIC ONLY: fake connector/executable proof and counters; no VM/core crash or original kernel observation")
+	v5ExerciseRecovery(t, v5SyntheticInput(t, "5"), "synthetic_only_not_actual_crash")
+}
+func TestHoopaImportedV5SourceRecoveryRejectInvalidInputs(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		if _, err := v5InputFiles(filepath.Join(t.TempDir(), "absent")); err == nil {
+			t.Fatal("missing input accepted")
+		}
+	})
+	t.Run("v4_is_not_source5", func(t *testing.T) {
+		if _, err := v5InputFiles(v5SyntheticInput(t, "4")); err == nil {
+			t.Fatal("old v4 synthetic epochs accepted as source5")
+		}
+	})
+	for _, kind := range []string{"extra_file", "missing_pair", "truncated_frame", "corrupt_frame", "symlink_frame", "wrong_checkpoint"} {
+		t.Run(kind, func(t *testing.T) {
+			input := v5SyntheticInput(t, "5")
+			files, err := v5InputFiles(input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var name string
+			for n := range files {
+				if strings.HasSuffix(n, ".frames") {
+					m, _ := telemetrywire.DecodeManifest(files[strings.TrimSuffix(n, ".frames")+".source.json"])
+					life, _ := boundFrames(files[n], m, nil)
+					sum := sha256.Sum256(files[n])
+					r, _ := telemetrywire.ProjectRecovery(m, life, hex.EncodeToString(sum[:]), nil)
+					if r.Flows[0].State == "pending" {
+						name = n
+					}
+				}
+			}
+			path := filepath.Join(input, name)
+			raw := files[name]
+			switch kind {
+			case "extra_file":
+				err = os.WriteFile(filepath.Join(input, "unregistered"), nil, 0600)
+			case "missing_pair":
+				err = os.Remove(filepath.Join(input, strings.TrimSuffix(name, ".frames")+".source.json"))
+			case "truncated_frame":
+				err = os.WriteFile(path, raw[:len(raw)-1], 0600)
+			case "corrupt_frame":
+				changed := append([]byte(nil), raw...)
+				changed[len(changed)-1] ^= 1
+				err = os.WriteFile(path, changed, 0600)
+			case "symlink_frame":
+				target := filepath.Join(t.TempDir(), "outside.frames")
+				if err = os.WriteFile(target, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.Remove(path); err == nil {
+					err = os.Symlink(target, path)
+				}
+			case "wrong_checkpoint":
+				m, _ := telemetrywire.DecodeManifest(files[strings.TrimSuffix(name, ".frames")+".source.json"])
+				var changed [][]byte
+				_, err = boundFrames(raw, m, func(b []byte) error {
+					var value map[string]json.RawMessage
+					if err := json.Unmarshal(b, &value); err != nil {
+						return err
+					}
+					if string(value["kind"]) == `"bytes_checkpoint"` {
+						value["upload_bytes"] = json.RawMessage(`"11"`)
+						var segments []map[string]json.RawMessage
+						if err := json.Unmarshal(value["segments"], &segments); err != nil || len(segments) != 1 {
+							return ErrSource
+						}
+						segments[0]["upload_bytes"] = json.RawMessage(`"11"`)
+						value["segments"], _ = json.Marshal(segments)
+						b, _ = json.Marshal(value)
+					}
+					changed = append(changed, b)
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var output bytes.Buffer
+				for _, b := range changed {
+					sum := sha256.Sum256(b)
+					var header [4]byte
+					binary.BigEndian.PutUint32(header[:], uint32(len(b)))
+					output.Write(header[:])
+					output.Write(b)
+					output.Write(sum[:])
+				}
+				if _, e := boundFrames(output.Bytes(), m, nil); e != nil {
+					t.Fatal("wrong-checkpoint mutation must remain protocol-valid", e)
+				}
+				err = os.WriteFile(path, output.Bytes(), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = v5InputFiles(input); err == nil {
+				t.Fatal("invalid synthetic input accepted", kind)
+			}
+		})
+	}
+}

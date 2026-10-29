@@ -1,0 +1,648 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "enum": [
+            "process",
+            "name",
+            "domain",
+            "process_domain",
+            "launch_tree"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "filters": {
+          "type": "object",
+          "properties": {
+            "process_instance_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "process_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "domain": {
+              "type": "string",
+              "minLength": 1
+            },
+            "app_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "launch_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "node_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "subscription_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "pid": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "entry_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "protocol": {
+              "enum": [
+                "tcp",
+                "udp",
+                "quic"
+              ]
+            },
+            "quality_state": {
+              "enum": [
+                "complete",
+                "partial",
+                "unknown",
+                "stale"
+              ]
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "dependentRequired": {
+            "pid": [
+              "process_instance_id"
+            ],
+            "node_id": [
+              "subscription_id"
+            ]
+          },
+          "$comment": "PID only narrows a process instance, never identifies one across reuse. Node identity is scoped to subscription. Unsupported protocol capability must fail explicitly, never produce synthetic zero totals."
+        },
+        "sort": {
+          "enum": [
+            "total_bytes",
+            "upload_bytes",
+            "download_bytes",
+            "upload_rate_bytes_per_second",
+            "download_rate_bytes_per_second",
+            "connection_count",
+            "name",
+            "pid",
+            "last_active_at",
+            "latency_p50_ms",
+            "latency_p95_ms",
+            "failure_rate"
+          ]
+        },
+        "direction": {
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "top_n": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "window_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "quality_definition_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quality_target_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "view",
+        "from",
+        "to",
+        "filters",
+        "sort",
+        "direction",
+        "page_size"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sort": {
+                "enum": [
+                  "latency_p50_ms",
+                  "latency_p95_ms",
+                  "failure_rate"
+                ]
+              }
+            },
+            "required": [
+              "sort"
+            ]
+          },
+          "then": {
+            "required": [
+              "quality_definition_id",
+              "quality_target_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "sort": {
+                "enum": [
+                  "upload_rate_bytes_per_second",
+                  "download_rate_bytes_per_second"
+                ]
+              }
+            },
+            "required": [
+              "sort"
+            ]
+          },
+          "then": {
+            "required": [
+              "window_seconds"
+            ]
+          }
+        }
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "properties": {
+        "data_version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "attribution_version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "retention_generation": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+        },
+        "cutoff": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "data_version",
+        "attribution_version",
+        "retention_generation",
+        "cutoff"
+      ],
+      "additionalProperties": false
+    },
+    "totals": {
+      "type": "object",
+      "properties": {
+        "full": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "visible": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "hidden": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "unknown_attribution": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "full",
+        "visible",
+        "hidden",
+        "unknown_attribution"
+      ],
+      "additionalProperties": false
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "observed_entry": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "unknown_bytes": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "gap_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "overhead": {
+          "type": "object",
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/Amount"
+            },
+            "download": {
+              "$ref": "#/$defs/Amount"
+            }
+          },
+          "required": [
+            "upload",
+            "download"
+          ],
+          "additionalProperties": false
+        },
+        "reconciliation": {
+          "enum": [
+            "pending",
+            "not_comparable",
+            "balanced",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "observed_entry",
+        "unknown_bytes",
+        "gap_reasons",
+        "overhead",
+        "reconciliation"
+      ],
+      "additionalProperties": false
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "cleanup_state": {
+          "enum": [
+            "current",
+            "pending",
+            "unavailable"
+          ]
+        },
+        "cleaned_before": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "enabled",
+        "days",
+        "cleanup_state",
+        "cleaned_before"
+      ],
+      "additionalProperties": false
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "row_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+          },
+          "process_instance_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "process_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "process_start_identity": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "launch_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attribution_reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "bytes": {
+            "type": "object",
+            "properties": {
+              "upload": {
+                "$ref": "#/$defs/Amount"
+              },
+              "download": {
+                "$ref": "#/$defs/Amount"
+              }
+            },
+            "required": [
+              "upload",
+              "download"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "row_id",
+          "process_instance_id",
+          "pid",
+          "process_name",
+          "process_start_identity",
+          "domain",
+          "launch_id",
+          "attribution_reason",
+          "bytes"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "next_cursor": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "query",
+    "snapshot",
+    "totals",
+    "quality",
+    "retention",
+    "rows",
+    "next_cursor"
+  ],
+  "additionalProperties": false,
+  "title": "Hoopa usage aggregate page v1 representative contract (planned P2)",
+  "$comment": "Limited to aggregate bytes page, not full P2 latency, rates, route distribution or connection history. Application validates snapshot/query equality, totals, row attribution, PID/start association and retention semantics. Unknown attribution overlaps full; never add dimension totals. Reconciliation is pending until comparable, not_comparable for mismatched boundaries, balanced for aligned equality, error for aligned unexplained discrepancy. Quality sort requests require explicit common definition and target; rate sorts require a window.",
+  "$defs": {
+    "Amount": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coverage": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "value",
+        "reason",
+        "coverage"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "value"
+            ]
+          },
+          "then": {
+            "properties": {
+              "coverage": {
+                "enum": [
+                  "partial",
+                  "unknown"
+                ]
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "coverage": {
+                "enum": [
+                  "partial",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "coverage"
+            ]
+          },
+          "then": {
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ],
+      "$comment": "Null is unavailable, never complete. Partial/unknown coverage always carries a nonempty reason even when observed value is known; a known value need not imply complete coverage."
+    }
+  }
+}

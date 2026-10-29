@@ -1,0 +1,418 @@
+{
+  "schema_version": 1,
+  "task": "T137",
+  "date": "2026-10-25",
+  "status": "frozen_for_formal_P0_validation",
+  "root_decision": "T132 restricted prototype accepted; T133-T135 local scopes retained with explicit diff impact; T137 clean candidate frozen. Formal gates remain unpassed.",
+  "creation_manifest": {
+    "path": "experiments/mihomo-events/core-field-profile-candidate-manifest.json",
+    "bytes": 41769,
+    "sha256": "e356b964518399a4312303a24cb82db9d0450de7012f2233ff41796fa20e34d6"
+  },
+  "upstream": {
+    "repository": "https://github.com/MetaCubeX/mihomo",
+    "tag": "v1.19.26",
+    "commit": "fc8c5a24b16991f98cd736950c17d1aa306a5041",
+    "license_observed": "GNU General Public License version 3 (LICENSE)"
+  },
+  "patch_order": [
+    {
+      "path": "experiments/mihomo-events/patches/0001-native-observer.patch",
+      "bytes": 75684,
+      "sha256": "e871aea91fdad62647d8f81ba146e799279616c3d64b53d0768b52457faed0d3"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0002-source-lifecycle.patch",
+      "bytes": 23874,
+      "sha256": "8ceff9219e023258e2005ef32b365fb10afa3afb0abd96badc056e577da5c52c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0003-socks5-reply-validation.patch",
+      "bytes": 4197,
+      "sha256": "76866e1d2f146f3fa10fa69441f47ba7b33e1c4cd91c6d2fb5eed4171f6ce8ce"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0004-source-recovery-validation.patch",
+      "bytes": 77384,
+      "sha256": "53b740fb3131f0428ca5d0dcce6331bf2a60d7921ef0fdff69df4bac06458204"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0005-stream-buffer-boundaries.patch",
+      "bytes": 6753,
+      "sha256": "c5f031ce085e201618a4c3cb987a15e555af826452fe8d668faaaa7de9205dd5"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0006-quality-ready-route-segments.patch",
+      "bytes": 67973,
+      "sha256": "62d743872d1cad47b98a09e7eff41c5fbd517016df8660c66e4c8acb6437cb98"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0007-protected-entry-capabilities.patch",
+      "bytes": 34658,
+      "sha256": "74ae6bc4fb6e940fb49d6e91d4b8c5931e1fe4aa9b7a013c2082de1563de79f0"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0008-core-connector-admission.patch",
+      "bytes": 106139,
+      "sha256": "56eb3ce8c8eb5f5b7343fd5868d2f1eb9756559db57be96c13e0b417e5fd986d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0009-metered-tcp-half-close.patch",
+      "bytes": 8089,
+      "sha256": "d2c53804d94d3208c9a441f378ccfd92cb2f5377fc5d2f4107ec7f7151d1049d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0010-reject-fast-open-identity.patch",
+      "bytes": 4594,
+      "sha256": "e2bd4d290f03b03eb9155d42e5ecc57c286c516413bdd82df71d42a8ad074148"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0011-executable-call-evidence.patch",
+      "bytes": 146455,
+      "sha256": "fae5ac01b482f6c336db5b2e7d1b3a618a4063e4f035c648f9bd5390b4c0055d"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0012-enable-executable-quality-capture.patch",
+      "bytes": 3701,
+      "sha256": "f4a1351e459e8006b66b043277a33f387650d9a56e9108406bbf32d94679af59"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0013-observe-capture-faults.patch",
+      "bytes": 22608,
+      "sha256": "14280a0007c88114b91b7f88ea3fb4a7498b91216167057a14169dfb02ef364c"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0014-enforce-connector-namespace.patch",
+      "bytes": 14486,
+      "sha256": "1f3353b523a4a8201924bf71562018e9f3d656006de20a28cffbc05c7bf05ae6"
+    },
+    {
+      "path": "experiments/mihomo-events/patches/0015-add-restricted-field-profile.patch",
+      "bytes": 76418,
+      "sha256": "b953ef468978a5e8cf1f3285256d550f9f08e332620b00747ae50f703158a3d0"
+    }
+  ],
+  "binary": {
+    "path": "private/t132-core-field-profile/artifact/mihomo-identity-field-profile",
+    "bytes": 51320639,
+    "sha256": "1ef1b53ae41435596844c264ae5e1e5201ce95b5d2762be872371023f4d6af25"
+  },
+  "source": {
+    "fresh_applied": "private/t132-core-field-profile/artifact/source",
+    "reviewed_target": "private/t132-field-profile/reviewed-source",
+    "tree_sha256": "8f79c90508d8a3719eee356778fc513f872c615b0fba2591c0191ca4ecc26020",
+    "tree_sha256_algorithm": "SHA256 of concatenated sorted per-entry ASCII compact JSON [path,kind,mode_decimal,sha256_or_link_or_empty] followed by LF for each entry; kind=file/dir/link; root/.git excluded",
+    "entry_count": 1192,
+    "file_count": 995,
+    "reviewed_tree_equal": true,
+    "build_evidence": {
+      "path": "private/t132-core-field-profile/build-result.json",
+      "bytes": 198756,
+      "sha256": "d2d3f25e44f0dd448c6c9f8c77888cc2cb095885287c3fad4809c0ade90f9693"
+    },
+    "go_environment": {
+      "CGO_ENABLED": "1",
+      "GOARCH": "amd64",
+      "GOFLAGS": "",
+      "GOOS": "linux",
+      "GOWORK": "off"
+    },
+    "offline_environment": {
+      "GOTOOLCHAIN": "local",
+      "GOPROXY": "off",
+      "GOMODCACHE": "/tmp/hoopa-mihomo-events-modcache",
+      "GOCACHE": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gocache",
+      "GOTMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/gotmp",
+      "TMPDIR": "/data/1/weixiaoxian.wxx/dev_tool/Hoopa/private/t132-core-identity/tmp",
+      "GOFLAGS": "",
+      "GOWORK": "off"
+    }
+  },
+  "toolchain": {
+    "version": "go1.27.3",
+    "binary": {
+      "path": "/tmp/hoopa-go-1.27.3-cb6ry1lq/go/bin/go",
+      "bytes": 17164222,
+      "sha256": "5f5eb6d0b2fb6aa0bb5d5f8c5f1c944e0de955c925f0111af92a9d8f79680b5b"
+    },
+    "printed_core_version": "Mihomo Meta 1.10.0 linux amd64 with go1.27.3 unknown time",
+    "printed_version_not_source_tag": true
+  },
+  "dependencies": {
+    "go_mod": {
+      "path": "private/t132-core-field-profile/artifact/source/go.mod",
+      "bytes": 6961,
+      "sha256": "dfc926397ed8fa7a16ee1374cdea36b2df7faa7a602e2d1c2cc4be24344e20e7"
+    },
+    "go_sum": {
+      "path": "private/t132-core-field-profile/artifact/source/go.sum",
+      "bytes": 29819,
+      "sha256": "5c5e0ab2529dcab4c7b14136528f4ab9835274e00ced9d2940a2de10f05a6302"
+    },
+    "unchanged_from_0014": true,
+    "new_module_dependencies": false
+  },
+  "scope": {
+    "platform": "linux/amd64",
+    "kernel": "6.18.54.1-microsoft-standard-WSL2",
+    "kernel_sha256": "b3dc3a9c3774fda2b9d7bceac7495248df50a6e0cd4ba9596ef98933f384d495",
+    "btf_sha256": "1c1326be5d6ca0e60ad8790971b6765bba91cc8a3ab897a94794177484c8c9b9",
+    "bpf_object": {
+      "bytes": 924400,
+      "path": "private/t132-namespace-guard/scoped_executable_online.bpf.o",
+      "sha256": "df7a561fd4b97cbb03b1f7083e3ffcc54a465233ae06ee47c4be67989eb8fc49"
+    },
+    "libbpf_sha256": "1c928f61158f25d39cd3fbc7ddafeebec2448886225e2c1824455fcfcd15d04c",
+    "handoff": "hoopa-core-identity-handoff-v4",
+    "fds": 21,
+    "address_family": "IPv4 127.0.0.1 TCP",
+    "namespace": "registered initial pid/net/user/mount",
+    "client": "uid/gid65534, empty groups, five capability sets zero, NNP1, pre-attach controlled leaf",
+    "trusted_admin_required": true,
+    "exclusions": [
+      "IPv6",
+      "UDP/QUIC",
+      "TFO",
+      "simultaneous open",
+      "TCP_REPAIR",
+      "arbitrary privileged mutation",
+      "production launcher",
+      "other platforms"
+    ]
+  },
+  "configuration": {
+    "generation": "gen:connector-field-profile-1",
+    "sha256": "81716cc265e1a2f570acdba413aefc31fd478c0fd4ece5d1c55bbe0b6189872a",
+    "raw": {
+      "path": "private/t132-field-profile-vm/vm-positive-xuab9n1d/evidence/core-home/config.json",
+      "bytes": 828,
+      "sha256": "81716cc265e1a2f570acdba413aefc31fd478c0fd4ece5d1c55bbe0b6189872a"
+    },
+    "source_manifest": {
+      "path": "private/t132-field-profile-vm/vm-positive-xuab9n1d/evidence/trace/epoch-5e6a7ea4852ab883a738fbc67756937730cf8280e3843228891ca6e41522fd26.source.json",
+      "bytes": 663,
+      "sha256": "9df512b2cfa84c12bca0d22cc583735613883a8acf7689bb486a1a1baa25487a"
+    },
+    "credentials": "not published; private runtime fixtures only",
+    "new_configuration_requires_impact_review": true
+  },
+  "capability_record": {
+    "schema_version": 1,
+    "source_profile": 5,
+    "manifest_version": 2,
+    "profile_id": "linux_amd64_loopback_connect_v1",
+    "definition": "connect_initiator_v1",
+    "status": "verified_for_restricted_P0_candidate_only",
+    "binary_sha256": "1ef1b53ae41435596844c264ae5e1e5201ce95b5d2762be872371023f4d6af25",
+    "run_id": "vm-positive-xuab9n1d",
+    "identity_instance": {
+      "status": "available",
+      "source": "linux_bpf_connect_task_v1",
+      "coordinates": [
+        "boot_id",
+        "initial_pidns_inode",
+        "tgid",
+        "leader_start_boot_ns"
+      ],
+      "caller_tid_separate": true
+    },
+    "identity_name": {
+      "status": "available",
+      "source": "executable_path_basename_v1",
+      "script_or_product_name": false
+    },
+    "identity_path": {
+      "status": "available",
+      "source": "task_exe_file_d_path_v1",
+      "raw_bytes": true,
+      "utf8_availability_separate": true,
+      "permanent_file_identity": false
+    },
+    "comm": {
+      "status": "unverified",
+      "source": "linux_bpf_task_comm_v1"
+    },
+    "fd_transfer_monitoring": "unverified; attribution remains original connector, not current writer or sole holder",
+    "process_rules": "unsupported; all legacy PROCESS and UID rules refused",
+    "legacy_status_identity_flags": false,
+    "setup": {
+      "definition": "forward_setup_v2",
+      "actual_new_binary_protocol": "http_connect",
+      "ready_kind": "http_connect_accepted",
+      "attempt_duration_ms": [
+        "11",
+        "31"
+      ],
+      "business_ttfb": "unavailable"
+    },
+    "actual_route": {
+      "status": "observed",
+      "nodes": [
+        "node:a",
+        "node:b"
+      ],
+      "upstream_types": [
+        "Http",
+        "Http"
+      ],
+      "bound_to_actual_connection_ref": true
+    },
+    "segment_bytes": {
+      "status": "observed",
+      "boundary": "mihomo_proxy_stream_v1",
+      "per_flow_upload": "33",
+      "per_flow_download": "33",
+      "unallocated": "0",
+      "integer_encoding": "decimal string"
+    },
+    "lifecycle": {
+      "actual": "two complete closed flows and epoch_closed; read-only replay preserved raw identity and final counts",
+      "targeted_tests": "v5 complete, pending and repeated exclusive writer reopen; no actual v5 crash run"
+    },
+    "source_generation": "2409661517891297218",
+    "core_generation": "gen:connector-field-profile-1",
+    "source_epoch": "epoch:5e6a7ea4852ab883a738fbc67756937730cf8280e3843228891ca6e41522fd26"
+  },
+  "evidence": [
+    {
+      "path": "experiments/sourceidentity/field-profile-validation.json",
+      "bytes": 32162,
+      "sha256": "02c2e879a10b8b26d895506a5524a40ad6c8a87d6435308f57a8a06edd21620b"
+    },
+    {
+      "path": "docs/validation/connector-field-profile.md",
+      "bytes": 5634,
+      "sha256": "c69b4ace6683faa055a3cb9d71f84da01abbd7b26140004d96ca604cd6546ebe"
+    },
+    {
+      "path": "docs/validation/t132-restricted-acceptance.md",
+      "bytes": 5846,
+      "sha256": "ddb70e2d008bac3e5b75aacc859b930f391c4e6f85c7da125c187de00e6d57e8"
+    },
+    {
+      "path": "private/t132-field-profile/candidate-preflight-result.json",
+      "bytes": 2579,
+      "sha256": "a245e6ede0389bf2fe6bbe47d2ba7c0744635f99fe9575b2eb6d7177fb4d7135"
+    },
+    {
+      "path": "private/t132-core-edges-review/field-profile-runtime-review.md",
+      "bytes": 6829,
+      "sha256": "129a24da7713be6deb39d7d3ee9180abd24980001e5619f94bb3fe73ff416b4d"
+    },
+    {
+      "path": "private/t132-core-edges-review/field-profile-frozen-review.md",
+      "bytes": 5025,
+      "sha256": "f90a0f2eb1b9afa7e557e3206d6c20d40fd85455b5acb7c2a73440a05666761e"
+    },
+    {
+      "path": "private/t132-core-field-profile/root-critical-review.md",
+      "bytes": 2306,
+      "sha256": "0c51afbc082535f19abec413b54073dac4fbe03eca9e0eed6c7b8fc7249e4866"
+    },
+    {
+      "path": "private/t132-field-profile-vm/matrix-field-profile-v1.json",
+      "bytes": 3266,
+      "sha256": "7734667958b67ccd354b424d6d279874470946109ba5b378ad3cc4d49979b6f5"
+    },
+    {
+      "path": "private/t132-field-profile-vm/vm-positive-xuab9n1d/host-check.json",
+      "bytes": 9002,
+      "sha256": "779f72ffcc6c968945aeabcf33b0cc5a3350b5477f5a4cc83981fc2f4d8c3fe8"
+    },
+    {
+      "path": "private/t132-field-profile-vm/vm-positive-xuab9n1d/export.json",
+      "bytes": 6230,
+      "sha256": "9f99fdb7a33f6cf3e9c034f353c059cf7ba3aa362b6f9108b246fa8286b0b1e8"
+    },
+    {
+      "path": "private/t132-field-profile-vm/vm-positive-xuab9n1d/launch.json",
+      "bytes": 11366,
+      "sha256": "4146df748a269db531f48bd5e8a7fbd56a049139d527273c7b20a3e2c106681f"
+    }
+  ],
+  "prior_evidence_impact": [
+    {
+      "task": "T133",
+      "record": {
+        "path": "experiments/mihomo-events/closure-candidate-manifest.json",
+        "bytes": 12458,
+        "sha256": "43543ec28cc9fa4198d21690b3bf15e5866a2cea036f35cdfdf21fa269d2fcd6"
+      },
+      "interpretation": "source durable recovery, immutable facts and stream boundary; old runtime remains old hash",
+      "new_binary_runtime_claim": false
+    },
+    {
+      "task": "T134",
+      "record": {
+        "path": "experiments/mihomo-events/quality-candidate-manifest.json",
+        "bytes": 12608,
+        "sha256": "921979b955a79e20cf0f5f115750b7e4d38137d5e42b13ba582ef1d182c60ec3"
+      },
+      "interpretation": "ready proof attached to actual Conn and segment accounting; new profile dispatch and two HTTP upstreams revalidated",
+      "new_binary_runtime_claim": false
+    },
+    {
+      "task": "T135",
+      "record": {
+        "path": "experiments/mihomo-events/capability-validation.json",
+        "bytes": 36117,
+        "sha256": "50be1a1c725c452f546fbb92d5c7ac797c92541843e211d41c218466170c9c62"
+      },
+      "interpretation": "legacy auth/reserve/drain implementation; v5 declaration validation added before the same legacy validator and actual Owner check",
+      "new_binary_runtime_claim": false
+    },
+    {
+      "task": "T132_namespace",
+      "record": {
+        "path": "experiments/sourceidentity/namespace-guard-validation.json",
+        "bytes": 84460,
+        "sha256": "06391b5579b0f22c73896ec4fe11396d2d3da3913d4cf062d36cde9c65be88c5"
+      },
+      "interpretation": "same BPF object and namespace guard; no new namespace-negative run claimed",
+      "new_binary_runtime_claim": false
+    },
+    {
+      "task": "T132_lifetimes",
+      "record": {
+        "path": "experiments/sourceidentity/executable-lifetimes-validation.json",
+        "bytes": 62903,
+        "sha256": "432457a4ca83526c40d2c557e10eba3fdc7b82508ee5ce14e1110bc2306ddcd6"
+      },
+      "interpretation": "same capture/association and Owner admission order; runtime PID reuse/early exit belong to original hash",
+      "new_binary_runtime_claim": false
+    },
+    {
+      "task": "T132_crash",
+      "record": {
+        "path": "experiments/sourceidentity/executable-core-crash-validation.json",
+        "bytes": 16466,
+        "sha256": "247bef7ec00e4cc334b768f75eb6013384070ec5b5218e699a0f306e4a0cafa2"
+      },
+      "interpretation": "v4 actual crash plus original exclusive recovery overlay; new v5 pending/reopen has targeted source tests only",
+      "new_binary_runtime_claim": false
+    }
+  ],
+  "unchanged_mechanisms": [
+    "BPF object and 24/112/296-byte ABI",
+    "Owner mutex and capture/link/config/fault ordering",
+    "source frame sync/ACK/GC and gap derivation ordering"
+  ],
+  "changed_paths_verified": [
+    "strict profile/handoff/source/manifest versions",
+    "declared requirements and adopted actual profile before listener",
+    "producer profile5 quality dispatch",
+    "manifest-bound append/replay/receiver",
+    "new same-topology field/ready/route/final smoke"
+  ],
+  "limits": {
+    "T132_complete": true,
+    "T137_complete": true,
+    "formal_g01_old": "0/100",
+    "formal_g01_new_samples": 0,
+    "P0_released": false,
+    "P1_released": false,
+    "actual_v5_crash": false,
+    "actual_selective_active_loss": false,
+    "new_candidate_performance_budget_measured": false
+  }
+}
